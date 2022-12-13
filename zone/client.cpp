@@ -68,6 +68,7 @@ extern volatile bool RunLoops;
 #include "../common/repositories/character_spells_repository.h"
 #include "../common/repositories/character_disciplines_repository.h"
 #include "../common/repositories/character_data_repository.h"
+#include "../common/events/player_events.h"
 
 
 extern QueryServ* QServ;
@@ -12033,4 +12034,20 @@ void Client::MaxSkills()
 			SetSkill(s.first, current_skill_value);
 		}
 	}
+}
+
+PlayerEvent::PlayerEvent Client::GetPlayerEvent()
+{
+	auto e = PlayerEvent::PlayerEvent{};
+	e.account_id     = AccountID();
+	e.character_id   = CharacterID();
+	e.character_name = GetCleanName();
+	e.x              = GetX();
+	e.y              = GetY();
+	e.z              = GetZ();
+	e.heading        = GetHeading();
+	e.zone_id        = GetZoneID();
+	e.instance_id    = GetInstanceID();
+
+	return e;
 }
