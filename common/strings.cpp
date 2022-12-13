@@ -763,3 +763,12 @@ std::string Strings::Random(size_t length)
 	std::generate_n(str.begin(), length, randchar);
 	return str;
 }
+
+std::string Strings::MinifyJson(std::string s)
+{
+	s = Strings::Replace(s, "	", "");
+	s = Strings::Replace(s, "    ", "");
+	s = Strings::Replace(s, "\n", "");
+
+	return s;
+}
