@@ -50,6 +50,7 @@ Child of the Mob class.
 #include "quest_parser_collection.h"
 #include "string_ids.h"
 #include "worldserver.h"
+#include "../common/events/player_event_logs.h"
 #include <iostream>
 
 
@@ -1353,6 +1354,17 @@ void Corpse::LootItem(Client *client, const EQApplicationPacket *app)
 
 		if (parse->EventPlayer(EVENT_LOOT, client, export_string, 0, &args) != 0) {
 			prevent_loot = true;
+		}
+
+		if (player_event_logs.IsEventEnabled(PlayerEvent::LOOT_ITEM)) {
+			auto e = PlayerEvent::LootItemEvent{
+				.item_id = inst->GetItem()->ID,
+				.item_name = inst->GetItem()->Name,
+				.charges = inst->GetCharges(),
+				.corpse_name = EntityList::RemoveNumbers(corpse_name)
+			};
+
+			RecordPlayerEventLogWithClient(client, PlayerEvent::LOOT_ITEM, e);
 		}
 
 		if (!IsPlayerCorpse())
