@@ -69,6 +69,7 @@ extern volatile bool RunLoops;
 #include "../common/repositories/character_disciplines_repository.h"
 #include "../common/repositories/character_data_repository.h"
 #include "../common/events/player_events.h"
+#include "../common/events/player_event_logs.h"
 
 
 extern QueryServ* QServ;
@@ -2548,6 +2549,17 @@ bool Client::CheckIncreaseSkill(EQ::skills::SkillType skillid, Mob *against_who,
 				0
 			);
 			parse->EventPlayer(EVENT_SKILL_UP, this, export_string, 0);
+
+			if (player_event_logs.IsEventEnabled(PlayerEvent::SKILL_UP)) {
+				auto e = PlayerEvent::SkillUpEvent{
+					.skill_id = static_cast<uint32>(skillid),
+					.value = (skillval + 1),
+					.max_skill = static_cast<int16>(maxskill),
+					.against_who = against_who->GetCleanName(),
+				};
+				RecordPlayerEventLog(PlayerEvent::SKILL_UP, e);
+			}
+
 			LogSkills("Skill [{}] at value [{}] successfully gain with [{}] chance (mod [{}])", skillid, skillval, Chance, chancemodi);
 			return true;
 		} else {
