@@ -73,6 +73,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #ifdef BOTS
 #include "bot.h"
+#include "../common/events/player_event_logs.h"
+
 #endif
 
 extern QueryServ* QServ;
@@ -5300,6 +5302,16 @@ void Client::Handle_OP_DeleteItem(const EQApplicationPacket *app)
 			m_pp.intoxication = 200;
 	}
 	DeleteItemInInventory(alc->from_slot, 1);
+
+	if (player_event_logs.IsEventEnabled(PlayerEvent::ITEM_DESTROY)) {
+		auto e = PlayerEvent::DestroyItemEvent{
+			.item_id = inst->GetItem()->ID,
+			.item_name = inst->GetItem()->Name,
+			.reason = "Client deleted",
+		};
+
+		RecordPlayerEventLog(PlayerEvent::ITEM_DESTROY, e);
+	}
 
 	return;
 }
