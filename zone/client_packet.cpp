@@ -14440,10 +14440,10 @@ void Client::Handle_OP_TradeAcceptClick(const EQApplicationPacket *app)
 
 				// start QS code
 				if (RuleB(QueryServ, PlayerLogTrades)) {
-					QSPlayerLogTrade_Struct event_entry;
+					PlayerLogTrade_Struct event_entry;
 					std::list<void*> event_details;
 
-					memset(&event_entry, 0, sizeof(QSPlayerLogTrade_Struct));
+					memset(&event_entry, 0, sizeof(PlayerLogTrade_Struct));
 
 					// Perform actual trade
 					FinishTrade(other, true, &event_entry, &event_details);
@@ -14453,18 +14453,18 @@ void Client::Handle_OP_TradeAcceptClick(const EQApplicationPacket *app)
 
 					auto qs_pack = new ServerPacket(
 						ServerOP_QSPlayerLogTrades,
-						sizeof(QSPlayerLogTrade_Struct) +
-						(sizeof(QSTradeItems_Struct) * event_entry._detail_count));
-					QSPlayerLogTrade_Struct* qs_buf = (QSPlayerLogTrade_Struct*)qs_pack->pBuffer;
+						sizeof(PlayerLogTrade_Struct) +
+						(sizeof(PlayerLogTradeItemsEntry_Struct) * event_entry._detail_count));
+					PlayerLogTrade_Struct* qs_buf = (PlayerLogTrade_Struct*)qs_pack->pBuffer;
 
-					memcpy(qs_buf, &event_entry, sizeof(QSPlayerLogTrade_Struct));
+					memcpy(qs_buf, &event_entry, sizeof(PlayerLogTrade_Struct));
 
 					int offset = 0;
 
 					for (auto iter = event_details.begin(); iter != event_details.end();
 					++iter, ++offset) {
-						QSTradeItems_Struct* detail = reinterpret_cast<QSTradeItems_Struct*>(*iter);
-						qs_buf->items[offset] = *detail;
+						PlayerLogTradeItemsEntry_Struct* detail = reinterpret_cast<PlayerLogTradeItemsEntry_Struct*>(*iter);
+						qs_buf->item_entries[offset] = *detail;
 						safe_delete(detail);
 					}
 
