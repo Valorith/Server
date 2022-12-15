@@ -1016,4 +1016,10 @@ enum FVNoDropFlagRule
 	AdminOnly = 2
 };
 
+enum ResurrectionActions
+{
+	Decline,
+	Accept
+};
+
 #endif /*COMMON_EQ_CONSTANTS_H*/
