@@ -2079,6 +2079,7 @@ private:
 
 #endif
 	bool CanTradeFVNoDropItem();
+	void PlayerTradeEventLog(Trade *t, Trade *t2);
 };
 
 #endif
