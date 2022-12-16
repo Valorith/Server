@@ -2606,7 +2606,7 @@ void Client::Handle_OP_AltCurrencyPurchase(const EQApplicationPacket *app)
 				.merchant_type = tar->MerchantType,
 				.item_id = item->ID,
 				.item_name = item->Name,
-				.charges = item->MaxCharges,
+				.charges = charges,
 				.cost = cost,
 				.alternate_currency_id = alt_cur_id,
 				.player_money_balance = GetCarriedMoney(),
@@ -13301,6 +13301,23 @@ void Client::Handle_OP_ShopPlayerBuy(const EQApplicationPacket *app)
 	safe_delete(inst);
 	safe_delete(outapp);
 
+	if (player_event_logs.IsEventEnabled(PlayerEvent::MERCHANT_PURCHASE)) {
+		auto e = PlayerEvent::MerchantPurchaseEvent{
+			.npc_id = tmp->GetNPCTypeID(),
+			.merchant_name = tmp->GetCleanName(),
+			.merchant_type = tmp->CastToNPC()->MerchantType,
+			.item_id = item->ID,
+			.item_name = item->Name,
+			.charges = static_cast<int16>(mpo->quantity),
+			.cost = mpo->price,
+			.alternate_currency_id = 0,
+			.player_money_balance = GetCarriedMoney(),
+			.player_currency_balance = 0,
+		};
+
+		RecordPlayerEventLog(PlayerEvent::MERCHANT_PURCHASE, e);
+	}
+
 	// start QS code
 	// stacking purchases not supported at this time - entire process will need some work to catch them properly
 	if (RuleB(QueryServ, PlayerLogMerchantTransactions)) {
@@ -13368,23 +13385,6 @@ void Client::Handle_OP_ShopPlayerBuy(const EQApplicationPacket *app)
 		mpo->price
 	);
 	parse->EventPlayer(EVENT_MERCHANT_BUY, this, export_string, 0);
-
-	if (player_event_logs.IsEventEnabled(PlayerEvent::MERCHANT_PURCHASE)) {
-		auto e = PlayerEvent::MerchantPurchaseEvent{
-			.npc_id = tmp->GetNPCTypeID(),
-			.merchant_name = tmp->GetCleanName(),
-			.merchant_type = tmp->CastToNPC()->MerchantType,
-			.item_id = item->ID,
-			.item_name = item->Name,
-			.charges = static_cast<int16>(mpo->quantity),
-			.cost = mpo->price,
-			.alternate_currency_id = 0,
-			.player_money_balance = GetCarriedMoney(),
-			.player_currency_balance = 0,
-		};
-
-		RecordPlayerEventLog(PlayerEvent::MERCHANT_PURCHASE, e);
-	}
 
 	if ((RuleB(Character, EnableDiscoveredItems)))
 	{
