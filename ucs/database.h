@@ -28,6 +28,7 @@
 #include "../common/dbcore.h"
 #include "../common/linked_list.h"
 #include "clientlist.h"
+#include "../common/shareddb.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -35,13 +36,8 @@
 //atoi is not uint32 or uint32 safe!!!!
 #define atoul(str) strtoul(str, nullptr, 10)
 
-class Database : public DBcore {
+class UCSDatabase : public Database {
 public:
-	Database();
-	Database(const char* host, const char* user, const char* passwd, const char* database,uint32 port);
-	bool Connect(const char* host, const char* user, const char* passwd, const char* database,uint32 port);
-	~Database();
-
 	int FindAccount(const char *CharacterName, Client *c);
 	int FindCharacter(const char *CharacterName);
 	bool VerifyMailKey(std::string CharacterName, int IPAddress, std::string MailKey);
