@@ -32,6 +32,8 @@
 #include "lfguild.h"
 #include "worldserver.h"
 #include "../common/path_manager.h"
+#include "../common/events/player_event_logs.h"
+#include "../common/zone_store.h"
 #include <list>
 #include <signal.h>
 #include <thread>
@@ -45,10 +47,19 @@ const queryservconfig *Config;
 WorldServer           *worldserver = 0;
 EQEmuLogSys           LogSys;
 PathManager           path;
+ZoneStore             zone_store;
+PlayerEventLogs       player_event_logs;
 
 void CatchSignal(int sig_num)
 {
 	RunLoops = false;
+}
+
+void PlayerEventQueueListener() {
+	while (RunLoops) {
+		player_event_logs.Process();
+		Sleep(1000);
+	}
 }
 
 int main()
@@ -87,6 +98,32 @@ int main()
 		->SetLogPath(path.GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
+
+	// rules
+	{
+		std::string tmp;
+		if (database.GetVariable("RuleSet", tmp)) {
+			LogInfo("Loading rule set [{}]", tmp.c_str());
+			if (!RuleManager::Instance()->LoadRules(&database, tmp.c_str(), false)) {
+				LogError("Failed to load ruleset [{}], falling back to defaults", tmp.c_str());
+			}
+		}
+		else {
+			if (!RuleManager::Instance()->LoadRules(&database, "default", false)) {
+				LogInfo("No rule set configured, using default rules");
+			}
+			else {
+				LogInfo("Loaded default rule set 'default'");
+			}
+		}
+	}
+
+	player_event_logs.SetDatabase(&database)->Init();
+
+	if (RuleB(Logging, PlayerEventsQSProcess)) {
+		LogInfo("[PlayerEventQueueListener] Booting queue processor");
+		std::thread(PlayerEventQueueListener).detach();
+	}
 
 	if (signal(SIGINT, CatchSignal) == SIG_ERR) {
 		LogInfo("Could not set signal handler");
