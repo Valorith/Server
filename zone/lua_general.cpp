@@ -3656,6 +3656,11 @@ void lua_do_anim(int animation_id, int animation_speed, bool ackreq, int filter)
 	quest_manager.doanim(animation_id, animation_speed, ackreq, static_cast<eqFilterType>(filter));
 }
 
+void lua_send_player_handin_event()
+{
+	quest_manager.SendPlayerHandinEvent();
+}
+
 #define LuaCreateNPCParse(name, c_type, default_value) do { \
 	cur = table[#name]; \
 	if(luabind::type(cur) != LUA_TNIL) { \
@@ -4163,6 +4168,8 @@ luabind::scope lua_register_general() {
 		luabind::def("do_anim", (void(*)(int,int))&lua_do_anim),
 		luabind::def("do_anim", (void(*)(int,int,bool))&lua_do_anim),
 		luabind::def("do_anim", (void(*)(int,int,bool,int))&lua_do_anim),
+		luabind::def("send_player_handin_event", (void(*)(void))&lua_send_player_handin_event),
+
 		/*
 			Cross Zone
 		*/

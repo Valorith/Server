@@ -345,6 +345,7 @@ public:
 	int GetRecipeMadeCount(uint32 recipe_id);
 	std::string GetRecipeName(uint32 recipe_id);
 	bool HasRecipeLearned(uint32 recipe_id);
+	void SendPlayerHandinEvent();
 
 #ifdef BOTS
 	Bot *GetBot() const;
