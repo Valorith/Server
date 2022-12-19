@@ -69,12 +69,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "gm_commands/door_manipulation.h"
 #include "client.h"
 #include "../common/repositories/account_repository.h"
-
+#include "../common/events/player_event_logs.h"
 
 #ifdef BOTS
 #include "bot.h"
-#include "../common/events/player_event_logs.h"
-
 #endif
 
 extern QueryServ* QServ;

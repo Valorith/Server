@@ -40,7 +40,7 @@
 
 volatile bool RunLoops = true;
 
-Database              database;
+QSDatabase            database;
 LFGuildManager        lfguildmanager;
 std::string           WorldShortName;
 const queryservconfig *Config;

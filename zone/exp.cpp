@@ -32,10 +32,13 @@
 #include "lua_parser.h"
 #include "string_ids.h"
 
+#include "../common/events/player_event_logs.h"
+#include "worldserver.h"
+
+extern WorldServer worldserver;
+
 #ifdef BOTS
 #include "bot.h"
-#include "../common/events/player_event_logs.h"
-
 #endif
 
 extern QueryServ* QServ;
