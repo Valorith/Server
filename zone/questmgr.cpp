@@ -3936,17 +3936,37 @@ void QuestManager::SendPlayerHandinEvent() {
 	}
 
 	if (
-		!initiator->EntityVariableExists("HANDIN_ITEMS") ||
+		!initiator->EntityVariableExists("HANDIN_ITEMS") &&
 		!initiator->EntityVariableExists("RETURN_ITEMS")
 	) {
 		return;
 	}
 
-	const auto handin_data = Strings::Split(initiator->GetEntityVariable("HANDIN_ITEMS"), ",");
-	std::vector<PlayerEvent::HandinEntry> handin_items;
+	auto handin_variable = initiator->GetEntityVariable("HANDIN_ITEMS");
+	auto return_variable = initiator->GetEntityVariable("RETURN_ITEMS");
 
-	for (const auto& h : handin_data) {
-		const auto item_data = Strings::Split(h, "-");
+	std::vector<PlayerEvent::HandinEntry> handin_items;
+	std::vector<PlayerEvent::HandinEntry> return_items;
+
+	if (Strings::Contains(handin_variable, ",")) {
+		const auto handin_data = Strings::Split(handin_variable, ",");
+
+		for (const auto& h : handin_data) {
+			const auto item_data = Strings::Split(h, "-");
+
+			const auto item_id = static_cast<uint32>(std::stoul(item_data[0]));
+			if (item_id != 0) {
+				handin_items.emplace_back(
+					PlayerEvent::HandinEntry{
+						.item_id = item_id,
+						.charges = static_cast<uint16>(std::stoul(item_data[1])),
+						.attuned = std::stoi(item_data[2]) ? true : false
+					}
+				);
+			}
+		}
+	} else if (Strings::Contains(handin_variable, "-")) {
+		const auto item_data = Strings::Split(handin_variable, "-");
 
 		handin_items.emplace_back(
 			PlayerEvent::HandinEntry{
@@ -3957,11 +3977,22 @@ void QuestManager::SendPlayerHandinEvent() {
 		);
 	}
 
-	const auto return_data = Strings::Split(initiator->GetEntityVariable("RETURN_ITEMS"), ",");
-	std::vector<PlayerEvent::HandinEntry> return_items;
+	if (Strings::Contains(return_variable, ",")) {
+		const auto return_data = Strings::Split(return_variable, ",");
 
-	for (const auto& r : return_data) {
-		const auto item_data = Strings::Split(r, "-");
+		for (const auto& r : return_data) {
+			const auto item_data = Strings::Split(r, "-");
+
+			return_items.emplace_back(
+				PlayerEvent::HandinEntry{
+					.item_id = static_cast<uint32>(std::stoul(item_data[0])),
+					.charges = static_cast<uint16>(std::stoul(item_data[1])),
+					.attuned = std::stoi(item_data[2]) ? true : false
+				}
+			);
+		}
+	} else if (Strings::Contains(return_variable, "-")) {
+		const auto item_data = Strings::Split(return_variable, "-");
 
 		return_items.emplace_back(
 			PlayerEvent::HandinEntry{
@@ -3975,12 +4006,14 @@ void QuestManager::SendPlayerHandinEvent() {
 	initiator->DeleteEntityVariable("HANDIN_ITEMS");
 	initiator->DeleteEntityVariable("RETURN_ITEMS");
 
-	auto e = PlayerEvent::HandinEvent{
-		.npc_id = owner->CastToNPC()->GetNPCTypeID(),
-		.npc_name = owner->GetCleanName(),
-		.handin_items = handin_items,
-		.return_items = return_items
-	};
+	if (player_event_logs.IsEventEnabled(PlayerEvent::NPC_HANDIN)) {
+		auto e = PlayerEvent::HandinEvent{
+			.npc_id = owner->CastToNPC()->GetNPCTypeID(),
+			.npc_name = owner->GetCleanName(),
+			.handin_items = handin_items,
+			.return_items = return_items
+		};
 
-	RecordPlayerEventLogWithClient(initiator, PlayerEvent::NPC_HANDIN, e);
+		RecordPlayerEventLogWithClient(initiator, PlayerEvent::NPC_HANDIN, e);
+	}
 }
