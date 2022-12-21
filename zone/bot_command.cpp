@@ -5430,18 +5430,18 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 {
 	const std::string class_substrs[17] = {
 		"",
-		"{} (WAR)", "{} (CLR)", "{} (PAL)", "{} (RNG)",
-		"{} (SHD)", "{} (DRU)", "{} (MNK)", "{} (BRD)",
-		"{} (ROG)", "{} (SHM)", "{} (NEC)", "{} (WIZ)",
-		"{} (MAG)", "{} (ENC)", "{} (BST)", "{} (BER)"
+		"(WAR)", "(CLR)", "(PAL)", "(RNG)",
+		"(SHD)", "(DRU)", "(MNK)", "(BRD)",
+		"(ROG)", "(SHM)", "(NEC)", "(WIZ)",
+		"(MAG)", "(ENC)", "(BST)", "(BER)"
 	};
 
 	const std::string race_substrs[17] = {
 		"",
-		"{} (HUM)", "{} (BAR)", "{} (ERU)", "{} (ELF)",
-		"{} (HIE)", "{} (DEF)", "{} (HEF)", "{} (DWF)",
-		"{} (TRL)", "{} (OGR)", "{} (HFL)", "{} (GNM)",
-		"{} (IKS)", "{} (VAH)", "{} (FRG)", "{} (DRK)"
+		"(HUM)", "(BAR)", "(ERU)", "(ELF)",
+		"(HIE)", "(DEF)", "(HEF)", "(DWF)",
+		"(TRL)", "(OGR)", "(HFL)", "(GNM)",
+		"(IKS)", "(VAH)", "(FRG)", "(DRK)"
 	};
 
 	const uint16 race_values[17] = {
@@ -5453,7 +5453,7 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 	};
 
 	const std::string gender_substrs[2] = {
-		"{} (M)", "{} (F)",
+		"(M)", "(F)",
 	};
 
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_create", sep->arg[0], "botcreate")) {
@@ -5488,8 +5488,9 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 
 			window_text.append(
 				fmt::format(
-					class_substrs[i + 1],
-					(i + 1)
+					"{} {}",
+					(i + 1),
+					class_substrs[i + 1]
 				)
 			);
 
@@ -5513,8 +5514,9 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 
 			window_text.append(
 				fmt::format(
-					race_substrs[i + 1],
-					race_values[i + 1]
+					"{} {}",
+					race_values[i + 1],
+					race_substrs[i + 1]
 				)
 			);
 
@@ -5532,8 +5534,9 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 
 			window_text.append(
 				fmt::format(
-					gender_substrs[i],
-					i
+					"{} {}",
+					i,
+					gender_substrs[i]
 				)
 			);
 
