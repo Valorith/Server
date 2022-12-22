@@ -755,8 +755,8 @@ public:
 	uint32 GetMoney(uint8 type, uint8 subtype);
 	int GetAccountAge();
 
-	bool IsDiscovered(uint32 itemid);
-	void DiscoverItem(uint32 itemid);
+	bool IsDiscovered(uint32 item_id);
+	void DiscoverItem(uint32 item_id);
 
 	bool TGB() const { return tgb; }
 

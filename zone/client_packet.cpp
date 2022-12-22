@@ -13385,19 +13385,8 @@ void Client::Handle_OP_ShopPlayerBuy(const EQApplicationPacket *app)
 	);
 	parse->EventPlayer(EVENT_MERCHANT_BUY, this, export_string, 0);
 
-	if ((RuleB(Character, EnableDiscoveredItems)))
-	{
-		if (!GetGM() && !IsDiscovered(item_id)) {
-			DiscoverItem(item_id);
-
-			if (player_event_logs.IsEventEnabled(PlayerEvent::DISCOVER_ITEM)) {
-				auto e = PlayerEvent::DiscoverItemEvent{
-					.item_id = item_id,
-					.item_name = item->Name
-				};
-				RecordPlayerEventLog(PlayerEvent::DISCOVER_ITEM, e);
-			}
-		}
+	if (RuleB(Character, EnableDiscoveredItems) && !GetGM() && !IsDiscovered(item_id)) {
+		DiscoverItem(item_id);
 	}
 
 	t1.stop();
