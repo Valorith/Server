@@ -1361,6 +1361,7 @@ void Corpse::LootItem(Client *client, const EQApplicationPacket *app)
 				.item_id = inst->GetItem()->ID,
 				.item_name = inst->GetItem()->Name,
 				.charges = inst->GetCharges(),
+				.npc_id = GetNPCTypeID(),
 				.corpse_name = EntityList::RemoveNumbers(corpse_name)
 			};
 
