@@ -16800,8 +16800,8 @@ void Client::RecordStats()
 	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
 	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
 	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
-	r.mana_regen               = GetManaRegen() - GetSpellBonuses().ManaRegen;
-	r.endurance_regen          = GetEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
+	r.mana_regen               = CalcManaRegen() - GetSpellBonuses().ManaRegen;
+	r.endurance_regen          = CalcEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
 	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
 	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
 	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
