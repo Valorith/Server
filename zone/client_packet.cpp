@@ -16763,7 +16763,7 @@ void Client::RecordStats()
 	r.hp                       = GetMaxHP() - GetSpellBonuses().FlatMaxHPChange;
 	r.mana                     = GetMaxMana() - GetSpellBonuses().Mana;
 	r.endurance                = GetMaxEndurance() - GetSpellBonuses().Endurance;
-	r.ac                       = GetDisplayAC() - GetSpellBonuses().AC;
+	r.ac                       = GetDisplayAC() - GetAppliedSpellACBonus();
 	r.strength                 = GetSTR() - GetSpellBonuses().STR;
 	r.stamina                  = GetSTA() - GetSpellBonuses().STA;
 	r.dexterity                = GetDEX() - GetSpellBonuses().DEX;
@@ -16799,7 +16799,7 @@ void Client::RecordStats()
 	r.damage_shield_mitigation = GetDSMit() - GetSpellBonuses().DSMitigation;
 	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
 	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
-	r.hp_regen                 = GetHPRegen() - GetSpellBonuses().HPRegen;
+	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
 	r.mana_regen               = GetManaRegen() - GetSpellBonuses().ManaRegen;
 	r.endurance_regen          = GetEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
 	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
@@ -16832,6 +16832,19 @@ void Client::RecordStats()
 		r.character_id = character_id;
 		r.created_at   = std::time(nullptr);
 		CharacterStatsRecordRepository::InsertOne(database, r);
+	}
+}
+
+int Client::GetAppliedSpellACBonus() const
+{
+	// This method calculates how much spell AC bonus is actually applied to the character
+	// based on the AC calculation logic in ACSum method
+	int spell_ac = spellbonuses.AC;
+	
+	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
+		return spell_ac / 3;
+	} else {
+		return spell_ac / 4;
 	}
 }
 
