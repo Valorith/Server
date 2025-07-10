@@ -267,6 +267,7 @@ public:
 
 	void ReconnectUCS();
 	void RecordStats();
+	int GetAppliedSpellACBonus() const;
 
 	void SetDisplayMobInfoWindow(bool display_mob_info_window);
 	bool GetDisplayMobInfoWindow() const;
