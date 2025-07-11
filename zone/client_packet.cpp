@@ -16790,23 +16790,23 @@ void Client::RecordStats()
 	r.heroic_poison_resist     = GetHeroicPR() - GetSpellBonuses().HeroicPR;
 	r.heroic_disease_resist    = GetHeroicDR() - GetSpellBonuses().HeroicDR;
 	r.heroic_corruption_resist = GetHeroicCorrup() - GetSpellBonuses().HeroicCorrup;
-	r.haste                    = GetHaste();
-	r.accuracy                 = GetAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
+	r.haste                    = GetBaseHaste();
+	r.accuracy                 = GetTotalAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
 	r.attack                   = GetTotalATK() - GetSpellBonuses().ATK;
-	r.avoidance                = GetAvoidance() - GetSpellBonuses().AvoidMeleeChance;
-	r.clairvoyance             = GetClair() - GetSpellBonuses().Clairvoyance;
-	r.combat_effects           = GetCombatEffects() - GetSpellBonuses().ProcChance;
-	r.damage_shield_mitigation = GetDSMit() - GetSpellBonuses().DSMitigation;
-	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
-	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
+	r.avoidance                = GetTotalAvoidance() - GetSpellBonuses().AvoidMeleeChance;
+	r.clairvoyance             = GetTotalClairvoyance() - GetSpellBonuses().Clairvoyance;
+	r.combat_effects           = GetTotalCombatEffects() - GetSpellBonuses().ProcChance;
+	r.damage_shield_mitigation = GetTotalDSMitigation() - GetSpellBonuses().DSMitigation;
+	r.damage_shield            = GetTotalDamageShield() - GetSpellBonuses().DamageShield;
+	r.dot_shielding            = GetTotalDoTShield() - GetSpellBonuses().DoTShielding;
 	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
 	r.mana_regen               = CalcManaRegen() - GetSpellBonuses().ManaRegen;
 	r.endurance_regen          = CalcEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
-	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
-	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
-	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
-	r.strikethrough            = GetStrikeThrough() - GetSpellBonuses().StrikeThrough;
-	r.stun_resist              = GetStunResist() - GetSpellBonuses().StunResist;
+	r.shielding                = GetTotalShielding() - GetSpellBonuses().MeleeMitigation;
+	r.spell_damage             = GetTotalSpellDmg() - GetSpellBonuses().SpellDmg;
+	r.spell_shielding          = GetTotalSpellShield() - GetSpellBonuses().SpellShield;
+	r.strikethrough            = GetTotalStrikeThrough() - GetSpellBonuses().StrikeThrough;
+	r.stun_resist              = GetTotalStunResist() - GetSpellBonuses().StunResist;
 	r.backstab                 = 0;
 	r.wind                     = GetWindMod();
 	r.brass                    = GetBrassMod();
@@ -16848,6 +16848,104 @@ int Client::GetAppliedSpellACBonus()
 	int display_ac_with_spells = GetDisplayAC();
 	
 	return display_ac_with_spells - display_ac_without_spells;
+}
+
+int Client::GetTotalAccuracy()
+{
+	return itembonuses.HitChance + spellbonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1] + aabonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1];
+}
+
+int Client::GetTotalAvoidance()
+{
+	return itembonuses.AvoidMeleeChance + spellbonuses.AvoidMeleeChance + aabonuses.AvoidMeleeChance;
+}
+
+int Client::GetTotalCombatEffects()
+{
+	return itembonuses.ProcChance + spellbonuses.ProcChance + aabonuses.ProcChance;
+}
+
+int Client::GetTotalDamageShield()
+{
+	return itembonuses.DamageShield + spellbonuses.DamageShield + aabonuses.DamageShield;
+}
+
+int Client::GetTotalDoTShield()
+{
+	return itembonuses.DoTShielding + spellbonuses.DoTShielding + aabonuses.DoTShielding;
+}
+
+int Client::GetTotalShielding()
+{
+	return itembonuses.MeleeMitigation + spellbonuses.MeleeMitigation + aabonuses.MeleeMitigation;
+}
+
+int Client::GetTotalSpellShield()
+{
+	return itembonuses.SpellShield + spellbonuses.SpellShield + aabonuses.SpellShield;
+}
+
+int Client::GetTotalStrikeThrough()
+{
+	return itembonuses.StrikeThrough + spellbonuses.StrikeThrough + aabonuses.StrikeThrough;
+}
+
+int Client::GetTotalStunResist()
+{
+	return itembonuses.StunResist + spellbonuses.StunResist + aabonuses.StunResist;
+}
+
+int Client::GetTotalClairvoyance()
+{
+	return itembonuses.Clairvoyance + spellbonuses.Clairvoyance + aabonuses.Clairvoyance;
+}
+
+int Client::GetTotalDSMitigation()
+{
+	return itembonuses.DSMitigation + spellbonuses.DSMitigation + aabonuses.DSMitigation;
+}
+
+int Client::GetTotalSpellDmg()
+{
+	return itembonuses.SpellDmg + spellbonuses.SpellDmg + aabonuses.SpellDmg;
+}
+
+int Client::GetTotalHaste()
+{
+	// Calculate total haste including spell bonuses
+	// This is similar to the CalcHaste logic but returns the total value
+	return GetHaste(); // GetHaste() already includes spell bonuses
+}
+
+int Client::GetBaseHaste()
+{
+	// Calculate haste without spell bonuses
+	// This follows the same logic as CalcHaste but excludes spell bonuses
+	int h = 0;
+	int cap = 0;
+	int level = GetLevel();
+	
+	// Base haste from items and AA bonuses only
+	if (level > 25 || RuleB(Character, IgnoreLevelBasedHasteCaps)) {
+		h += itembonuses.haste;
+	} else {
+		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
+	}
+	
+	// Apply cap
+	if (level > 59 || RuleB(Character, IgnoreLevelBasedHasteCaps)) {
+		cap = RuleI(Character, HasteCap);
+	} else if (level > 50) {
+		cap = 85;
+	} else {
+		cap = level + 25;
+	}
+	
+	if (h > cap) {
+		h = cap;
+	}
+	
+	return 100 + h;
 }
 
 void Client::ReloadExpansionProfileSetting()
