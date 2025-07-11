@@ -1,18 +1,24 @@
 [submodule "submodules/glm"]
 	path = submodules/glm
 	url = https://github.com/g-truc/glm.git
+	ignore = all
 [submodule "submodules/fmt"]
 	path = submodules/fmt
 	url = https://github.com/fmtlib/fmt.git
+	ignore = all
 [submodule "submodules/libuv"]
 	path = submodules/libuv
 	url = https://github.com/libuv/libuv.git
+	ignore = all
 [submodule "submodules/cereal"]
 	path = submodules/cereal
 	url = https://github.com/USCiLab/cereal.git
+	ignore = all
 [submodule "submodules/websocketpp"]
 	path = submodules/websocketpp
 	url = https://github.com/zaphoyd/websocketpp.git
+	ignore = all
 [submodule "submodules/recastnavigation"]
 	path = submodules/recastnavigation
 	url = https://github.com/EQEmu/recastnavigation.git
+	ignore = all
