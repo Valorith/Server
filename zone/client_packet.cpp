@@ -16839,7 +16839,7 @@ void Client::RecordStats()
 		
 		auto base_data = zone->GetBaseData(GetLevel(), GetClass());
 		if (base_data.level == GetLevel()) {
-			unbuffed_endurance = base_data.endurance + (base_data.endurance_fac * stats);
+			unbuffed_endurance = base_data.end + (base_data.end_fac * stats);
 		}
 	} else {
 		int LevelBase = GetLevel() * 15;
@@ -16890,7 +16890,7 @@ void Client::RecordStats()
 	
 	// Apply softcap logic like in ACSum
 	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
-		int softcap = RuleI(Combat, ACTwinkControlSoftcap);
+		int softcap = GetACSoftcap();
 		if (ac > softcap) {
 			float returns = GetSoftcapReturns();
 			auto over_cap = ac - softcap;
