@@ -16760,75 +16760,111 @@ void Client::RecordStats()
 	r.level                    = GetLevel();
 	r.class_                   = GetBaseClass();
 	r.race                     = GetBaseRace();
-	// HP calculation: subtract all spell bonuses (flat and percentage)
-	int64 max_hp = GetMaxHP();
-	// Remove flat spell HP bonus
-	max_hp -= GetSpellBonuses().FlatMaxHPChange;
-	// Remove percentage spell HP bonus (this is trickier - need to reverse the percentage calculation)
-	if (GetSpellBonuses().PercentMaxHPChange != 0) {
-		// The percentage is applied to (BaseHP + ItemHP), so we need to reverse it
-		int64 base_plus_item_hp = CalcBaseHP() + itembonuses.HP;
-		int64 spell_percent_bonus = (base_plus_item_hp * GetSpellBonuses().PercentMaxHPChange) / 10000;
-		max_hp -= spell_percent_bonus;
-	}
-	r.hp = max_hp;
+	// HP calculation: use base HP calculation + item bonuses only
+	r.hp = CalcBaseHP() + itembonuses.HP;
 	
-	// Mana calculation: subtract spell mana bonuses
-	r.mana = GetMaxMana() - GetSpellBonuses().Mana;
+	// Mana calculation: use base mana calculation + item bonuses only
+	r.mana = CalcBaseMana() + itembonuses.Mana;
 	
-	// Endurance calculation: subtract spell endurance bonuses
-	r.endurance = GetMaxEndurance() - GetSpellBonuses().Endurance;
-	// AC calculation: subtract the properly scaled spell AC bonus
-	int scaled_spell_ac = spellbonuses.AC;
-	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
-		scaled_spell_ac = scaled_spell_ac / 3;
-	} else {
-		scaled_spell_ac = scaled_spell_ac / 4;
+	// Endurance calculation: use base endurance calculation + item bonuses only
+	r.endurance = CalcBaseEndurance() + itembonuses.Endurance;
+	// AC calculation: use ACSum logic but exclude spell bonuses
+	int ac = 0;
+	ac += itembonuses.AC; // items + food + tribute
+	int shield_ac = 0;
+	if (HasShieldEquipped()) {
+		auto inst = GetInv().GetItem(EQ::invslot::slotSecondary);
+		if (inst) {
+			if (inst->GetItemRecommendedLevel(true) <= GetLevel()) {
+				shield_ac = inst->GetItemArmorClass(true);
+			} else {
+				shield_ac = CalcRecommendedLevelBonus(GetLevel(), inst->GetItemRecommendedLevel(true), inst->GetItemArmorClass(true));
+			}
+		}
+		shield_ac += itembonuses.heroic_str_shield_ac;
 	}
-	r.ac                       = GetDisplayAC() - scaled_spell_ac;
-	r.strength                 = GetSTR() - GetSpellBonuses().STR;
-	r.stamina                  = GetSTA() - GetSpellBonuses().STA;
-	r.dexterity                = GetDEX() - GetSpellBonuses().DEX;
-	r.agility                  = GetAGI() - GetSpellBonuses().AGI;
-	r.intelligence             = GetINT() - GetSpellBonuses().INT;
-	r.wisdom                   = GetWIS() - GetSpellBonuses().WIS;
-	r.charisma                 = GetCHA() - GetSpellBonuses().CHA;
-	r.magic_resist             = GetMR() - GetSpellBonuses().MR;
-	r.fire_resist              = GetFR() - GetSpellBonuses().FR;
-	r.cold_resist              = GetCR() - GetSpellBonuses().CR;
-	r.poison_resist            = GetPR() - GetSpellBonuses().PR;
-	r.disease_resist           = GetDR() - GetSpellBonuses().DR;
-	r.corruption_resist        = GetCorrup() - GetSpellBonuses().Corrup;
-	r.heroic_strength          = GetHeroicSTR() - GetSpellBonuses().HeroicSTR;
-	r.heroic_stamina           = GetHeroicSTA() - GetSpellBonuses().HeroicSTA;
-	r.heroic_dexterity         = GetHeroicDEX() - GetSpellBonuses().HeroicDEX;
-	r.heroic_agility           = GetHeroicAGI() - GetSpellBonuses().HeroicAGI;
-	r.heroic_intelligence      = GetHeroicINT() - GetSpellBonuses().HeroicINT;
-	r.heroic_wisdom            = GetHeroicWIS() - GetSpellBonuses().HeroicWIS;
-	r.heroic_charisma          = GetHeroicCHA() - GetSpellBonuses().HeroicCHA;
-	r.heroic_magic_resist      = GetHeroicMR() - GetSpellBonuses().HeroicMR;
-	r.heroic_fire_resist       = GetHeroicFR() - GetSpellBonuses().HeroicFR;
-	r.heroic_cold_resist       = GetHeroicCR() - GetSpellBonuses().HeroicCR;
-	r.heroic_poison_resist     = GetHeroicPR() - GetSpellBonuses().HeroicPR;
-	r.heroic_disease_resist    = GetHeroicDR() - GetSpellBonuses().HeroicDR;
-	r.heroic_corruption_resist = GetHeroicCorrup() - GetSpellBonuses().HeroicCorrup;
-	r.haste                    = GetHaste();
-	r.accuracy                 = GetAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
-	r.attack                   = GetTotalATK() - GetSpellBonuses().ATK;
-	r.avoidance                = GetAvoidance() - GetSpellBonuses().AvoidMeleeChance;
-	r.clairvoyance             = GetClair() - GetSpellBonuses().Clairvoyance;
-	r.combat_effects           = GetCombatEffects() - GetSpellBonuses().ProcChance;
-	r.damage_shield_mitigation = GetDSMit() - GetSpellBonuses().DSMitigation;
-	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
-	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
+	// EQ math
+	ac = (ac * 4) / 3;
+	// anti-twink
+	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
+		ac = std::min(ac, 25 + 6 * GetLevel());
+	}
+	ac = std::max(0, ac + GetClassRaceACBonus());
+	
+	// Add AA bonuses only (excluding spell bonuses)
+	auto aa_ac = aabonuses.AC;
+	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
+		ac += GetSkill(EQ::skills::SkillDefense) / 2 + aa_ac / 3;
+	else
+		ac += GetSkill(EQ::skills::SkillDefense) / 3 + aa_ac / 4;
+	
+	if (GetAGI() > 70)
+		ac += GetAGI() / 20;
+	if (ac < 0)
+		ac = 0;
+	
+	// Apply softcap logic like in ACSum
+	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
+		int softcap = RuleI(Combat, ACTwinkControlSoftcap);
+		if (ac > softcap) {
+			float returns = GetSoftcapReturns();
+			auto over_cap = ac - softcap;
+			ac = softcap + (over_cap * returns);
+		}
+	}
+	
+	r.ac = 1000 * (ac + compute_defense()) / 847; // Apply same display calculation as GetDisplayAC
+	r.strength                 = GetBaseSTR() + itembonuses.STR;
+	r.stamina                  = GetBaseSTA() + itembonuses.STA;
+	r.dexterity                = GetBaseDEX() + itembonuses.DEX;
+	r.agility                  = GetBaseAGI() + itembonuses.AGI;
+	r.intelligence             = GetBaseINT() + itembonuses.INT;
+	r.wisdom                   = GetBaseWIS() + itembonuses.WIS;
+	r.charisma                 = GetBaseCHA() + itembonuses.CHA;
+	r.magic_resist             = MR + itembonuses.MR;
+	r.fire_resist              = FR + itembonuses.FR;
+	r.cold_resist              = CR + itembonuses.CR;
+	r.poison_resist            = PR + itembonuses.PR;
+	r.disease_resist           = DR + itembonuses.DR;
+	r.corruption_resist        = Corrup + itembonuses.Corrup;
+	r.heroic_strength          = GetHeroicSTR();  // GetHeroicSTR() only returns item bonuses
+	r.heroic_stamina           = GetHeroicSTA();  // GetHeroicSTA() only returns item bonuses
+	r.heroic_dexterity         = GetHeroicDEX();  // GetHeroicDEX() only returns item bonuses
+	r.heroic_agility           = GetHeroicAGI();  // GetHeroicAGI() only returns item bonuses
+	r.heroic_intelligence      = GetHeroicINT();  // GetHeroicINT() only returns item bonuses
+	r.heroic_wisdom            = GetHeroicWIS();  // GetHeroicWIS() only returns item bonuses
+	r.heroic_charisma          = GetHeroicCHA();  // GetHeroicCHA() only returns item bonuses
+	r.heroic_magic_resist      = GetHeroicMR();  // GetHeroicMR() only returns item bonuses
+	r.heroic_fire_resist       = GetHeroicFR();  // GetHeroicFR() only returns item bonuses
+	r.heroic_cold_resist       = GetHeroicCR();  // GetHeroicCR() only returns item bonuses
+	r.heroic_poison_resist     = GetHeroicPR();  // GetHeroicPR() only returns item bonuses
+	r.heroic_disease_resist    = GetHeroicDR();  // GetHeroicDR() only returns item bonuses
+	r.heroic_corruption_resist = GetHeroicCorrup();  // GetHeroicCorrup() only returns item bonuses
+	// Haste calculation: use item bonuses only (exclude spell bonuses)
+	int h = 0;
+	int level = GetLevel();
+	if (level > 25) {
+		h += itembonuses.haste;
+	} else { // 1-25
+		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
+	}
+	r.haste = 100 + h;
+	r.accuracy                 = GetAccuracy();  // GetAccuracy() only returns item bonuses
+	r.attack                   = ATK + itembonuses.ATK;  // Base ATK + item bonuses only
+	r.avoidance                = GetAvoidance();  // GetAvoidance() only returns item bonuses
+	r.clairvoyance             = GetClair();  // GetClair() only returns item bonuses
+	r.combat_effects           = GetCombatEffects();  // GetCombatEffects() only returns item bonuses
+	r.damage_shield_mitigation = GetDSMit();  // GetDSMit() only returns item bonuses
+	r.damage_shield            = GetDS();  // GetDS() only returns item bonuses
+	r.dot_shielding            = GetDoTShield();  // GetDoTShield() only returns item bonuses
 	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
 	r.mana_regen               = CalcManaRegen() - GetSpellBonuses().ManaRegen;
 	r.endurance_regen          = CalcEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
-	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
-	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
-	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
-	r.strikethrough            = GetStrikeThrough() - GetSpellBonuses().StrikeThrough;
-	r.stun_resist              = GetStunResist() - GetSpellBonuses().StunResist;
+	r.shielding                = GetShielding();  // GetShielding() only returns item bonuses
+	r.spell_damage             = GetSpellDmg();  // GetSpellDmg() only returns item bonuses
+	r.spell_shielding          = GetSpellShield();  // GetSpellShield() only returns item bonuses
+	r.strikethrough            = GetStrikeThrough();  // GetStrikeThrough() only returns item bonuses
+	r.stun_resist              = GetStunResist();  // GetStunResist() only returns item bonuses
 	r.backstab                 = 0;
 	r.wind                     = GetWindMod();
 	r.brass                    = GetBrassMod();
