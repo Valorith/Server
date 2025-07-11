@@ -16760,10 +16760,32 @@ void Client::RecordStats()
 	r.level                    = GetLevel();
 	r.class_                   = GetBaseClass();
 	r.race                     = GetBaseRace();
-	r.hp                       = CalcBaseHP();
-	r.mana                     = CalcBaseMana();
-	r.endurance                = CalcBaseEndurance();
-	r.ac                       = GetDisplayAC() - GetAppliedSpellACBonus();
+	// HP calculation: subtract all spell bonuses (flat and percentage)
+	int64 max_hp = GetMaxHP();
+	// Remove flat spell HP bonus
+	max_hp -= GetSpellBonuses().FlatMaxHPChange;
+	// Remove percentage spell HP bonus (this is trickier - need to reverse the percentage calculation)
+	if (GetSpellBonuses().PercentMaxHPChange != 0) {
+		// The percentage is applied to (BaseHP + ItemHP), so we need to reverse it
+		int64 base_plus_item_hp = CalcBaseHP() + itembonuses.HP;
+		int64 spell_percent_bonus = (base_plus_item_hp * GetSpellBonuses().PercentMaxHPChange) / 10000;
+		max_hp -= spell_percent_bonus;
+	}
+	r.hp = max_hp;
+	
+	// Mana calculation: subtract spell mana bonuses
+	r.mana = GetMaxMana() - GetSpellBonuses().Mana;
+	
+	// Endurance calculation: subtract spell endurance bonuses
+	r.endurance = GetMaxEndurance() - GetSpellBonuses().Endurance;
+	// AC calculation: subtract the properly scaled spell AC bonus
+	int scaled_spell_ac = spellbonuses.AC;
+	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
+		scaled_spell_ac = scaled_spell_ac / 3;
+	} else {
+		scaled_spell_ac = scaled_spell_ac / 4;
+	}
+	r.ac                       = GetDisplayAC() - scaled_spell_ac;
 	r.strength                 = GetSTR() - GetSpellBonuses().STR;
 	r.stamina                  = GetSTA() - GetSpellBonuses().STA;
 	r.dexterity                = GetDEX() - GetSpellBonuses().DEX;
@@ -16790,23 +16812,23 @@ void Client::RecordStats()
 	r.heroic_poison_resist     = GetHeroicPR() - GetSpellBonuses().HeroicPR;
 	r.heroic_disease_resist    = GetHeroicDR() - GetSpellBonuses().HeroicDR;
 	r.heroic_corruption_resist = GetHeroicCorrup() - GetSpellBonuses().HeroicCorrup;
-	r.haste                    = GetBaseHaste();
-	r.accuracy                 = GetTotalAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
-	r.attack                   = GetBaseATK();
-	r.avoidance                = GetTotalAvoidance() - GetSpellBonuses().AvoidMeleeChance;
-	r.clairvoyance             = GetTotalClairvoyance() - GetSpellBonuses().Clairvoyance;
-	r.combat_effects           = GetTotalCombatEffects() - GetSpellBonuses().ProcChance;
-	r.damage_shield_mitigation = GetTotalDSMitigation() - GetSpellBonuses().DSMitigation;
-	r.damage_shield            = GetTotalDamageShield() - GetSpellBonuses().DamageShield;
-	r.dot_shielding            = GetTotalDoTShield() - GetSpellBonuses().DoTShielding;
+	r.haste                    = GetHaste();
+	r.accuracy                 = GetAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
+	r.attack                   = GetTotalATK() - GetSpellBonuses().ATK;
+	r.avoidance                = GetAvoidance() - GetSpellBonuses().AvoidMeleeChance;
+	r.clairvoyance             = GetClair() - GetSpellBonuses().Clairvoyance;
+	r.combat_effects           = GetCombatEffects() - GetSpellBonuses().ProcChance;
+	r.damage_shield_mitigation = GetDSMit() - GetSpellBonuses().DSMitigation;
+	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
+	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
 	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
 	r.mana_regen               = CalcManaRegen() - GetSpellBonuses().ManaRegen;
 	r.endurance_regen          = CalcEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
-	r.shielding                = GetTotalShielding() - GetSpellBonuses().MeleeMitigation;
-	r.spell_damage             = GetTotalSpellDmg() - GetSpellBonuses().SpellDmg;
-	r.spell_shielding          = GetTotalSpellShield() - GetSpellBonuses().SpellShield;
-	r.strikethrough            = GetTotalStrikeThrough() - GetSpellBonuses().StrikeThrough;
-	r.stun_resist              = GetTotalStunResist() - GetSpellBonuses().StunResist;
+	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
+	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
+	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
+	r.strikethrough            = GetStrikeThrough() - GetSpellBonuses().StrikeThrough;
+	r.stun_resist              = GetStunResist() - GetSpellBonuses().StunResist;
 	r.backstab                 = 0;
 	r.wind                     = GetWindMod();
 	r.brass                    = GetBrassMod();
@@ -16835,140 +16857,6 @@ void Client::RecordStats()
 	}
 }
 
-int Client::GetAppliedSpellACBonus()
-{
-	// Get the raw spell AC bonus
-	int spell_ac_bonus = spellbonuses.AC;
-	
-	// If there's no spell AC bonus, return 0
-	if (spell_ac_bonus == 0) {
-		return 0;
-	}
-	
-	// Apply the same class-based scaling that GetDisplayAC() uses
-	// This mimics the logic in ACSum()
-	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
-		return spell_ac_bonus / 3;
-	} else {
-		return spell_ac_bonus / 4;
-	}
-}
-
-int Client::GetTotalAccuracy()
-{
-	return itembonuses.HitChance + spellbonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1] + aabonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1];
-}
-
-int Client::GetTotalAvoidance()
-{
-	return itembonuses.AvoidMeleeChance + spellbonuses.AvoidMeleeChance + aabonuses.AvoidMeleeChance;
-}
-
-int Client::GetTotalCombatEffects()
-{
-	return itembonuses.ProcChance + spellbonuses.ProcChance + aabonuses.ProcChance;
-}
-
-int Client::GetTotalDamageShield()
-{
-	return itembonuses.DamageShield + spellbonuses.DamageShield + aabonuses.DamageShield;
-}
-
-int Client::GetTotalDoTShield()
-{
-	return itembonuses.DoTShielding + spellbonuses.DoTShielding + aabonuses.DoTShielding;
-}
-
-int Client::GetTotalShielding()
-{
-	return itembonuses.MeleeMitigation + spellbonuses.MeleeMitigation + aabonuses.MeleeMitigation;
-}
-
-int Client::GetTotalSpellShield()
-{
-	return itembonuses.SpellShield + spellbonuses.SpellShield + aabonuses.SpellShield;
-}
-
-int Client::GetTotalStrikeThrough()
-{
-	return itembonuses.StrikeThrough + spellbonuses.StrikeThrough + aabonuses.StrikeThrough;
-}
-
-int Client::GetTotalStunResist()
-{
-	return itembonuses.StunResist + spellbonuses.StunResist + aabonuses.StunResist;
-}
-
-int Client::GetTotalClairvoyance()
-{
-	return itembonuses.Clairvoyance + spellbonuses.Clairvoyance + aabonuses.Clairvoyance;
-}
-
-int Client::GetTotalDSMitigation()
-{
-	return itembonuses.DSMitigation + spellbonuses.DSMitigation + aabonuses.DSMitigation;
-}
-
-uint32 Client::GetBaseATK()
-{
-	// Base attack includes item bonuses but excludes spell and AA bonuses
-	uint32 AttackRating = 0;
-	uint32 WornCap = itembonuses.ATK;
-
-	if(IsClient()) {
-		AttackRating = ((WornCap * 1.342) + (GetSkill(EQ::skills::SkillOffense) * 1.345) + ((GetSTR() - 66) * 0.9) + (GetPrimarySkillValue() * 2.69));
-
-		if (AttackRating < 10)
-			AttackRating = 10;
-	}
-	else
-		AttackRating = GetATK();
-
-	return AttackRating;
-}
-
-int Client::GetTotalSpellDmg()
-{
-	return itembonuses.SpellDmg + spellbonuses.SpellDmg + aabonuses.SpellDmg;
-}
-
-int Client::GetTotalHaste()
-{
-	// Calculate total haste including spell bonuses
-	// This is similar to the CalcHaste logic but returns the total value
-	return GetHaste(); // GetHaste() already includes spell bonuses
-}
-
-int Client::GetBaseHaste()
-{
-	// Calculate haste without spell bonuses
-	// This follows the same logic as CalcHaste but excludes spell bonuses
-	int h = 0;
-	int cap = 0;
-	int level = GetLevel();
-	
-	// Base haste from items and AA bonuses only
-	if (level > 25 || RuleB(Character, IgnoreLevelBasedHasteCaps)) {
-		h += itembonuses.haste;
-	} else {
-		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
-	}
-	
-	// Apply cap
-	if (level > 59 || RuleB(Character, IgnoreLevelBasedHasteCaps)) {
-		cap = RuleI(Character, HasteCap);
-	} else if (level > 50) {
-		cap = 85;
-	} else {
-		cap = level + 25;
-	}
-	
-	if (h > cap) {
-		h = cap;
-	}
-	
-	return 100 + h;
-}
 
 void Client::ReloadExpansionProfileSetting()
 {

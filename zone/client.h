@@ -267,22 +267,7 @@ public:
 
 	void ReconnectUCS();
 	void RecordStats();
-	int GetAppliedSpellACBonus();
-	int GetTotalAccuracy();
-	int GetTotalAvoidance();
-	int GetTotalCombatEffects();
-	int GetTotalDamageShield();
-	int GetTotalDoTShield();
-	int GetTotalShielding();
-	int GetTotalSpellShield();
-	int GetTotalStrikeThrough();
-	int GetTotalStunResist();
-	int GetTotalClairvoyance();
-	int GetTotalDSMitigation();
-	int GetTotalSpellDmg();
-	int GetTotalHaste();
-	int GetBaseHaste();
-	uint32 GetBaseATK();
+
 
 	void SetDisplayMobInfoWindow(bool display_mob_info_window);
 	bool GetDisplayMobInfoWindow() const;
