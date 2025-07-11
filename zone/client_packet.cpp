@@ -16760,14 +16760,98 @@ void Client::RecordStats()
 	r.level                    = GetLevel();
 	r.class_                   = GetBaseClass();
 	r.race                     = GetBaseRace();
-	// HP calculation: use base HP calculation + item bonuses + AA bonuses
-	r.hp = CalcBaseHP() + itembonuses.HP + aabonuses.HP;
+	// HP calculation: use proper base HP calculation without spell bonuses
+	int64 unbuffed_hp = 0;
+	if (ClientVersion() >= EQ::versions::ClientVersion::SoF && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
+		int stats = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
+		if (stats > 255) {
+			stats = (stats - 255) / 2;
+			stats += 255;
+		}
+		unbuffed_hp = 5;
+		auto base_data = zone->GetBaseData(GetLevel(), GetClass());
+		if (base_data.level == GetLevel()) {
+			unbuffed_hp += base_data.hp + (base_data.hp_fac * stats);
+			unbuffed_hp += itembonuses.heroic_max_hp;
+		}
+	} else {
+		uint32 Post255;
+		uint32 lm = GetClassLevelFactor();
+		int effective_sta = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
+		if ((effective_sta - 255) / 2 > 0) {
+			Post255 = (effective_sta - 255) / 2;
+		} else {
+			Post255 = 0;
+		}
+		unbuffed_hp = (5) + (GetLevel() * lm / 10) + (((effective_sta - Post255) * GetLevel() * lm / 3000)) + ((Post255 * GetLevel()) * lm / 6000);
+	}
+	r.hp = unbuffed_hp + itembonuses.HP + aabonuses.HP;
 	
-	// Mana calculation: use base mana calculation + item bonuses + AA bonuses
-	r.mana = CalcBaseMana() + itembonuses.Mana + aabonuses.Mana;
+	// Mana calculation: use proper base mana calculation without spell bonuses
+	int64 unbuffed_mana = 0;
+	if (IsIntelligenceCasterClass() || IsWisdomCasterClass()) {
+		int WisInt = 0;
+		int ConvertedWisInt = 0;
+		int MindLesserFactor, MindFactor;
+		int wisint_mana = 0;
+		
+		if (IsIntelligenceCasterClass()) {
+			WisInt = GetBaseINT() + itembonuses.INT + aabonuses.INT;
+		} else {
+			WisInt = GetBaseWIS() + itembonuses.WIS + aabonuses.WIS;
+		}
+		
+		if (WisInt > 100) {
+			ConvertedWisInt = (((WisInt - 100) * 5) / 2) + 100;
+			if (WisInt > 201) {
+				ConvertedWisInt -= ((WisInt - 201) * 5) / 4;
+			}
+		} else {
+			ConvertedWisInt = WisInt;
+		}
+		
+		if (GetLevel() < 41) {
+			wisint_mana = (GetLevel() * 75 * ConvertedWisInt) / 1000;
+			MindLesserFactor = 140;
+		} else {
+			wisint_mana = (3 * ConvertedWisInt) + ((GetLevel() - 40) * 15 * ConvertedWisInt) / 100;
+			MindLesserFactor = 140;
+		}
+		
+		MindFactor = MindLesserFactor + 47;
+		unbuffed_mana = (wisint_mana * MindFactor) / MindLesserFactor;
+	}
+	r.mana = unbuffed_mana + itembonuses.Mana + aabonuses.Mana;
 	
-	// Endurance calculation: use base endurance calculation + item bonuses + AA bonuses
-	r.endurance = CalcBaseEndurance() + itembonuses.Endurance + aabonuses.Endurance;
+	// Endurance calculation: use proper base endurance calculation without spell bonuses
+	int64 unbuffed_endurance = 0;
+	if (ClientVersion() >= EQ::versions::ClientVersion::SoF && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
+		double stats = (GetBaseSTR() + itembonuses.STR + aabonuses.STR + 
+		               GetBaseSTA() + itembonuses.STA + aabonuses.STA + 
+		               GetBaseDEX() + itembonuses.DEX + aabonuses.DEX + 
+		               GetBaseAGI() + itembonuses.AGI + aabonuses.AGI) / 4.0f;
+		
+		if (stats > 201.0f) {
+			stats = 1.25f * (stats - 201.0f) + 352.5f;
+		} else if (stats > 100.0f) {
+			stats = 2.5f * (stats - 100.0f) + 100.0f;
+		}
+		
+		auto base_data = zone->GetBaseData(GetLevel(), GetClass());
+		if (base_data.level == GetLevel()) {
+			unbuffed_endurance = base_data.endurance + (base_data.endurance_fac * stats);
+		}
+	} else {
+		int LevelBase = GetLevel() * 15;
+		int at_most_800 = GetLevel() * 15 * 8;
+		if (at_most_800 > 3000) {
+			at_most_800 = 3000;
+		}
+		
+		int effective_sta = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
+		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
+	}
+	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
 	// AC calculation: use ACSum logic but exclude spell bonuses
 	int ac = 0;
 	ac += itembonuses.AC; // items + food + tribute
@@ -16798,8 +16882,9 @@ void Client::RecordStats()
 	else
 		ac += GetSkill(EQ::skills::SkillDefense) / 3 + aa_ac / 4;
 	
-	if (GetAGI() > 70)
-		ac += GetAGI() / 20;
+	int effective_agi = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
+	if (effective_agi > 70)
+		ac += effective_agi / 20;
 	if (ac < 0)
 		ac = 0;
 	
@@ -16851,7 +16936,7 @@ void Client::RecordStats()
 	}
 	r.haste = 100 + h;
 	r.accuracy                 = GetAccuracy() + aabonuses.HitChance;  // Item + AA bonuses
-	r.attack                   = ATK + itembonuses.ATK + aabonuses.ATK;  // Base ATK + item bonuses + AA bonuses
+	r.attack                   = itembonuses.ATK + aabonuses.ATK;  // Item + AA bonuses only (no spell bonuses)
 	r.avoidance                = GetAvoidance() + aabonuses.AvoidMeleeChance;  // Item + AA bonuses
 	r.clairvoyance             = GetClair() + aabonuses.Clairvoyance;  // Item + AA bonuses
 	r.combat_effects           = GetCombatEffects() + aabonuses.ProcChance;  // Item + AA bonuses
