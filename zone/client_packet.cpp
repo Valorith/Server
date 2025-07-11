@@ -16760,9 +16760,9 @@ void Client::RecordStats()
 	r.level                    = GetLevel();
 	r.class_                   = GetBaseClass();
 	r.race                     = GetBaseRace();
-	r.hp                       = GetMaxHP() - GetSpellBonuses().FlatMaxHPChange;
-	r.mana                     = GetMaxMana() - GetSpellBonuses().Mana;
-	r.endurance                = GetMaxEndurance() - GetSpellBonuses().Endurance;
+	r.hp                       = CalcBaseHP();
+	r.mana                     = CalcBaseMana();
+	r.endurance                = CalcBaseEndurance();
 	r.ac                       = GetDisplayAC() - GetAppliedSpellACBonus();
 	r.strength                 = GetSTR() - GetSpellBonuses().STR;
 	r.stamina                  = GetSTA() - GetSpellBonuses().STA;
@@ -16792,7 +16792,7 @@ void Client::RecordStats()
 	r.heroic_corruption_resist = GetHeroicCorrup() - GetSpellBonuses().HeroicCorrup;
 	r.haste                    = GetBaseHaste();
 	r.accuracy                 = GetTotalAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
-	r.attack                   = GetTotalATK() - GetSpellBonuses().ATK;
+	r.attack                   = GetBaseATK();
 	r.avoidance                = GetTotalAvoidance() - GetSpellBonuses().AvoidMeleeChance;
 	r.clairvoyance             = GetTotalClairvoyance() - GetSpellBonuses().Clairvoyance;
 	r.combat_effects           = GetTotalCombatEffects() - GetSpellBonuses().ProcChance;
@@ -16837,17 +16837,21 @@ void Client::RecordStats()
 
 int Client::GetAppliedSpellACBonus()
 {
-	// Calculate the difference between GetDisplayAC with and without spell bonuses
-	// to get the actual applied spell AC bonus in display terms
-	int original_spell_ac = spellbonuses.AC;
+	// Get the raw spell AC bonus
+	int spell_ac_bonus = spellbonuses.AC;
 	
-	// Temporarily remove spell bonuses to calculate the difference
-	spellbonuses.AC = 0;
-	int display_ac_without_spells = GetDisplayAC();
-	spellbonuses.AC = original_spell_ac;
-	int display_ac_with_spells = GetDisplayAC();
+	// If there's no spell AC bonus, return 0
+	if (spell_ac_bonus == 0) {
+		return 0;
+	}
 	
-	return display_ac_with_spells - display_ac_without_spells;
+	// Apply the same class-based scaling that GetDisplayAC() uses
+	// This mimics the logic in ACSum()
+	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
+		return spell_ac_bonus / 3;
+	} else {
+		return spell_ac_bonus / 4;
+	}
 }
 
 int Client::GetTotalAccuracy()
@@ -16903,6 +16907,24 @@ int Client::GetTotalClairvoyance()
 int Client::GetTotalDSMitigation()
 {
 	return itembonuses.DSMitigation + spellbonuses.DSMitigation + aabonuses.DSMitigation;
+}
+
+uint32 Client::GetBaseATK()
+{
+	// Base attack includes item bonuses but excludes spell and AA bonuses
+	uint32 AttackRating = 0;
+	uint32 WornCap = itembonuses.ATK;
+
+	if(IsClient()) {
+		AttackRating = ((WornCap * 1.342) + (GetSkill(EQ::skills::SkillOffense) * 1.345) + ((GetSTR() - 66) * 0.9) + (GetPrimarySkillValue() * 2.69));
+
+		if (AttackRating < 10)
+			AttackRating = 10;
+	}
+	else
+		AttackRating = GetATK();
+
+	return AttackRating;
 }
 
 int Client::GetTotalSpellDmg()
