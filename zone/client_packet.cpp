@@ -16835,16 +16835,16 @@ void Client::RecordStats()
 	}
 }
 
-int Client::GetAppliedSpellACBonus() const
+int Client::GetAppliedSpellACBonus()
 {
 	// Calculate the difference between GetDisplayAC with and without spell bonuses
 	// to get the actual applied spell AC bonus in display terms
 	int original_spell_ac = spellbonuses.AC;
 	
 	// Temporarily remove spell bonuses to calculate the difference
-	const_cast<Client*>(this)->spellbonuses.AC = 0;
+	spellbonuses.AC = 0;
 	int display_ac_without_spells = GetDisplayAC();
-	const_cast<Client*>(this)->spellbonuses.AC = original_spell_ac;
+	spellbonuses.AC = original_spell_ac;
 	int display_ac_with_spells = GetDisplayAC();
 	
 	return display_ac_with_spells - display_ac_without_spells;
