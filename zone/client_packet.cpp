@@ -16979,7 +16979,6 @@ void Client::RecordStats()
 	}
 }
 
-
 void Client::ReloadExpansionProfileSetting()
 {
 	if (RuleB(World, UseClientBasedExpansionSettings)) {
