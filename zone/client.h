@@ -282,6 +282,7 @@ public:
 	int GetTotalSpellDmg();
 	int GetTotalHaste();
 	int GetBaseHaste();
+	uint32 GetBaseATK();
 
 	void SetDisplayMobInfoWindow(bool display_mob_info_window);
 	bool GetDisplayMobInfoWindow() const;
