@@ -268,7 +268,6 @@ public:
 	void ReconnectUCS();
 	void RecordStats();
 
-
 	void SetDisplayMobInfoWindow(bool display_mob_info_window);
 	bool GetDisplayMobInfoWindow() const;
 
