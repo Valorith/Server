@@ -16837,15 +16837,17 @@ void Client::RecordStats()
 
 int Client::GetAppliedSpellACBonus() const
 {
-	// This method calculates how much spell AC bonus is actually applied to the character
-	// based on the AC calculation logic in ACSum method
-	int spell_ac = spellbonuses.AC;
+	// Calculate the difference between GetDisplayAC with and without spell bonuses
+	// to get the actual applied spell AC bonus in display terms
+	int original_spell_ac = spellbonuses.AC;
 	
-	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
-		return spell_ac / 3;
-	} else {
-		return spell_ac / 4;
-	}
+	// Temporarily remove spell bonuses to calculate the difference
+	const_cast<Client*>(this)->spellbonuses.AC = 0;
+	int display_ac_without_spells = GetDisplayAC();
+	const_cast<Client*>(this)->spellbonuses.AC = original_spell_ac;
+	int display_ac_with_spells = GetDisplayAC();
+	
+	return display_ac_with_spells - display_ac_without_spells;
 }
 
 void Client::ReloadExpansionProfileSetting()
