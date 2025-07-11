@@ -16760,14 +16760,14 @@ void Client::RecordStats()
 	r.level                    = GetLevel();
 	r.class_                   = GetBaseClass();
 	r.race                     = GetBaseRace();
-	// HP calculation: use base HP calculation + item bonuses only
-	r.hp = CalcBaseHP() + itembonuses.HP;
+	// HP calculation: use base HP calculation + item bonuses + AA bonuses
+	r.hp = CalcBaseHP() + itembonuses.HP + aabonuses.HP;
 	
-	// Mana calculation: use base mana calculation + item bonuses only
-	r.mana = CalcBaseMana() + itembonuses.Mana;
+	// Mana calculation: use base mana calculation + item bonuses + AA bonuses
+	r.mana = CalcBaseMana() + itembonuses.Mana + aabonuses.Mana;
 	
-	// Endurance calculation: use base endurance calculation + item bonuses only
-	r.endurance = CalcBaseEndurance() + itembonuses.Endurance;
+	// Endurance calculation: use base endurance calculation + item bonuses + AA bonuses
+	r.endurance = CalcBaseEndurance() + itembonuses.Endurance + aabonuses.Endurance;
 	// AC calculation: use ACSum logic but exclude spell bonuses
 	int ac = 0;
 	ac += itembonuses.AC; // items + food + tribute
@@ -16814,63 +16814,64 @@ void Client::RecordStats()
 	}
 	
 	r.ac = 1000 * (ac + compute_defense()) / 847; // Apply same display calculation as GetDisplayAC
-	r.strength                 = GetBaseSTR() + itembonuses.STR;
-	r.stamina                  = GetBaseSTA() + itembonuses.STA;
-	r.dexterity                = GetBaseDEX() + itembonuses.DEX;
-	r.agility                  = GetBaseAGI() + itembonuses.AGI;
-	r.intelligence             = GetBaseINT() + itembonuses.INT;
-	r.wisdom                   = GetBaseWIS() + itembonuses.WIS;
-	r.charisma                 = GetBaseCHA() + itembonuses.CHA;
-	r.magic_resist             = MR + itembonuses.MR;
-	r.fire_resist              = FR + itembonuses.FR;
-	r.cold_resist              = CR + itembonuses.CR;
-	r.poison_resist            = PR + itembonuses.PR;
-	r.disease_resist           = DR + itembonuses.DR;
-	r.corruption_resist        = Corrup + itembonuses.Corrup;
-	r.heroic_strength          = GetHeroicSTR();  // GetHeroicSTR() only returns item bonuses
-	r.heroic_stamina           = GetHeroicSTA();  // GetHeroicSTA() only returns item bonuses
-	r.heroic_dexterity         = GetHeroicDEX();  // GetHeroicDEX() only returns item bonuses
-	r.heroic_agility           = GetHeroicAGI();  // GetHeroicAGI() only returns item bonuses
-	r.heroic_intelligence      = GetHeroicINT();  // GetHeroicINT() only returns item bonuses
-	r.heroic_wisdom            = GetHeroicWIS();  // GetHeroicWIS() only returns item bonuses
-	r.heroic_charisma          = GetHeroicCHA();  // GetHeroicCHA() only returns item bonuses
-	r.heroic_magic_resist      = GetHeroicMR();  // GetHeroicMR() only returns item bonuses
-	r.heroic_fire_resist       = GetHeroicFR();  // GetHeroicFR() only returns item bonuses
-	r.heroic_cold_resist       = GetHeroicCR();  // GetHeroicCR() only returns item bonuses
-	r.heroic_poison_resist     = GetHeroicPR();  // GetHeroicPR() only returns item bonuses
-	r.heroic_disease_resist    = GetHeroicDR();  // GetHeroicDR() only returns item bonuses
-	r.heroic_corruption_resist = GetHeroicCorrup();  // GetHeroicCorrup() only returns item bonuses
-	// Haste calculation: use item bonuses only (exclude spell bonuses)
+	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
+	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
+	r.dexterity                = GetBaseDEX() + itembonuses.DEX + aabonuses.DEX;
+	r.agility                  = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
+	r.intelligence             = GetBaseINT() + itembonuses.INT + aabonuses.INT;
+	r.wisdom                   = GetBaseWIS() + itembonuses.WIS + aabonuses.WIS;
+	r.charisma                 = GetBaseCHA() + itembonuses.CHA + aabonuses.CHA;
+	r.magic_resist             = MR + itembonuses.MR + aabonuses.MR;
+	r.fire_resist              = FR + itembonuses.FR + aabonuses.FR;
+	r.cold_resist              = CR + itembonuses.CR + aabonuses.CR;
+	r.poison_resist            = PR + itembonuses.PR + aabonuses.PR;
+	r.disease_resist           = DR + itembonuses.DR + aabonuses.DR;
+	r.corruption_resist        = Corrup + itembonuses.Corrup + aabonuses.Corrup;
+	r.heroic_strength          = GetHeroicSTR() + aabonuses.HeroicSTR;
+	r.heroic_stamina           = GetHeroicSTA() + aabonuses.HeroicSTA;
+	r.heroic_dexterity         = GetHeroicDEX() + aabonuses.HeroicDEX;
+	r.heroic_agility           = GetHeroicAGI() + aabonuses.HeroicAGI;
+	r.heroic_intelligence      = GetHeroicINT() + aabonuses.HeroicINT;
+	r.heroic_wisdom            = GetHeroicWIS() + aabonuses.HeroicWIS;
+	r.heroic_charisma          = GetHeroicCHA() + aabonuses.HeroicCHA;
+	r.heroic_magic_resist      = GetHeroicMR() + aabonuses.HeroicMR;
+	r.heroic_fire_resist       = GetHeroicFR() + aabonuses.HeroicFR;
+	r.heroic_cold_resist       = GetHeroicCR() + aabonuses.HeroicCR;
+	r.heroic_poison_resist     = GetHeroicPR() + aabonuses.HeroicPR;
+	r.heroic_disease_resist    = GetHeroicDR() + aabonuses.HeroicDR;
+	r.heroic_corruption_resist = GetHeroicCorrup() + aabonuses.HeroicCorrup;
+	// Haste calculation: use item bonuses + AA bonuses (exclude spell bonuses)
 	int h = 0;
 	int level = GetLevel();
 	if (level > 25) {
-		h += itembonuses.haste;
+		h += itembonuses.haste + aabonuses.haste;
 	} else { // 1-25
-		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
+		int total_haste = itembonuses.haste + aabonuses.haste;
+		h += total_haste > 10 ? 10 : total_haste;
 	}
 	r.haste = 100 + h;
-	r.accuracy                 = GetAccuracy();  // GetAccuracy() only returns item bonuses
-	r.attack                   = ATK + itembonuses.ATK;  // Base ATK + item bonuses only
-	r.avoidance                = GetAvoidance();  // GetAvoidance() only returns item bonuses
-	r.clairvoyance             = GetClair();  // GetClair() only returns item bonuses
-	r.combat_effects           = GetCombatEffects();  // GetCombatEffects() only returns item bonuses
-	r.damage_shield_mitigation = GetDSMit();  // GetDSMit() only returns item bonuses
-	r.damage_shield            = GetDS();  // GetDS() only returns item bonuses
-	r.dot_shielding            = GetDoTShield();  // GetDoTShield() only returns item bonuses
+	r.accuracy                 = GetAccuracy() + aabonuses.HitChance;  // Item + AA bonuses
+	r.attack                   = ATK + itembonuses.ATK + aabonuses.ATK;  // Base ATK + item bonuses + AA bonuses
+	r.avoidance                = GetAvoidance() + aabonuses.AvoidMeleeChance;  // Item + AA bonuses
+	r.clairvoyance             = GetClair() + aabonuses.Clairvoyance;  // Item + AA bonuses
+	r.combat_effects           = GetCombatEffects() + aabonuses.ProcChance;  // Item + AA bonuses
+	r.damage_shield_mitigation = GetDSMit() + aabonuses.MeleeMitigation;  // Item + AA bonuses
+	r.damage_shield            = GetDS() + aabonuses.DamageShield;  // Item + AA bonuses
+	r.dot_shielding            = GetDoTShield() + aabonuses.DoTShielding;  // Item + AA bonuses
 	r.hp_regen                 = CalcHPRegen() - GetSpellBonuses().HPRegen;
 	r.mana_regen               = CalcManaRegen() - GetSpellBonuses().ManaRegen;
 	r.endurance_regen          = CalcEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
-	r.shielding                = GetShielding();  // GetShielding() only returns item bonuses
-	r.spell_damage             = GetSpellDmg();  // GetSpellDmg() only returns item bonuses
-	r.spell_shielding          = GetSpellShield();  // GetSpellShield() only returns item bonuses
-	r.strikethrough            = GetStrikeThrough();  // GetStrikeThrough() only returns item bonuses
-	r.stun_resist              = GetStunResist();  // GetStunResist() only returns item bonuses
+	r.shielding                = GetShielding() + aabonuses.MeleeMitigation;  // Item + AA bonuses
+	r.spell_damage             = GetSpellDmg() + aabonuses.SpellDmg;  // Item + AA bonuses  
+	r.spell_shielding          = GetSpellShield() + aabonuses.SpellShield;  // Item + AA bonuses
+	r.strikethrough            = GetStrikeThrough() + aabonuses.StrikeThrough;  // Item + AA bonuses
+	r.stun_resist              = GetStunResist() + aabonuses.StunResist;  // Item + AA bonuses
 	r.backstab                 = 0;
-	r.wind                     = GetWindMod();
-	r.brass                    = GetBrassMod();
-	r.string                   = GetStringMod();
-	r.percussion               = GetPercMod();
-	r.singing                  = GetSingMod();
+	r.wind                     = GetWindMod() + aabonuses.windMod;
+	r.brass                    = GetBrassMod() + aabonuses.brassMod;
+	r.string                   = GetStringMod() + aabonuses.stringedMod;
+	r.percussion               = GetPercMod() + aabonuses.percussionMod;
+	r.singing                  = GetSingMod() + aabonuses.singingMod;
 	r.baking                   = GetSkill(EQ::skills::SkillType::SkillBaking);
 	r.alchemy                  = GetSkill(EQ::skills::SkillType::SkillAlchemy);
 	r.jewelry                  = GetSkill(EQ::skills::SkillType::SkillJewelryMaking);
