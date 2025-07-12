@@ -16852,58 +16852,58 @@ void Client::RecordStats()
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
 	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: use ACSum logic but exclude spell bonuses
-	int ac = 0;
-	ac += itembonuses.AC; // items + food + tribute
-	int shield_ac = 0;
-	if (HasShieldEquipped()) {
-		auto inst = GetInv().GetItem(EQ::invslot::slotSecondary);
-		if (inst) {
-			if (inst->GetItemRecommendedLevel(true) <= GetLevel()) {
-				shield_ac = inst->GetItemArmorClass(true);
-			} else {
-				shield_ac = CalcRecommendedLevelBonus(GetLevel(), inst->GetItemRecommendedLevel(true), inst->GetItemArmorClass(true));
-			}
-		}
-		shield_ac += itembonuses.heroic_str_shield_ac;
-	}
-	// EQ math
-	ac = (ac * 4) / 3;
-	// anti-twink
-	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
-		ac = std::min(ac, 25 + 6 * GetLevel());
-	}
-	ac = std::max(0, ac + GetClassRaceACBonus());
+	// AC calculation: use GetDisplayAC() and subtract applied spell AC bonuses
+	int total_display_ac = GetDisplayAC();
 	
-	// Add AA bonuses only (excluding spell bonuses) with proper scaling
-	auto aa_ac = aabonuses.AC;
+	// Calculate applied spell AC bonuses (same logic as ACSum)
+	int applied_spell_ac = 0;
+	
+	// Direct spell AC bonuses (scaled by class)
+	int spell_ac_bonus = spellbonuses.AC;
 	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
-		ac += GetSkill(EQ::skills::SkillDefense) / 2 + aa_ac / 3;
+		applied_spell_ac += spell_ac_bonus / 3;
 	else
-		ac += GetSkill(EQ::skills::SkillDefense) / 3 + aa_ac / 4;
+		applied_spell_ac += spell_ac_bonus / 4;
 	
-	// AGI bonus (use unbuffed AGI)
-	int effective_agi = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
-	if (effective_agi > 70)
-		ac += effective_agi / 20;
-	if (ac < 0)
-		ac = 0;
+	// AGI spell bonuses that contribute to AC
+	int spell_agi_bonus = spellbonuses.AGI;
+	int total_agi_with_spells = GetAGI();
+	int total_agi_without_spells = total_agi_with_spells - spell_agi_bonus;
 	
-	// Apply softcap logic like in ACSum
-	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
+	int agi_ac_with_spells = (total_agi_with_spells > 70) ? total_agi_with_spells / 20 : 0;
+	int agi_ac_without_spells = (total_agi_without_spells > 70) ? total_agi_without_spells / 20 : 0;
+	applied_spell_ac += agi_ac_with_spells - agi_ac_without_spells;
+	
+	// Combat stability spell bonuses affect softcap
+	int spell_combat_stability = spellbonuses.CombatStability;
+	if (spell_combat_stability > 0 && GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
+		// This is complex to calculate exactly, so we'll approximate it
+		// The spell combat stability increases the softcap, allowing more AC
 		int softcap = GetACSoftcap();
-		int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability; // exclude spell bonuses
-		if (total_aclimitmod)
-			softcap = (softcap * (100 + total_aclimitmod)) / 100;
-		softcap += shield_ac;
-		if (ac > softcap) {
+		int total_aclimitmod_with_spells = aabonuses.CombatStability + itembonuses.CombatStability + spell_combat_stability;
+		int total_aclimitmod_without_spells = aabonuses.CombatStability + itembonuses.CombatStability;
+		
+		int softcap_with_spells = (softcap * (100 + total_aclimitmod_with_spells)) / 100;
+		int softcap_without_spells = (softcap * (100 + total_aclimitmod_without_spells)) / 100;
+		
+		// If current AC is above the softcap without spells, some benefit comes from spell combat stability
+		int base_ac_sum = ACSum(true); // Get AC without softcap
+		if (base_ac_sum > softcap_without_spells) {
 			float returns = GetSoftcapReturns();
-			auto over_cap = ac - softcap;
-			ac = softcap + (over_cap * returns);
+			int over_cap_with_spells = base_ac_sum - softcap_with_spells;
+			int over_cap_without_spells = base_ac_sum - softcap_without_spells;
+			
+			int ac_with_spells = softcap_with_spells + (over_cap_with_spells * returns);
+			int ac_without_spells = softcap_without_spells + (over_cap_without_spells * returns);
+			
+			applied_spell_ac += ac_with_spells - ac_without_spells;
 		}
 	}
 	
-	r.ac = 1000 * (ac + compute_defense()) / 847; // Apply same display calculation as GetDisplayAC
+	// Apply the display AC calculation to the spell AC bonuses
+	applied_spell_ac = 1000 * applied_spell_ac / 847;
+	
+	r.ac = total_display_ac - applied_spell_ac;
 	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
 	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
 	r.dexterity                = GetBaseDEX() + itembonuses.DEX + aabonuses.DEX;
