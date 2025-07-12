@@ -16875,13 +16875,14 @@ void Client::RecordStats()
 	}
 	ac = std::max(0, ac + GetClassRaceACBonus());
 	
-	// Add AA bonuses only (excluding spell bonuses)
+	// Add AA bonuses only (excluding spell bonuses) with proper scaling
 	auto aa_ac = aabonuses.AC;
 	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
 		ac += GetSkill(EQ::skills::SkillDefense) / 2 + aa_ac / 3;
 	else
 		ac += GetSkill(EQ::skills::SkillDefense) / 3 + aa_ac / 4;
 	
+	// AGI bonus (use unbuffed AGI)
 	int effective_agi = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
 	if (effective_agi > 70)
 		ac += effective_agi / 20;
@@ -16891,6 +16892,10 @@ void Client::RecordStats()
 	// Apply softcap logic like in ACSum
 	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
 		int softcap = GetACSoftcap();
+		int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability; // exclude spell bonuses
+		if (total_aclimitmod)
+			softcap = (softcap * (100 + total_aclimitmod)) / 100;
+		softcap += shield_ac;
 		if (ac > softcap) {
 			float returns = GetSoftcapReturns();
 			auto over_cap = ac - softcap;
@@ -16906,12 +16911,129 @@ void Client::RecordStats()
 	r.intelligence             = GetBaseINT() + itembonuses.INT + aabonuses.INT;
 	r.wisdom                   = GetBaseWIS() + itembonuses.WIS + aabonuses.WIS;
 	r.charisma                 = GetBaseCHA() + itembonuses.CHA + aabonuses.CHA;
-	r.magic_resist             = MR + itembonuses.MR + aabonuses.MR;
-	r.fire_resist              = FR + itembonuses.FR + aabonuses.FR;
-	r.cold_resist              = CR + itembonuses.CR + aabonuses.CR;
-	r.poison_resist            = PR + itembonuses.PR + aabonuses.PR;
-	r.disease_resist           = DR + itembonuses.DR + aabonuses.DR;
-	r.corruption_resist        = Corrup + itembonuses.Corrup + aabonuses.Corrup;
+	// Calculate resistance values without spell bonuses (using same logic as CalcMR/CalcFR/etc.)
+	// Magic Resist
+	int magic_resist = 0;
+	switch (GetBaseRace()) {
+		case HUMAN: case BARBARIAN: case WOOD_ELF: case HIGH_ELF: case DARK_ELF: case HALF_ELF: case TROLL: case OGRE: case HALFLING: case GNOME: case IKSAR: case VAHSHIR:
+			magic_resist = 25; break;
+		case ERUDITE: case DWARF: case FROGLOK:
+			magic_resist = 30; break;
+		case DRAKKIN:
+			magic_resist = 25;
+			if (GetDrakkinHeritage() == 2) magic_resist += 10;
+			else if (GetDrakkinHeritage() == 5) magic_resist += 2;
+			break;
+		default: magic_resist = 20;
+	}
+	if (GetClass() == Class::Warrior || GetClass() == Class::Berserker) {
+		magic_resist += GetLevel() / 2;
+	}
+	magic_resist += itembonuses.MR + aabonuses.MR;
+	r.magic_resist = std::max(1, std::min(magic_resist, GetMaxMR()));
+	
+	// Fire Resist
+	int fire_resist = 0;
+	switch (GetBaseRace()) {
+		case HUMAN: case BARBARIAN: case ERUDITE: case WOOD_ELF: case HIGH_ELF: case DARK_ELF: case HALF_ELF: case DWARF: case OGRE: case HALFLING: case GNOME: case VAHSHIR: case FROGLOK:
+			fire_resist = 25; break;
+		case TROLL:
+			fire_resist = 5; break;
+		case IKSAR:
+			fire_resist = 30; break;
+		case DRAKKIN:
+			fire_resist = 25;
+			if (GetDrakkinHeritage() == 0) fire_resist += 10;
+			else if (GetDrakkinHeritage() == 5) fire_resist += 2;
+			break;
+		default: fire_resist = 20;
+	}
+	if (GetClass() == Class::Ranger || GetClass() == Class::Monk) {
+		fire_resist += 4;
+		if (GetLevel() > 49) fire_resist += GetLevel() - 49;
+	}
+	fire_resist += itembonuses.FR + aabonuses.FR;
+	r.fire_resist = std::max(1, std::min(fire_resist, GetMaxFR()));
+	
+	// Cold Resist
+	int cold_resist = 0;
+	switch (GetBaseRace()) {
+		case HUMAN: case ERUDITE: case WOOD_ELF: case HIGH_ELF: case DARK_ELF: case HALF_ELF: case DWARF: case TROLL: case OGRE: case HALFLING: case GNOME: case VAHSHIR: case FROGLOK:
+			cold_resist = 25; break;
+		case BARBARIAN:
+			cold_resist = 35; break;
+		case IKSAR:
+			cold_resist = 15; break;
+		case DRAKKIN:
+			cold_resist = 25;
+			if (GetDrakkinHeritage() == 4) cold_resist += 10;
+			else if (GetDrakkinHeritage() == 5) cold_resist += 2;
+			break;
+		default: cold_resist = 25;
+	}
+	if (GetClass() == Class::Ranger || GetClass() == Class::Beastlord) {
+		cold_resist += 4;
+		if (GetLevel() > 49) cold_resist += GetLevel() - 49;
+	}
+	cold_resist += itembonuses.CR + aabonuses.CR;
+	r.cold_resist = std::max(1, std::min(cold_resist, GetMaxCR()));
+	
+	// Poison Resist
+	int poison_resist = 0;
+	switch (GetBaseRace()) {
+		case HUMAN: case BARBARIAN: case ERUDITE: case WOOD_ELF: case HIGH_ELF: case DARK_ELF: case HALF_ELF: case TROLL: case OGRE: case GNOME: case IKSAR: case VAHSHIR:
+			poison_resist = 15; break;
+		case DWARF: case HALFLING:
+			poison_resist = 20; break;
+		case FROGLOK:
+			poison_resist = 30; break;
+		case DRAKKIN:
+			poison_resist = 15;
+			if (GetDrakkinHeritage() == 3) poison_resist += 10;
+			else if (GetDrakkinHeritage() == 5) poison_resist += 2;
+			break;
+		default: poison_resist = 15;
+	}
+	if (GetClass() == Class::Monk && GetLevel() > 50) poison_resist += GetLevel() - 50;
+	if (GetClass() == Class::Rogue) {
+		poison_resist += 8;
+		if (GetLevel() > 49) poison_resist += GetLevel() - 49;
+	} else if (GetClass() == Class::ShadowKnight) {
+		poison_resist += 4;
+		if (GetLevel() > 49) poison_resist += GetLevel() - 49;
+	}
+	poison_resist += itembonuses.PR + aabonuses.PR;
+	r.poison_resist = std::max(1, std::min(poison_resist, GetMaxPR()));
+	
+	// Disease Resist
+	int disease_resist = 0;
+	switch (GetBaseRace()) {
+		case HUMAN: case BARBARIAN: case WOOD_ELF: case HIGH_ELF: case DARK_ELF: case HALF_ELF: case DWARF: case TROLL: case OGRE: case GNOME: case IKSAR: case VAHSHIR: case FROGLOK:
+			disease_resist = 15; break;
+		case ERUDITE:
+			disease_resist = 10; break;
+		case HALFLING:
+			disease_resist = 20; break;
+		case DRAKKIN:
+			disease_resist = 15;
+			if (GetDrakkinHeritage() == 1) disease_resist += 10;
+			else if (GetDrakkinHeritage() == 5) disease_resist += 2;
+			break;
+		default: disease_resist = 15;
+	}
+	if (GetClass() == Class::Monk && GetLevel() > 50) disease_resist += GetLevel() - 50;
+	if (GetClass() == Class::Paladin) {
+		disease_resist += 8;
+		if (GetLevel() > 49) disease_resist += GetLevel() - 49;
+	} else if (GetClass() == Class::ShadowKnight || GetClass() == Class::Beastlord) {
+		disease_resist += 4;
+		if (GetLevel() > 49) disease_resist += GetLevel() - 49;
+	}
+	disease_resist += itembonuses.DR + aabonuses.DR;
+	r.disease_resist = std::max(1, std::min(disease_resist, GetMaxDR()));
+	
+	// Corruption Resist
+	r.corruption_resist = GetBaseCorrup() + itembonuses.Corrup + aabonuses.Corrup;
 	r.heroic_strength          = GetHeroicSTR() + aabonuses.HeroicSTR;
 	r.heroic_stamina           = GetHeroicSTA() + aabonuses.HeroicSTA;
 	r.heroic_dexterity         = GetHeroicDEX() + aabonuses.HeroicDEX;
