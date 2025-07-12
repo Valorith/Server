@@ -16852,25 +16852,66 @@ void Client::RecordStats()
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
 	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: Calculate AC without spell bonuses using existing game logic
-	// Save current spell bonuses
-	int saved_spell_ac = spellbonuses.AC;
-	int saved_spell_agi = spellbonuses.AGI;
-	int saved_spell_combat_stability = spellbonuses.CombatStability;
+	// AC calculation: Calculate AC without spell bonuses using ACSum logic
+	int ac = 0;
+	ac += itembonuses.AC;
 	
-	// Temporarily zero out spell bonuses
-	const_cast<Client*>(this)->spellbonuses.AC = 0;
-	const_cast<Client*>(this)->spellbonuses.AGI = 0;
-	const_cast<Client*>(this)->spellbonuses.CombatStability = 0;
+	// Shield AC calculation (from ACSum)
+	int shield_ac = 0;
+	if (HasShieldEquipped()) {
+		auto inst = GetInv().GetItem(EQ::invslot::slotSecondary);
+		if (inst) {
+			if (inst->GetItemRecommendedLevel(true) <= GetLevel()) {
+				shield_ac = inst->GetItemArmorClass(true);
+			} else {
+				shield_ac = CalcRecommendedLevelBonus(GetLevel(), inst->GetItemRecommendedLevel(true), inst->GetItemArmorClass(true));
+			}
+		}
+		shield_ac += itembonuses.heroic_str_shield_ac;
+	}
 	
-	// Calculate AC without spell bonuses
-	int unbuffed_ac = GetDisplayAC();
+	// EQ math: AC = (AC * 4) / 3
+	ac = (ac * 4) / 3;
 	
-	// Restore spell bonuses
-	const_cast<Client*>(this)->spellbonuses.AC = saved_spell_ac;
-	const_cast<Client*>(this)->spellbonuses.AGI = saved_spell_agi;
-	const_cast<Client*>(this)->spellbonuses.CombatStability = saved_spell_combat_stability;
+	// Anti-twink cap
+	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
+		ac = std::min(ac, 25 + 6 * GetLevel());
+	}
 	
+	// Add class/race AC bonus
+	ac = std::max(0, ac + GetClassRaceACBonus());
+	
+	// Add AA bonuses AC (excluding spell bonuses)
+	auto spell_aa_ac = aabonuses.AC; // Only AA bonuses, not spell bonuses
+	if (GetClass() == Class::Necromancer || GetClass() == Class::Wizard || GetClass() == Class::Magician || GetClass() == Class::Enchanter) {
+		ac += GetSkill(EQ::skills::SkillDefense) / 2 + spell_aa_ac / 3;
+	} else {
+		ac += GetSkill(EQ::skills::SkillDefense) / 3 + spell_aa_ac / 4;
+	}
+	
+	// Add AGI contribution (excluding spell bonuses)
+	int unbuffed_agi = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
+	if (unbuffed_agi > 70) {
+		ac += unbuffed_agi / 20;
+	}
+	
+	if (ac < 0) ac = 0;
+	
+	// Apply softcap (excluding spell bonuses from CombatStability)
+	auto softcap = GetACSoftcap();
+	auto returns = GetSoftcapReturns();
+	int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability; // Exclude spell bonuses
+	if (total_aclimitmod) {
+		softcap = (softcap * (100 + total_aclimitmod)) / 100;
+	}
+	softcap += shield_ac;
+	if (ac > softcap) {
+		auto over_cap = ac - softcap;
+		ac = softcap + (over_cap * returns);
+	}
+	
+	// Apply DisplayAC conversion: 1000 * (ACSum + compute_defense()) / 847
+	int unbuffed_ac = 1000 * (ac + compute_defense()) / 847;
 	r.ac = unbuffed_ac;
 	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
 	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
