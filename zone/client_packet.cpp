@@ -16852,58 +16852,26 @@ void Client::RecordStats()
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
 	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: use GetDisplayAC() and subtract applied spell AC bonuses
-	int total_display_ac = GetDisplayAC();
+	// AC calculation: Calculate AC without spell bonuses using existing game logic
+	// Save current spell bonuses
+	int saved_spell_ac = spellbonuses.AC;
+	int saved_spell_agi = spellbonuses.AGI;
+	int saved_spell_combat_stability = spellbonuses.CombatStability;
 	
-	// Calculate applied spell AC bonuses (same logic as ACSum)
-	int applied_spell_ac = 0;
+	// Temporarily zero out spell bonuses
+	const_cast<Client*>(this)->spellbonuses.AC = 0;
+	const_cast<Client*>(this)->spellbonuses.AGI = 0;
+	const_cast<Client*>(this)->spellbonuses.CombatStability = 0;
 	
-	// Direct spell AC bonuses (scaled by class)
-	int spell_ac_bonus = spellbonuses.AC;
-	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
-		applied_spell_ac += spell_ac_bonus / 3;
-	else
-		applied_spell_ac += spell_ac_bonus / 4;
+	// Calculate AC without spell bonuses
+	int unbuffed_ac = GetDisplayAC();
 	
-	// AGI spell bonuses that contribute to AC
-	int spell_agi_bonus = spellbonuses.AGI;
-	int total_agi_with_spells = GetAGI();
-	int total_agi_without_spells = total_agi_with_spells - spell_agi_bonus;
+	// Restore spell bonuses
+	const_cast<Client*>(this)->spellbonuses.AC = saved_spell_ac;
+	const_cast<Client*>(this)->spellbonuses.AGI = saved_spell_agi;
+	const_cast<Client*>(this)->spellbonuses.CombatStability = saved_spell_combat_stability;
 	
-	int agi_ac_with_spells = (total_agi_with_spells > 70) ? total_agi_with_spells / 20 : 0;
-	int agi_ac_without_spells = (total_agi_without_spells > 70) ? total_agi_without_spells / 20 : 0;
-	applied_spell_ac += agi_ac_with_spells - agi_ac_without_spells;
-	
-	// Combat stability spell bonuses affect softcap
-	int spell_combat_stability = spellbonuses.CombatStability;
-	if (spell_combat_stability > 0 && GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
-		// This is complex to calculate exactly, so we'll approximate it
-		// The spell combat stability increases the softcap, allowing more AC
-		int softcap = GetACSoftcap();
-		int total_aclimitmod_with_spells = aabonuses.CombatStability + itembonuses.CombatStability + spell_combat_stability;
-		int total_aclimitmod_without_spells = aabonuses.CombatStability + itembonuses.CombatStability;
-		
-		int softcap_with_spells = (softcap * (100 + total_aclimitmod_with_spells)) / 100;
-		int softcap_without_spells = (softcap * (100 + total_aclimitmod_without_spells)) / 100;
-		
-		// If current AC is above the softcap without spells, some benefit comes from spell combat stability
-		int base_ac_sum = ACSum(true); // Get AC without softcap
-		if (base_ac_sum > softcap_without_spells) {
-			float returns = GetSoftcapReturns();
-			int over_cap_with_spells = base_ac_sum - softcap_with_spells;
-			int over_cap_without_spells = base_ac_sum - softcap_without_spells;
-			
-			int ac_with_spells = softcap_with_spells + (over_cap_with_spells * returns);
-			int ac_without_spells = softcap_without_spells + (over_cap_without_spells * returns);
-			
-			applied_spell_ac += ac_with_spells - ac_without_spells;
-		}
-	}
-	
-	// Apply the display AC calculation to the spell AC bonuses
-	applied_spell_ac = 1000 * applied_spell_ac / 847;
-	
-	r.ac = total_display_ac - applied_spell_ac;
+	r.ac = unbuffed_ac;
 	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
 	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
 	r.dexterity                = GetBaseDEX() + itembonuses.DEX + aabonuses.DEX;
