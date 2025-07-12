@@ -16852,26 +16852,28 @@ void Client::RecordStats()
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
 	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: Calculate AC without spell bonuses using existing game logic
-	// Save current spell bonuses
-	int saved_spell_ac = spellbonuses.AC;
-	int saved_spell_agi = spellbonuses.AGI;
-	int saved_spell_combat_stability = spellbonuses.CombatStability;
+	// AC calculation: Calculate spell AC contribution and subtract from display AC
+	int spell_ac_contribution = 0;
 	
-	// Temporarily zero out spell bonuses
-	const_cast<Client*>(this)->spellbonuses.AC = 0;
-	const_cast<Client*>(this)->spellbonuses.AGI = 0;
-	const_cast<Client*>(this)->spellbonuses.CombatStability = 0;
+	// Direct spell AC contribution (scaled by class)
+	if (GetClass() == Class::Necromancer || GetClass() == Class::Wizard || 
+	    GetClass() == Class::Magician || GetClass() == Class::Enchanter) {
+		spell_ac_contribution += spellbonuses.AC / 3;
+	} else {
+		spell_ac_contribution += spellbonuses.AC / 4;
+	}
 	
-	// Calculate AC without spell bonuses
-	int unbuffed_ac = GetDisplayAC();
+	// AGI contribution from spell bonuses
+	int spell_agi = spellbonuses.AGI;
+	int total_agi = GetAGI();
+	int unbuffed_agi = total_agi - spell_agi;
 	
-	// Restore spell bonuses
-	const_cast<Client*>(this)->spellbonuses.AC = saved_spell_ac;
-	const_cast<Client*>(this)->spellbonuses.AGI = saved_spell_agi;
-	const_cast<Client*>(this)->spellbonuses.CombatStability = saved_spell_combat_stability;
+	// Calculate the AGI AC contribution difference
+	int agi_ac_with_spells = (total_agi > 70) ? (total_agi / 20) : 0;
+	int agi_ac_without_spells = (unbuffed_agi > 70) ? (unbuffed_agi / 20) : 0;
+	spell_ac_contribution += agi_ac_with_spells - agi_ac_without_spells;
 	
-	r.ac = unbuffed_ac;
+	r.ac = GetDisplayAC() - spell_ac_contribution;
 	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
 	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
 	r.dexterity                = GetBaseDEX() + itembonuses.DEX + aabonuses.DEX;
