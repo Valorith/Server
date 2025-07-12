@@ -16852,18 +16852,29 @@ void Client::RecordStats()
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
 	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: Calculate spell AC contribution and subtract from display AC
+	// AC calculation: Calculate unbuffed AC by removing only spell bonuses
+	// ACSum scales (aabonuses.AC + spellbonuses.AC) together, so we need to calculate
+	// what the scaling would be with just aabonuses.AC vs with both
 	int spell_ac_contribution = 0;
 	
-	// Direct spell AC contribution (scaled by class)
-	if (GetClass() == Class::Necromancer || GetClass() == Class::Wizard || 
-	    GetClass() == Class::Magician || GetClass() == Class::Enchanter) {
-		spell_ac_contribution += spellbonuses.AC / 3;
+	// Calculate how much the combined (AA + spell) AC bonuses contribute
+	auto combined_ac_bonuses = aabonuses.AC + spellbonuses.AC;
+	auto aa_only_bonuses = aabonuses.AC;
+	
+	// Apply class-based scaling to both
+	int scaled_combined, scaled_aa_only;
+	if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter)) {
+		scaled_combined = combined_ac_bonuses / 3;
+		scaled_aa_only = aa_only_bonuses / 3;
 	} else {
-		spell_ac_contribution += spellbonuses.AC / 4;
+		scaled_combined = combined_ac_bonuses / 4;
+		scaled_aa_only = aa_only_bonuses / 4;
 	}
 	
-	// AGI contribution from spell bonuses
+	// The spell contribution is the difference
+	spell_ac_contribution += scaled_combined - scaled_aa_only;
+	
+	// AGI contribution from spell bonuses  
 	int spell_agi = spellbonuses.AGI;
 	int total_agi = GetAGI();
 	int unbuffed_agi = total_agi - spell_agi;
