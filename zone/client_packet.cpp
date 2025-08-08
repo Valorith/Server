@@ -3904,21 +3904,21 @@ void Client::Handle_OP_BazaarSearch(const EQApplicationPacket *app)
 			BazaarSearchCriteria_Struct search_details{};
 
 			search_details.action           = BazaarSearchResults;
-            search_details.augment          = bss->augment;
-            search_details._class           = bss->_class;
-            search_details.item_stat        = bss->item_stat;
-            search_details.min_cost         = bss->min_cost;
-            search_details.max_cost         = bss->max_cost;
-            search_details.min_level        = bss->min_level;
-            search_details.max_level        = bss->max_level;
-            search_details.max_results      = bss->max_results;
-            search_details.prestige         = bss->prestige;
-            search_details.race             = bss->race;
-            search_details.search_scope     = bss->search_scope;
-            search_details.slot             = bss->slot;
-            search_details.trader_entity_id = bss->trader_entity_id;
-            search_details.trader_id        = bss->trader_id;
-            search_details.type             = bss->type;
+	    search_details.augment          = bss->augment;
+	    search_details._class           = bss->_class;
+	    search_details.item_stat        = bss->item_stat;
+	    search_details.min_cost         = bss->min_cost;
+	    search_details.max_cost         = bss->max_cost;
+	    search_details.min_level        = bss->min_level;
+	    search_details.max_level        = bss->max_level;
+	    search_details.max_results      = bss->max_results;
+	    search_details.prestige         = bss->prestige;
+	    search_details.race             = bss->race;
+	    search_details.search_scope     = bss->search_scope;
+	    search_details.slot             = bss->slot;
+	    search_details.trader_entity_id = bss->trader_entity_id;
+	    search_details.trader_id        = bss->trader_id;
+	    search_details.type             = bss->type;
 			strn0cpy(search_details.item_name, bss->item_name, sizeof(search_details.item_name));
 
 			DoBazaarSearch(search_details);
@@ -10933,7 +10933,7 @@ void Client::Handle_OP_MoveMultipleItems(const EQApplicationPacket *app)
 			};
 
 			std::vector<MoveInfo> items;
-    		items.reserve(multi_move->count);
+		items.reserve(multi_move->count);
 
 			for (int i = 0; i < multi_move->count; i++) {
 				// These are always bags, so we don't need to worry about raw items in slotCursor
@@ -15583,15 +15583,15 @@ void Client::Handle_OP_TradeRequest(const EQApplicationPacket *app)
 		tradee->CastToClient()->QueuePacket(app);
 	}
 	else if (tradee && (tradee->IsNPC() || tradee->IsBot())) {
-        if (!tradee->IsEngaged()) {
-            trade->Start(msg->to_mob_id);
-            EQApplicationPacket *outapp = new EQApplicationPacket(OP_TradeRequestAck, sizeof(TradeRequest_Struct));
-            TradeRequest_Struct *acc = (TradeRequest_Struct *) outapp->pBuffer;
-            acc->from_mob_id = msg->to_mob_id;
-            acc->to_mob_id = msg->from_mob_id;
-            FastQueuePacket(&outapp);
-            safe_delete(outapp);
-        }
+	if (!tradee->IsEngaged()) {
+	    trade->Start(msg->to_mob_id);
+	    EQApplicationPacket *outapp = new EQApplicationPacket(OP_TradeRequestAck, sizeof(TradeRequest_Struct));
+	    TradeRequest_Struct *acc = (TradeRequest_Struct *) outapp->pBuffer;
+	    acc->from_mob_id = msg->to_mob_id;
+	    acc->to_mob_id = msg->from_mob_id;
+	    FastQueuePacket(&outapp);
+	    safe_delete(outapp);
+	}
     }
 	return;
 	}
@@ -16827,9 +16827,9 @@ void Client::RecordStats()
 	int64 unbuffed_endurance = 0;
 	if (ClientVersion() >= EQ::versions::ClientVersion::SoF && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
 		double stats = (GetBaseSTR() + itembonuses.STR + aabonuses.STR + 
-		               GetBaseSTA() + itembonuses.STA + aabonuses.STA + 
-		               GetBaseDEX() + itembonuses.DEX + aabonuses.DEX + 
-		               GetBaseAGI() + itembonuses.AGI + aabonuses.AGI) / 4.0f;
+			       GetBaseSTA() + itembonuses.STA + aabonuses.STA + 
+			       GetBaseDEX() + itembonuses.DEX + aabonuses.DEX + 
+			       GetBaseAGI() + itembonuses.AGI + aabonuses.AGI) / 4.0f;
 		
 		if (stats > 201.0f) {
 			stats = 1.25f * (stats - 201.0f) + 352.5f;
@@ -16851,68 +16851,10 @@ void Client::RecordStats()
 		int effective_sta = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
 		unbuffed_endurance = LevelBase + (at_most_800 * effective_sta / 3000);
 	}
-	r.endurance = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
-	// AC calculation: Calculate AC without spell bonuses using ACSum logic
-	int ac = 0;
-	ac += itembonuses.AC;
-	
-	// Shield AC calculation (from ACSum)
-	int shield_ac = 0;
-	if (HasShieldEquipped()) {
-		auto inst = GetInv().GetItem(EQ::invslot::slotSecondary);
-		if (inst) {
-			if (inst->GetItemRecommendedLevel(true) <= GetLevel()) {
-				shield_ac = inst->GetItemArmorClass(true);
-			} else {
-				shield_ac = CalcRecommendedLevelBonus(GetLevel(), inst->GetItemRecommendedLevel(true), inst->GetItemArmorClass(true));
-			}
-		}
-		shield_ac += itembonuses.heroic_str_shield_ac;
-	}
-	
-	// EQ math: AC = (AC * 4) / 3
-	ac = (ac * 4) / 3;
-	
-	// Anti-twink cap
-	if (GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
-		ac = std::min(ac, 25 + 6 * GetLevel());
-	}
-	
-	// Add class/race AC bonus
-	ac = std::max(0, ac + GetClassRaceACBonus());
-	
-	// Add AA bonuses AC (excluding spell bonuses)
-	auto spell_aa_ac = aabonuses.AC; // Only AA bonuses, not spell bonuses
-	if (GetClass() == Class::Necromancer || GetClass() == Class::Wizard || GetClass() == Class::Magician || GetClass() == Class::Enchanter) {
-		ac += GetSkill(EQ::skills::SkillDefense) / 2 + spell_aa_ac / 3;
-	} else {
-		ac += GetSkill(EQ::skills::SkillDefense) / 3 + spell_aa_ac / 4;
-	}
-	
-	// Add AGI contribution (excluding spell bonuses)
-	int unbuffed_agi = GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
-	if (unbuffed_agi > 70) {
-		ac += unbuffed_agi / 20;
-	}
-	
-	if (ac < 0) ac = 0;
-	
-	// Apply softcap (excluding spell bonuses from CombatStability)
-	auto softcap = GetACSoftcap();
-	auto returns = GetSoftcapReturns();
-	int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability; // Exclude spell bonuses
-	if (total_aclimitmod) {
-		softcap = (softcap * (100 + total_aclimitmod)) / 100;
-	}
-	softcap += shield_ac;
-	if (ac > softcap) {
-		auto over_cap = ac - softcap;
-		ac = softcap + (over_cap * returns);
-	}
-	
-	// Apply DisplayAC conversion: 1000 * (ACSum + compute_defense()) / 847
-	int unbuffed_ac = 1000 * (ac + compute_defense()) / 847;
-	r.ac = unbuffed_ac;
+		r.endurance                = unbuffed_endurance + itembonuses.Endurance + aabonuses.Endurance;
+		// AC calculation: use ACSum and compute_defense without spell bonuses
+		int unbuffed_ac            = 1000 * (ACSum(true, false) + compute_defense(false)) / 847;
+		r.ac                       = unbuffed_ac;
 	r.strength                 = GetBaseSTR() + itembonuses.STR + aabonuses.STR;
 	r.stamina                  = GetBaseSTA() + itembonuses.STA + aabonuses.STA;
 	r.dexterity                = GetBaseDEX() + itembonuses.DEX + aabonuses.DEX;
@@ -17066,7 +17008,7 @@ void Client::RecordStats()
 		h += total_haste > 10 ? 10 : total_haste;
 	}
 	r.haste = 100 + h;
-	r.accuracy                 = GetAccuracy() + aabonuses.HitChance;  // Item + AA bonuses
+		r.accuracy                 = GetAccuracy() + aabonuses.HitChance;  // Item + AA bonuses
 	r.attack                   = itembonuses.ATK + aabonuses.ATK;  // Item + AA bonuses only (no spell bonuses)
 	r.avoidance                = GetAvoidance() + aabonuses.AvoidMeleeChance;  // Item + AA bonuses
 	r.clairvoyance             = GetClair() + aabonuses.Clairvoyance;  // Item + AA bonuses
@@ -17424,9 +17366,9 @@ void Client::Handle_OP_GuildTributeDonatePlat(const EQApplicationPacket *app)
 void Client::Handle_OP_ShopSendParcel(const EQApplicationPacket *app)
 {
     if (app->size != sizeof(Parcel_Struct)) {
-        LogError("Received Handle_OP_ShopSendParcel packet. Expected size {}, received size {}.", sizeof(Parcel_Struct),
-                 app->size);
-        return;
+	LogError("Received Handle_OP_ShopSendParcel packet. Expected size {}, received size {}.", sizeof(Parcel_Struct),
+		 app->size);
+	return;
     }
 
     auto parcel_in = (Parcel_Struct *)app->pBuffer;
@@ -17436,9 +17378,9 @@ void Client::Handle_OP_ShopSendParcel(const EQApplicationPacket *app)
 void Client::Handle_OP_ShopRetrieveParcel(const EQApplicationPacket *app)
 {
     if (app->size != sizeof(ParcelRetrieve_Struct)) {
-        LogError("Received Handle_OP_ShopRetrieveParcel packet. Expected size {}, received size {}.",
-                 sizeof(ParcelRetrieve_Struct), app->size);
-        return;
+	LogError("Received Handle_OP_ShopRetrieveParcel packet. Expected size {}, received size {}.",
+		 sizeof(ParcelRetrieve_Struct), app->size);
+	return;
     }
 
     auto parcel_in = (ParcelRetrieve_Struct *)app->pBuffer;

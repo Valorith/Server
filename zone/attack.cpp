@@ -253,13 +253,14 @@ int Mob::GetTotalToHit(EQ::skills::SkillType skill, int chance_mod)
 // based on dev quotes
 // the AGI bonus has actually drastically changed from classic
 //SYNC WITH: tune.cpp, mob.h Tunecompute_defense
-int Mob::compute_defense()
+int Mob::compute_defense(bool include_spells)
 {
 	int defense = GetSkill(EQ::skills::SkillDefense) * 400 / 225;
 
 	// In new code, AGI becomes a large contributor to avoidance at low levels, since AGI isn't capped by Level but Defense is
 	// A scale factor is implemented for PCs to reduce the effect of AGI at low levels.  This isn't applied to NPCs since they can be
 	// easily controlled via the Database.
+	int agi = include_spells ? GetAGI() : GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
 	if (RuleB(Combat, LegacyComputeDefense)) {
 		int agi_scale_factor = 1000;
 
@@ -267,26 +268,44 @@ int Mob::compute_defense()
 			agi_scale_factor = std::min(1000, static_cast<int>(GetLevel()) * 1000 / 70); // Scales Agi Contribution for PC's Level, max Contribution at Level 70
 		}
 
-		defense += agi_scale_factor * (800 * (GetAGI() - 40)) / 3600 / 1000;
+		defense += agi_scale_factor * (800 * (agi - 40)) / 3600 / 1000;
 
 		if (IsOfClientBot()) {
-			defense += GetHeroicAGI() / 10;
+			int heroic_agi = GetHeroicAGI() + aabonuses.HeroicAGI;
+			if (include_spells) {
+				heroic_agi += spellbonuses.HeroicAGI;
+			}
+			defense += heroic_agi / 10;
 		}
 
-		defense += itembonuses.AvoidMeleeChance * RuleI(Combat, PCAccuracyAvoidanceMod2Scale) / 100; // item mod2
+		int avoid_mod = itembonuses.AvoidMeleeChance + aabonuses.AvoidMeleeChance;
+		if (include_spells) {
+			avoid_mod += spellbonuses.AvoidMeleeChance;
+		}
+		defense += avoid_mod * RuleI(Combat, PCAccuracyAvoidanceMod2Scale) / 100;
 	} else {
-		defense += (8000 * (GetAGI() - 40)) / 36000;
+		defense += (8000 * (agi - 40)) / 36000;
 
 		if (IsOfClientBot()) {
-			defense += itembonuses.heroic_agi_avoidance;
+			int heroic_agi_avoid = itembonuses.heroic_agi_avoidance + aabonuses.heroic_agi_avoidance;
+			if (include_spells) {
+				heroic_agi_avoid += spellbonuses.heroic_agi_avoidance;
+			}
+			defense += heroic_agi_avoid;
 		}
 
-		defense += itembonuses.AvoidMeleeChance; // item mod2
+		int avoid_mod = itembonuses.AvoidMeleeChance + aabonuses.AvoidMeleeChance;
+		if (include_spells) {
+			avoid_mod += spellbonuses.AvoidMeleeChance;
+		}
+		defense += avoid_mod;
 	}
 
-
 	//516 SE_AC_Mitigation_Max_Percent
-	auto ac_bonus = itembonuses.AC_Mitigation_Max_Percent + aabonuses.AC_Mitigation_Max_Percent + spellbonuses.AC_Mitigation_Max_Percent;
+	auto ac_bonus = itembonuses.AC_Mitigation_Max_Percent + aabonuses.AC_Mitigation_Max_Percent;
+	if (include_spells) {
+		ac_bonus += spellbonuses.AC_Mitigation_Max_Percent;
+	}
 	if (ac_bonus) {
 		defense += round(static_cast<double>(defense) * static_cast<double>(ac_bonus) * 0.0001);
 	}
@@ -902,7 +921,7 @@ int Mob::GetClassRaceACBonus()
 	return ac_bonus;
 }
 //SYNC WITH: tune.cpp, mob.h TuneACSum
-int Mob::ACSum(bool skip_caps)
+int Mob::ACSum(bool skip_caps, bool include_spells)
 {
 	int ac = 0; // this should be base AC whenever shrouds come around
 	ac += itembonuses.AC; // items + food + tribute
@@ -932,7 +951,10 @@ int Mob::ACSum(bool skip_caps)
 		// For a 60 PoP mob ~120, 70 OoW ~120
 		ac += GetAC();
 		ac += GetPetACBonusFromOwner();
-		auto spell_aa_ac = aabonuses.AC + spellbonuses.AC;
+		auto spell_aa_ac = aabonuses.AC;
+		if (include_spells) {
+			spell_aa_ac += spellbonuses.AC;
+		}
 		ac += GetSkill(EQ::skills::SkillDefense) / 5;
 		if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
 			ac += spell_aa_ac / 3;
@@ -940,22 +962,29 @@ int Mob::ACSum(bool skip_caps)
 			ac += spell_aa_ac / 4;
 	}
 	else { // TODO: so we can't set NPC skills ... so the skill bonus ends up being HUGE so lets nerf them a bit
-		auto spell_aa_ac = aabonuses.AC + spellbonuses.AC;
+		auto spell_aa_ac = aabonuses.AC;
+		if (include_spells) {
+			spell_aa_ac += spellbonuses.AC;
+		}
 		if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
 			ac += GetSkill(EQ::skills::SkillDefense) / 2 + spell_aa_ac / 3;
 		else
 			ac += GetSkill(EQ::skills::SkillDefense) / 3 + spell_aa_ac / 4;
 	}
 
-	if (GetAGI() > 70)
-		ac += GetAGI() / 20;
+	int agi_val = include_spells ? GetAGI() : GetBaseAGI() + itembonuses.AGI + aabonuses.AGI;
+	if (agi_val > 70)
+		ac += agi_val / 20;
 	if (ac < 0)
 		ac = 0;
 
 	if (!skip_caps && IsOfClientBot()) {
 		auto softcap = GetACSoftcap();
 		auto returns = GetSoftcapReturns();
-		int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability + spellbonuses.CombatStability;
+		int total_aclimitmod = aabonuses.CombatStability + itembonuses.CombatStability;
+		if (include_spells) {
+			total_aclimitmod += spellbonuses.CombatStability;
+		}
 		if (total_aclimitmod)
 			softcap = (softcap * (100 + total_aclimitmod)) / 100;
 		softcap += shield_ac;
@@ -978,7 +1007,7 @@ int Mob::GetBestMeleeSkill()
 
 	EQ::skills::SkillType meleeSkills[]=
 	{	EQ::skills::Skill1HBlunt,
-	  	EQ::skills::Skill1HSlashing,
+		EQ::skills::Skill1HSlashing,
 		EQ::skills::Skill2HBlunt,
 		EQ::skills::Skill2HSlashing,
 		EQ::skills::SkillHandtoHand,
@@ -1888,7 +1917,7 @@ bool Client::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::Skil
 	// that occur in these rare cases when this is the death blow.
 	if (IsValidSpell(spell) &&
 		(attack_skill == EQ::skills::SkillTigerClaw ||
-        (IsDamageSpell(spell) && IsDiscipline(spell)) ||
+	(IsDamageSpell(spell) && IsDiscipline(spell)) ||
 		!is_buff_tic)) {
 			d->attack_skill = DamageTypeSpell;
 			d->spell_id = (is_buff_tic) ? UINT32_MAX : spell;
@@ -2589,7 +2618,7 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 	// that occur in these rare cases when this is the death blow.
 	if (IsValidSpell(spell) &&
 		(attack_skill == EQ::skills::SkillTigerClaw ||
-        (IsDamageSpell(spell) && IsDiscipline(spell)) ||
+	(IsDamageSpell(spell) && IsDiscipline(spell)) ||
 		!is_buff_tic)) {
 			d->attack_skill = DamageTypeSpell;
 			d->spell_id = (is_buff_tic) ? UINT32_MAX : spell;
@@ -4309,8 +4338,8 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				can_stun = true;
 				if (attacker->IsClient() || attacker->IsBot() || attacker->IsMerc()) {
 					stunbash_chance = attacker->spellbonuses.StunBashChance +
-					                  attacker->itembonuses.StunBashChance +
-					                  attacker->aabonuses.StunBashChance;
+							  attacker->itembonuses.StunBashChance +
+							  attacker->aabonuses.StunBashChance;
 				}
 			}
 			else if (skill_used == EQ::skills::SkillKick &&

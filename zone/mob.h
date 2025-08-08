@@ -242,7 +242,7 @@ public:
 	bool AvoidDamage(Mob *attacker, DamageHitInfo &hit);
 	int compute_tohit(EQ::skills::SkillType skillinuse);
 	int GetTotalToHit(EQ::skills::SkillType skill, int chance_mod); // compute_tohit + spell bonuses
-	int compute_defense();
+	int compute_defense(bool include_spells = true);
 	int GetTotalDefense(); // compute_defense + spell bonuses
 	bool CheckHitChance(Mob* attacker, DamageHitInfo &hit);
 	void TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *opts = nullptr);
@@ -252,7 +252,7 @@ public:
 	int TryAssassinate(Mob* defender, EQ::skills::SkillType skillInUse);
 	virtual void DoRiposte(Mob* defender);
 	void ApplyMeleeDamageMods(uint16 skill, int64 &damage, Mob * defender = nullptr, ExtraAttackOptions *opts = nullptr);
-	int ACSum(bool skip_caps = false);
+	int ACSum(bool skip_caps = false, bool include_spells = true);
 	inline int GetDisplayAC() { return 1000 * (ACSum(true) + compute_defense()) / 847; }
 	int offense(EQ::skills::SkillType skill);
 	int GetBestMeleeSkill();
@@ -1322,7 +1322,7 @@ public:
 	void SetNextIncHPEvent( int inchpevent );
 
 	inline bool DivineAura() const { return spellbonuses.DivineAura; }
- 	inline bool Sanctuary() const { return spellbonuses.Sanctuary; }
+	inline bool Sanctuary() const { return spellbonuses.Sanctuary; }
 
 	bool HasNPCSpecialAtk(const char* parse);
 	bool HasSpecialAbilities();
