@@ -76,21 +76,20 @@ public:
 	uint8 GetGMSpeed(uint32 account_id);
 	bool SetHideMe(uint32 account_id, uint8 hideme);
 	int DeleteStalePlayerCorpses();
-	void LoadCharacterInspectMessage(uint32 character_id, InspectMessage_Struct *message);
-	void SaveCharacterInspectMessage(uint32 character_id, const InspectMessage_Struct *message);
+	void LoadCharacterInspectMessage(uint32 character_id, InspectMessage_Struct* s);
+	void SaveCharacterInspectMessage(uint32 character_id, const InspectMessage_Struct* s);
 	bool GetCommandSettings(std::map<std::string, std::pair<uint8, std::vector<std::string>>> &command_settings);
 	bool UpdateInjectedCommandSettings(const std::vector<std::pair<std::string, uint8>> &injected);
 	bool UpdateOrphanedCommandSettings(const std::vector<std::string> &orphaned);
 	bool GetCommandSubSettings(std::vector<CommandSubsettingsRepository::CommandSubsettings> &command_subsettings);
-	uint32 GetTotalTimeEntitledOnAccount(uint32 AccountID);
 	bool SetGMInvul(uint32 account_id, bool gminvul);
 	bool SetGMFlymode(uint32 account_id, uint8 flymode);
-	void SetMailKey(int CharID, int IPAddress, int MailKey);
+	void SetMailKey(uint32 character_id, uint32 ip_address, uint32 mail_key);
 	struct MailKeys {
 		std::string mail_key;
 		std::string mail_key_full;
 	};
-	MailKeys GetMailKey(int character_id);
+	MailKeys GetMailKey(uint32 character_id);
 	bool SaveCursor(
 		uint32 char_id,
 		std::list<EQ::ItemInstance *>::const_iterator &start,
@@ -104,7 +103,7 @@ public:
 	bool VerifyInventory(uint32 account_id, int16 slot_id, const EQ::ItemInstance *inst);
 	bool GetSharedBank(uint32 id, EQ::InventoryProfile *inv, bool is_charid);
 	int32 GetSharedPlatinum(uint32 account_id);
-	bool SetSharedPlatinum(uint32 account_id, int32 amount_to_add);
+	bool AddSharedPlatinum(uint32 account_id, int amount);
 	bool GetInventory(Client* c);
 	bool GetInventory(uint32 account_id, char *name, EQ::InventoryProfile *inv); // deprecated
 	std::map<uint32, uint32> GetItemRecastTimestamps(uint32 char_id);
@@ -158,7 +157,7 @@ public:
 	);
 	EQ::ItemInstance *CreateBaseItem(const EQ::ItemData *item, int16 charges = 0);
 
-	void GetItemsCount(int32 &item_count, uint32 &max_id);
+	void GetItemsCount(int32& item_count, uint32& max_id);
 	void LoadItems(void *data, uint32 size, int32 items, uint32 max_item_id);
 	bool LoadItems(const std::string &prefix);
 	const EQ::ItemData *IterateItems(uint32 *id) const;
@@ -173,7 +172,7 @@ public:
 	int GetMaxSpellID();
 	bool LoadSpells(const std::string &prefix, int32 *records, const SPDat_Spell_Struct **sp);
 	void LoadSpells(void *data, int max_spells);
-	void LoadDamageShieldTypes(SPDat_Spell_Struct *sp, int32 iMaxSpellID);
+	void LoadDamageShieldTypes(SPDat_Spell_Struct* s);
 	uint32 GetSharedSpellsCount() { return m_shared_spells_count; }
 	uint32 GetSpellsCount();
 
