@@ -740,8 +740,8 @@ bool CheckForCompatibleQuestPlugins()
 
 	try {
 		for (const auto &[directory, flag]: directories) {
-			std::string dir_path = PathManager::Instance()->GetServerPath() + "/" + directory;
-			if (!File::Exists(dir_path)) { continue; }
+			fs::path dir_path = fs::path(PathManager::Instance()->GetServerPath()) / directory;
+			if (!fs::exists(dir_path)) { continue; }
 
 			for (const auto &file: fs::directory_iterator(dir_path)) {
 				if (!file.is_regular_file()) { continue; }
