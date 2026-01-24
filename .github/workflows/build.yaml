@@ -9,7 +9,9 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
-    container: akkadius/eqemu-server:v16
+    container:
+      image: akkadius/eqemu-server:v16
+      options: --user 1001:1001
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
@@ -24,8 +26,12 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           mkdir -p build && cd build
-          cmake -DEQEMU_BUILD_LOGIN=ON -DEQEMU_BUILD_LUA=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+          cmake -DEQEMU_BUILD_TESTS=ON -DEQEMU_BUILD_LOGIN=ON -DEQEMU_BUILD_LUA=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
           make -j"$(nproc)"
+
+      - name: Test
+        working-directory: build
+        run: ./bin/tests
 
       - name: Package linux binaries
         working-directory: ${{ github.workspace }}
