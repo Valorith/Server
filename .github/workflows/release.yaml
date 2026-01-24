@@ -200,7 +200,16 @@ jobs:
           # Show contents
           Write-Host "Successfully packaged $($files.Count) files"
           Write-Host "Package contents:"
-          Get-ChildItem $outZip | Format-List
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($outZip)
+          try {
+            foreach ($entry in $zip.Entries) {
+              Write-Host (" - {0} ({1} bytes)" -f $entry.FullName, $entry.Length)
+            }
+          }
+          finally {
+            $zip.Dispose()
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
