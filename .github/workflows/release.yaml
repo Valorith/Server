@@ -44,15 +44,49 @@ jobs:
       - name: Package binaries
         run: |
           cd build/bin
+          
+          # Verify that critical binaries exist
+          REQUIRED_BINARIES="world zone ucs queryserv eqlaunch shared_memory"
+          MISSING_BINARIES=""
+          
+          for binary in $REQUIRED_BINARIES; do
+            if [ ! -f "$binary" ]; then
+              MISSING_BINARIES="$MISSING_BINARIES $binary"
+            fi
+          done
+          
+          if [ -n "$MISSING_BINARIES" ]; then
+            echo "Error: Required binaries not found:$MISSING_BINARIES"
+            echo "Build may have failed. Refusing to create incomplete package."
+            exit 1
+          fi
+          
+          # Create zip with core binaries
           zip -j eqemu-server-linux-x64.zip \
             world zone ucs queryserv eqlaunch shared_memory \
             loginserver import_client_files export_client_files
+          
           # Include any additional binaries that exist
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
               zip -u eqemu-server-linux-x64.zip "$f"
             fi
           done
+          
+          # Verify zip file was created and contains files
+          if [ ! -f eqemu-server-linux-x64.zip ]; then
+            echo "Error: Failed to create zip file"
+            exit 1
+          fi
+          
+          FILE_COUNT=$(unzip -l eqemu-server-linux-x64.zip | grep -v "Archive:" | grep -v "Length" | grep -v "---" | grep -v "files" | wc -l)
+          if [ "$FILE_COUNT" -lt 6 ]; then
+            echo "Error: Zip file contains fewer than expected files ($FILE_COUNT)"
+            unzip -l eqemu-server-linux-x64.zip
+            exit 1
+          fi
+          
+          echo "Successfully packaged $FILE_COUNT files"
           ls -la eqemu-server-linux-x64.zip
 
       - name: Upload artifact
@@ -100,6 +134,23 @@ jobs:
           $binDir = "build/bin/RelWithDebInfo"
           $outZip = "eqemu-server-windows-x64.zip"
 
+          # Verify that critical binaries exist
+          $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe")
+          $missingBinaries = @()
+          
+          foreach ($binary in $requiredBinaries) {
+            $path = Join-Path $binDir $binary
+            if (-not (Test-Path $path)) {
+              $missingBinaries += $binary
+            }
+          }
+          
+          if ($missingBinaries.Count -gt 0) {
+            Write-Host "Error: Required binaries not found: $($missingBinaries -join ', ')"
+            Write-Host "Build may have failed. Refusing to create incomplete package."
+            exit 1
+          }
+
           # Collect all exe and dll files
           $files = @()
 
@@ -121,10 +172,30 @@ jobs:
             }
           }
 
+          # Verify we have files to package
+          if ($files.Count -eq 0) {
+            Write-Host "Error: No files found to package"
+            exit 1
+          }
+
           # Create zip
           Compress-Archive -Path $files -DestinationPath $outZip -Force
 
+          # Verify zip was created successfully
+          if (-not (Test-Path $outZip)) {
+            Write-Host "Error: Failed to create zip file"
+            exit 1
+          }
+
+          # Verify zip contains files
+          $zipInfo = Get-Item $outZip
+          if ($zipInfo.Length -lt 1KB) {
+            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes)"
+            exit 1
+          }
+
           # Show contents
+          Write-Host "Successfully packaged $($files.Count) files"
           Write-Host "Package contents:"
           Get-ChildItem $outZip | Format-List
 
