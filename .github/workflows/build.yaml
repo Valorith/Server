@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: akkadius/eqemu-server:v16
+      # Run as root to allow GitHub Actions runner file command writes in the container.
       options: --user 0
     steps:
       - name: Checkout source
