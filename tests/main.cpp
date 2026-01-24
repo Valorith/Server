@@ -28,6 +28,7 @@
 #include "fixed_memory_variable_test.h"
 #include "atobool_test.h"
 #include "hextoi_32_64_test.h"
+#include "inspect_message_test.h"
 #include "string_util_test.h"
 #include "data_verification_test.h"
 #include "skills_util_test.h"
@@ -52,6 +53,7 @@ int main()
 		tests.add(new FixedMemoryVariableHashTest());
 		tests.add(new atoboolTest());
 		tests.add(new hextoi_32_64_Test());
+		tests.add(new InspectMessageTest());
 		tests.add(new StringUtilTest());
 		tests.add(new DataVerificationTest());
 		tests.add(new SkillsUtilsTest());
