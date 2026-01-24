@@ -1,0 +1,259 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-release-ccache-${{ hashFiles('.github/workflows/release.yaml') }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ninja-build ccache uuid-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DEQEMU_BUILD_LOGIN=ON \
+            -DEQEMU_BUILD_LUA=ON \
+            -DEQEMU_BUILD_PERL=ON \
+            -DEQEMU_BUILD_CLIENT_FILES=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package binaries
+        run: |
+          cd build/bin
+          
+          # Verify that critical binaries exist
+          REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory loginserver import_client_files export_client_files)
+          MISSING_BINARIES=()
+          
+          for binary in "${REQUIRED_BINARIES[@]}"; do
+            if [ ! -f "$binary" ]; then
+              MISSING_BINARIES+=("$binary")
+            fi
+          done
+          
+          if [ ${#MISSING_BINARIES[@]} -ne 0 ]; then
+            echo "Error: Required binaries not found: ${MISSING_BINARIES[*]}"
+            echo "Build may have failed. Refusing to create incomplete package."
+            exit 1
+          fi
+          
+          # Add all executable files (excluding tests)
+          for f in *; do
+            if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
+              zip -uj eqemu-server-linux-x64.zip "$f"
+            fi
+          done
+          
+          # Verify zip file was created and contains files
+          if [ ! -f eqemu-server-linux-x64.zip ]; then
+            echo "Error: Failed to create zip file"
+            exit 1
+          fi
+          
+          FILE_COUNT=$(unzip -Z1 eqemu-server-linux-x64.zip | wc -l)
+          EXPECTED_MIN_FILES=${#REQUIRED_BINARIES[@]}
+          if [ "$FILE_COUNT" -lt "$EXPECTED_MIN_FILES" ]; then
+            echo "Error: Zip file contains fewer than expected files ($FILE_COUNT, expected at least $EXPECTED_MIN_FILES)"
+            unzip -l eqemu-server-linux-x64.zip
+            exit 1
+          fi
+          
+          echo "Successfully packaged $FILE_COUNT files"
+          ls -lh eqemu-server-linux-x64.zip
+          echo ""
+          echo "Package contents:"
+          unzip -l eqemu-server-linux-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqemu-server-linux-x64
+          path: build/bin/eqemu-server-linux-x64.zip
+          retention-days: 90
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Enable long paths
+        run: git config --global core.longpaths true
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DEQEMU_BUILD_LOGIN=ON `
+            -DEQEMU_BUILD_LUA=ON `
+            -DEQEMU_BUILD_ZLIB=ON `
+            -DEQEMU_BUILD_PERL=ON `
+            -DEQEMU_BUILD_CLIENT_FILES=ON
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config RelWithDebInfo --target ALL_BUILD -- /m:4
+
+      - name: Package binaries
+        shell: pwsh
+        run: |
+          $binDir = "build/bin/RelWithDebInfo"
+          $outZip = "eqemu-server-windows-x64.zip"
+          # Minimum expected zip size (core binaries should be at least this size)
+          $minZipSize = 100KB
+
+          # Verify that critical binaries exist
+          $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe", "loginserver.exe", "import_client_files.exe", "export_client_files.exe")
+          $missingBinaries = @()
+          
+          foreach ($binary in $requiredBinaries) {
+            $path = Join-Path $binDir $binary
+            if (-not (Test-Path $path)) {
+              $missingBinaries += $binary
+            }
+          }
+          
+          if ($missingBinaries.Count -gt 0) {
+            Write-Host "Error: Required binaries not found: $($missingBinaries -join ', ')"
+            Write-Host "Build may have failed. Refusing to create incomplete package."
+            exit 1
+          }
+
+          # Collect all exe and dll files
+          $files = @()
+
+          # Add executables (exclude tests.exe)
+          Get-ChildItem -Path $binDir -Filter "*.exe" | Where-Object { $_.Name -ne "tests.exe" } | ForEach-Object {
+            $files += $_.FullName
+          }
+
+          # Add DLLs from bin directory
+          Get-ChildItem -Path $binDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+            $files += $_.FullName
+          }
+
+          # Add zlib DLLs if they exist
+          $zlibDir = "build/libs/zlibng/RelWithDebInfo"
+          if (Test-Path $zlibDir) {
+            Get-ChildItem -Path $zlibDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+              $files += $_.FullName
+            }
+          }
+
+          # Verify we have files to package
+          if ($files.Count -eq 0) {
+            Write-Host "Error: No files found to package"
+            exit 1
+          }
+
+          # Create zip
+          Compress-Archive -Path $files -DestinationPath $outZip -Force
+
+          # Verify zip was created successfully
+          if (-not (Test-Path $outZip)) {
+            Write-Host "Error: Failed to create zip file"
+            exit 1
+          }
+
+          # Verify zip contains files (should contain at least the core binaries)
+          $zipInfo = Get-Item $outZip
+          if ($zipInfo.Length -lt $minZipSize) {
+            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes, expected at least $minZipSize)"
+            exit 1
+          }
+
+          # Show contents
+          Write-Host "Successfully packaged $($files.Count) files"
+          Write-Host "Package contents:"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($outZip)
+          try {
+            foreach ($entry in $zip.Entries) {
+              Write-Host (" - {0} ({1} bytes)" -f $entry.FullName, $entry.Length)
+            }
+          }
+          finally {
+            $zip.Dispose()
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqemu-server-windows-x64
+          path: eqemu-server-windows-x64.zip
+          retention-days: 90
+
+  release:
+    name: Create Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    # Only run on tag pushes
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eqemu-server-linux-x64
+          path: artifacts/
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eqemu-server-windows-x64
+          path: artifacts/
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/eqemu-server-linux-x64.zip
+            artifacts/eqemu-server-windows-x64.zip
+            artifacts/SHA256SUMS.txt
