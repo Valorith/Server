@@ -47,16 +47,16 @@ jobs:
           
           # Verify that critical binaries exist
           REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory)
-          MISSING_BINARIES=""
+          MISSING_BINARIES=()
           
           for binary in "${REQUIRED_BINARIES[@]}"; do
             if [ ! -f "$binary" ]; then
-              MISSING_BINARIES="$MISSING_BINARIES $binary"
+              MISSING_BINARIES+=("$binary")
             fi
           done
           
-          if [ -n "$MISSING_BINARIES" ]; then
-            echo "Error: Required binaries not found:$MISSING_BINARIES"
+          if [ ${#MISSING_BINARIES[@]} -ne 0 ]; then
+            echo "Error: Required binaries not found: ${MISSING_BINARIES[*]}"
             echo "Build may have failed. Refusing to create incomplete package."
             exit 1
           fi
