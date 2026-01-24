@@ -1,6 +1,8 @@
 #pragma once
-#include <functional>
-#include <uv.h>
+
+#include "common/platform/win/include_windows.h" // uv.h is going to include it so let's do it first.
+#include "uv.h"  // FIXME: hide this
+
 #include <cstring>
 
 namespace EQ

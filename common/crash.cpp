@@ -1,29 +1,25 @@
-#include "global_define.h"
-#include "eqemu_logsys.h"
 #include "crash.h"
-#include "strings.h"
-#include "process/process.h"
-#include "http/httplib.h"
-#include "http/uri.h"
-#include "json/json.h"
-#include "version.h"
-#include "eqemu_config.h"
-#include "serverinfo.h"
-#include "rulesys.h"
-#include "platform.h"
+
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/http/httplib.h"
+#include "common/http/uri.h"
+#include "common/json/json.h"
+#include "common/platform.h"
+#include "common/process/process.h"
+#include "common/rulesys.h"
+#include "common/serverinfo.h"
+#include "common/strings.h"
+#include "common/version.h"
 
 #include <cstdio>
 #include <vector>
-
-#ifdef _WINDOWS
-#define popen _popen
-#endif
 
 void SendCrashReport(const std::string &crash_report)
 {
 	// can configure multiple endpoints if need be
 	std::vector<std::string> endpoints = {
-		"https://spire.akkadius.com/api/v1/analytics/server-crash-report",
+		"https://spire.eqemu.dev/api/v1/analytics/server-crash-report",
 //		"http://localhost:3010/api/v1/analytics/server-crash-report", // development
 	};
 
@@ -224,8 +220,8 @@ void set_exception_handler() {
 }
 #else
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/fcntl.h>

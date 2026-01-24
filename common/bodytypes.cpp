@@ -1,5 +1,4 @@
-#include "../common/global_define.h"
-#include "../common/bodytypes.h"
+#include "bodytypes.h"
 
 std::string BodyType::GetName(uint8 body_type_id)
 {

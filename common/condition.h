@@ -15,14 +15,12 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef __CONDITION_H
-#define __CONDITION_H
 
-#include "global_define.h"
-#include "mutex.h"
-#ifndef WIN32
-#include <pthread.h>
-#endif
+#pragma once
+
+#include "common/mutex.h"
+#include "common/platform/posix/include_pthreads.h"
+#include "common/platform/win/include_windows.h"
 
 //Sombody, someday needs to figure out how to implement a condition
 //system on windows...
@@ -52,6 +50,3 @@ class Condition {
 //		bool TimedWait(unsigned long usec);
 		~Condition();
 };
-
-#endif
-

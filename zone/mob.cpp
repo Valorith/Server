@@ -16,28 +16,27 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/data_verification.h"
-#include "../common/spdat.h"
-#include "../common/strings.h"
-#include "../common/misc_functions.h"
+#include "mob.h"
 
-#include "../common/repositories/bot_data_repository.h"
-#include "../common/repositories/character_data_repository.h"
+#include "common/data_bucket.h"
+#include "common/data_verification.h"
+#include "common/misc_functions.h"
+#include "common/repositories/bot_data_repository.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/spdat.h"
+#include "common/strings.h"
+#include "zone/bot.h"
+#include "zone/dialogue_window.h"
+#include "zone/mob_movement_manager.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/string_ids.h"
+#include "zone/water_map.h"
+#include "zone/worldserver.h"
 
-#include "../common/data_bucket.h"
-#include "quest_parser_collection.h"
-#include "string_ids.h"
-#include "worldserver.h"
-#include "mob_movement_manager.h"
-#include "water_map.h"
-#include "dialogue_window.h"
-
-#include <limits.h>
-#include <math.h>
-#include <sstream>
 #include <algorithm>
-
-#include "bot.h"
+#include <climits>
+#include <cmath>
+#include <sstream>
 
 extern EntityList entity_list;
 
@@ -641,7 +640,7 @@ void Mob::BreakCharmPetIfConditionsMet() {
 
 void Mob::CalcInvisibleLevel()
 {
-	bool was_invisible = invisible;
+	uint8 was_invisible = invisible;
 
 	invisible         = std::max({spellbonuses.invisibility, nobuff_invisible});
 	invisible_undead  = spellbonuses.invisibility_verse_undead;
@@ -8161,7 +8160,7 @@ void Mob::DeleteBucket(std::string bucket_name)
 	DataBucketKey k = GetScopedBucketKeys();
 	k.key = bucket_name;
 
-	DataBucket::DeleteData(k);
+	DataBucket::DeleteData(&database, k);
 }
 
 std::string Mob::GetBucket(std::string bucket_name)
@@ -8169,7 +8168,7 @@ std::string Mob::GetBucket(std::string bucket_name)
 	DataBucketKey k = GetScopedBucketKeys();
 	k.key = bucket_name;
 
-	auto b = DataBucket::GetData(k);
+	auto b = DataBucket::GetData(&database, k);
 	if (!b.value.empty()) {
 		return b.value;
 	}
@@ -8181,7 +8180,7 @@ std::string Mob::GetBucketExpires(std::string bucket_name)
 	DataBucketKey k = GetScopedBucketKeys();
 	k.key = bucket_name;
 
-	std::string bucket_expiration = DataBucket::GetDataExpires(k);
+	std::string bucket_expiration = DataBucket::GetDataExpires(&database, k);
 	if (!bucket_expiration.empty()) {
 		return bucket_expiration;
 	}
@@ -8194,7 +8193,7 @@ std::string Mob::GetBucketRemaining(std::string bucket_name)
 	DataBucketKey k = GetScopedBucketKeys();
 	k.key = bucket_name;
 
-	std::string bucket_remaining = DataBucket::GetDataRemaining(k);
+	std::string bucket_remaining = DataBucket::GetDataRemaining(&database, k);
 	if (!bucket_remaining.empty() && Strings::ToInt(bucket_remaining) > 0) {
 		return bucket_remaining;
 	}
@@ -8212,7 +8211,7 @@ void Mob::SetBucket(std::string bucket_name, std::string bucket_value, std::stri
 	k.expires = expiration;
 	k.value   = bucket_value;
 
-	DataBucket::SetData(k);
+	DataBucket::SetData(&database, k);
 }
 
 std::string Mob::GetMobDescription()
@@ -8783,12 +8782,12 @@ bool Mob::LoadDataBucketsCache()
 	}
 
 	if (IsBot()) {
-		DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Bot, {id});
+		DataBucket::BulkLoadEntitiesToCache(&database, DataBucketLoadType::Bot, {id});
 	}
 	else if (IsClient()) {
 		uint32 account_id = CastToClient()->AccountID();
-		DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Account, {account_id});
-		DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Client, {id});
+		DataBucket::BulkLoadEntitiesToCache(&database, DataBucketLoadType::Account, {account_id});
+		DataBucket::BulkLoadEntitiesToCache(&database, DataBucketLoadType::Client, {id});
 	}
 
 	return true;

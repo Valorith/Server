@@ -1,31 +1,13 @@
-#ifdef _WINDOWS
-#include <winsock2.h>
-#endif
-
-#include "misc_functions.h"
-#include "eqemu_logsys.h"
-#include "timer.h"
-
 #include "dbcore.h"
-#include "mysql_stmt.h"
 
-#include <fstream>
-#include <iostream>
-#include <mysqld_error.h>
-#include <string.h>
-#include "strings.h"
+#include "common/eqemu_logsys.h"
+#include "common/misc_functions.h"
+#include "common/mysql_stmt.h"
+#include "common/strings.h"
+#include "common/timer.h"
+#include "common/types.h"
 
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#define strncasecmp	_strnicmp
-#define strcasecmp	_stricmp
-#include <process.h>
-#else
-
-#include "unix.h"
-#include <pthread.h>
-
-#endif
+#include "mysqld_error.h"
 
 #ifdef _EQDEBUG
 #define DEBUG_MYSQL_QUERIES 0
@@ -258,8 +240,16 @@ bool DBcore::Open(uint32 *errnum, char *errbuf)
 	if (pCompress) {
 		flags |= CLIENT_COMPRESS;
 	}
+
+	//todo: we need to revisit this ssl handling later
+	//the whole connect code is ancient and tls is starting to come as a default requirement for many db setups
 	if (pSSL) {
 		flags |= CLIENT_SSL;
+	}
+	else {
+		int off = 0;
+		mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &off);
+		mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &off);
 	}
 	if (mysql_real_connect(mysql, pHost, pUser, pPassword, pDatabase, pPort, 0, flags)) {
 		pStatus = Connected;

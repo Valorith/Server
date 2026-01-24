@@ -16,13 +16,14 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "eqemu_logsys.h"
-#include "emu_opcodes.h"
 #include "opcodemgr.h"
 
+#include "common/emu_opcodes.h"
+#include "common/eqemu_logsys.h"
+
+#include <cstdio>
 #include <cstring>
 #include <map>
-#include <stdio.h>
 #include <string>
 
 OpcodeManager::OpcodeManager() {

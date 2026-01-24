@@ -1,4 +1,3 @@
-#include "global_define.h"
 #include <map>
 #include <string>
 

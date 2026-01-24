@@ -1,7 +1,7 @@
-#include "../client.h"
-#include "../../common/data_bucket.h"
-#include "../dialogue_window.h"
-#include "../../common/repositories/data_buckets_repository.h"
+#include "common/data_bucket.h"
+#include "common/repositories/data_buckets_repository.h"
+#include "zone/client.h"
+#include "zone/dialogue_window.h"
 
 void SendDataBucketsSubCommands(Client *c)
 {
@@ -50,7 +50,7 @@ void command_databuckets(Client *c, const Seperator *sep)
 			!npc_id &&
 			!bot_id
 		) {
-			if (!DataBucket::DeleteData(key_filter)) {
+			if (!DataBucket::DeleteData(&database, key_filter)) {
 				c->Message(
 					Chat::White,
 					fmt::format(
@@ -76,7 +76,7 @@ void command_databuckets(Client *c, const Seperator *sep)
 			k.npc_id       = npc_id;
 			k.bot_id       = bot_id;
 
-			if (!DataBucket::DeleteData(k)) {
+			if (!DataBucket::DeleteData(&database, k)) {
 				c->Message(
 					Chat::White,
 					fmt::format(
@@ -123,7 +123,7 @@ void command_databuckets(Client *c, const Seperator *sep)
 
 		const std::string& expires_string = expires == 0 ? "Never" : std::to_string(expires);
 
-		DataBucket::SetData(k);
+		DataBucket::SetData(&database, k);
 
 		c->Message(
 			Chat::White,

@@ -1,17 +1,35 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
+cmake_minimum_required(VERSION 3.20)
 
-SET(world_sources
+set(world_sources
     adventure.cpp
     adventure_manager.cpp
+    cli/cli_bots_disable.cpp
+    cli/cli_bots_enable.cpp
+    cli/cli_copy_character.cpp
+    cli/cli_database_concurrency.cpp
+    cli/cli_database_dump.cpp
+    cli/cli_database_get_schema.cpp
+    cli/cli_database_set_account_status.cpp
+    cli/cli_database_updates.cpp
+    cli/cli_database_version.cpp
+    cli/cli_etl_get_settings.cpp
+    cli/cli_mercs_disable.cpp
+    cli/cli_mercs_enable.cpp
+    cli/cli_test.cpp
+    cli/cli_test_colors.cpp
+    cli/cli_test_expansion.cpp
+    cli/cli_test_repository.cpp
+    cli/cli_test_repository_2.cpp
+    cli/cli_test_string_benchmark.cpp
+    cli/cli_version.cpp
     client.cpp
     cliententry.cpp
     clientlist.cpp
     console.cpp
-    ../common/data_bucket.cpp
     dynamic_zone.cpp
     dynamic_zone_manager.cpp
-    eql_config.cpp
     eqemu_api_world_data_service.cpp
+    eql_config.cpp
     launcher_link.cpp
     launcher_list.cpp
     lfplist.cpp
@@ -25,17 +43,17 @@ SET(world_sources
     web_interface.cpp
     web_interface_eqw.cpp
     wguild_mgr.cpp
-    world_event_scheduler.cpp
+    world_boot.cpp
     world_config.cpp
     world_console_connection.cpp
+    world_event_scheduler.cpp
     world_server_cli.cpp
     worlddb.cpp
-    world_boot.cpp
     zonelist.cpp
     zoneserver.cpp
-    )
+)
 
-SET(world_headers
+set(world_headers
     adventure.h
     adventure_manager.h
     adventure_template.h
@@ -43,11 +61,10 @@ SET(world_headers
     cliententry.h
     clientlist.h
     console.h
-    ../common/data_bucket.h
     dynamic_zone.h
     dynamic_zone_manager.h
-    eql_config.h
     eqemu_api_world_data_service.h
+    eql_config.h
     launcher_link.h
     launcher_list.h
     lfplist.h
@@ -61,27 +78,31 @@ SET(world_headers
     web_interface.h
     web_interface_eqw.h
     wguild_mgr.h
+    world_boot.h
     world_config.h
     world_console_connection.h
-    world_tcp_connection.h
-    world_server_cli.h
-    worlddb.h
-    world_boot.h
     world_event_scheduler.h
+    world_server_cli.h
+    world_tcp_connection.h
+    worlddb.h
     zonelist.h
     zoneserver.h
-    )
+)
 
-ADD_EXECUTABLE(world ${world_sources} ${world_headers})
+source_group("cli" REGULAR_EXPRESSION "cli/.*")
 
-INSTALL(TARGETS world RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+add_executable(world ${world_sources} ${world_headers})
 
-IF (WIN32 AND EQEMU_BUILD_PCH)
-    TARGET_PRECOMPILE_HEADERS(world PRIVATE ../common/pch/std-pch.h)
-ENDIF ()
+target_compile_definitions(world PRIVATE WORLD)
 
-ADD_DEFINITIONS(-DWORLD)
+target_link_libraries(world common)
+target_include_directories(world PRIVATE ..)
 
-TARGET_LINK_LIBRARIES(world ${SERVER_LIBS})
+if(WIN32 AND EQEMU_BUILD_PCH)
+    target_precompile_headers(world PRIVATE ../common/pch/std-pch.h)
+endif()
 
-SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+install(TARGETS world RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+set_property(TARGET world PROPERTY FOLDER executables/servers)
