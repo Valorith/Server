@@ -3594,18 +3594,6 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name);
-{
-	if (character_id < 0) {
-		return;
-	}
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name);
-{
-	if (character_id < 0) {
-		return;
-	}
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_name, float x, float y, float z)
@@ -3619,12 +3607,6 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 
 void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
-	if (character_id < 0) {
-		return;
-	}
-	if (character_id < 0) {
-		return;
-	}
 	if (character_id < 0) {
 		return;
 	}
@@ -3906,12 +3888,6 @@ void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyexpeditionid(static_cast<uint32>(expedition_id), safe_zone_short_name);
-{
-	if (expedition_id < 0) {
-		return;
-	}
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbyexpeditionid(static_cast<uint32>(expedition_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone_short_name, float x, float y, float z)
@@ -3925,9 +3901,6 @@ void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone
 
 void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
-	if (expedition_id < 0) {
-		return;
-	}
 	if (expedition_id < 0) {
 		return;
 	}
