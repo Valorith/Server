@@ -3768,18 +3768,29 @@ void Perl__crosszonemoveplayerbyguildid(uint32 guild_id, std::string zone_short_
 
 void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name)
 {
+	if (guild_id < 0) {
+		return;
+	}
+
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name, float x, float y, float z)
 {
+	if (guild_id < 0) {
+		return;
+	}
+
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name, x, y, z);
 }
 
 void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
+	if (guild_id < 0) {
+		return;
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name, x, y, z, heading);
 }
