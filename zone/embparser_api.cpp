@@ -35,6 +35,7 @@
 #include "zone/zone.h"
 
 #include <cctype>
+#include <limits>
 
 extern Zone      *zone;
 extern QueryServ *QServ;
@@ -2058,6 +2059,10 @@ bool Perl__IsTeleportSpell(uint16 spell_id)
 
 int Perl__IsTranslocateSpell(int spell_id)
 {
+	if (spell_id < 0 || spell_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return 0;
+	}
+
 	return IsTranslocateSpell(static_cast<uint16>(spell_id)) ? 1 : 0;
 }
 
@@ -5152,6 +5157,12 @@ std::string Perl__varlink(uint32 item_id, int16 charges, uint32 aug1, uint32 aug
 
 std::string Perl__varlink(int item_id, int charges, int aug1, int aug2, int aug3, int aug4, int aug5, int aug6, int attuned)
 {
+	if (item_id < 0 || charges < std::numeric_limits<int16>::min() ||
+		charges > std::numeric_limits<int16>::max() || aug1 < 0 || aug2 < 0 ||
+		aug3 < 0 || aug4 < 0 || aug5 < 0 || aug6 < 0) {
+		return std::string();
+	}
+
 	return quest_manager.varlink(
 		static_cast<uint32>(item_id),
 		static_cast<int16>(charges),
