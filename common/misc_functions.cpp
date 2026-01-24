@@ -16,77 +16,21 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-
-#include "../common/global_define.h"
 #include "misc_functions.h"
-#include <string.h>
-#include <time.h>
-#include "strings.h"
 
-#ifndef WIN32
-#include <netinet/in.h>
-#include <sys/socket.h>
+#include "common/platform/inet.h"
+#include "common/platform/platform.h"
+#include "common/seperator.h"
+#include "common/strings.h"
+#include "common/timer.h"
+#include "common/types.h"
+
+#include <ctime>
+
+#ifndef _WINDOWS
+#include <sys/stat.h>
+#include <netdb.h>
 #endif
-#include <iostream>
-#include <iomanip>
-#ifdef _WINDOWS
-	#include <io.h>
-#endif
-#include "../common/timer.h"
-#include "../common/seperator.h"
-
-#ifdef _WINDOWS
-	#include <windows.h>
-
-	#define snprintf	_snprintf
-	#define strncasecmp	_strnicmp
-	#define strcasecmp	_stricmp
-#else
-	#include <stdlib.h>
-	#include <ctype.h>
-	#include <stdarg.h>
-	#include <sys/types.h>
-	#include <sys/time.h>
-#ifdef FREEBSD //Timothy Whitman - January 7, 2003
-	#include <sys/socket.h>
-	#include <netinet/in.h>
-#endif
-	#include <sys/stat.h>
-	#include <unistd.h>
-	#include <netdb.h>
-	#include <errno.h>
-#endif
-
-void CoutTimestamp(bool ms) {
-	time_t rawtime;
-	struct tm* gmt_t;
-	time(&rawtime);
-	gmt_t = gmtime(&rawtime);
-
-	struct timeval read_time;
-	gettimeofday(&read_time,0);
-
-	std::cout << (gmt_t->tm_year + 1900) << "/" << std::setw(2) << std::setfill('0') << (gmt_t->tm_mon + 1) << "/" << std::setw(2) << std::setfill('0') << gmt_t->tm_mday << " " << std::setw(2) << std::setfill('0') << gmt_t->tm_hour << ":" << std::setw(2) << std::setfill('0') << gmt_t->tm_min << ":" << std::setw(2) << std::setfill('0') << gmt_t->tm_sec;
-	if (ms)
-		std::cout << "." << std::setw(3) << std::setfill('0') << (read_time.tv_usec / 1000);
-	std::cout << " GMT";
-}
-
-
-int32 filesize(FILE* fp) {
-#ifdef _WINDOWS
-	return _filelength(_fileno(fp));
-#else
-	struct stat file_stat;
-	fstat(fileno(fp), &file_stat);
-	return (int32) file_stat.st_size;
-/*	uint32 tmp = 0;
-	while (!feof(fp)) {
-		fseek(fp, tmp++, SEEK_SET);
-	}
-	return tmp;*/
-#endif
-}
 
 uint32 ResolveIP(const char* hostname, char* errbuf) {
 #ifdef _WINDOWS
@@ -147,7 +91,6 @@ InitWinsock::InitWinsock() {
 InitWinsock::~InitWinsock() {
 	WSACleanup();
 }
-
 #endif
 
 

@@ -1,11 +1,9 @@
-#ifndef EQEMU_CHARACTER_EVOLVING_ITEMS_REPOSITORY_H
-#define EQEMU_CHARACTER_EVOLVING_ITEMS_REPOSITORY_H
+#pragma once
 
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_character_evolving_items_repository.h"
+#include "common/repositories/base/base_character_evolving_items_repository.h"
 
-#include <boost/tuple/tuple_comparison.hpp>
+#include "common/database.h"
+#include "common/strings.h"
 
 class CharacterEvolvingItemsRepository: public BaseCharacterEvolvingItemsRepository {
 public:
@@ -62,5 +60,3 @@ public:
 		return UpdateOne(db, e);
 	}
 };
-
-#endif //EQEMU_CHARACTER_EVOLVING_ITEMS_REPOSITORY_H

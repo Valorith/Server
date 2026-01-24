@@ -19,38 +19,34 @@
 */
 
 #include "eqemu_logsys.h"
-#include "rulesys.h"
-#include "platform.h"
-#include "strings.h"
-#include "repositories/discord_webhooks_repository.h"
-#include "repositories/logsys_categories_repository.h"
-#include "termcolor/rang.hpp"
-#include "path_manager.h"
-#include "file.h"
 
+#include "common/file.h"
+#include "common/path_manager.h"
+#include "common/platform.h"
+#include "common/repositories/discord_webhooks_repository.h"
+#include "common/repositories/logsys_categories_repository.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "common/termcolor/rang.hpp"
+
+#include <ctime>
+#include <filesystem>
 #include <iostream>
 #include <string>
-#include <time.h>
 #include <sys/stat.h>
-
-std::ofstream process_log;
-
-#include <filesystem>
 
 #ifdef _WINDOWS
-#include <direct.h>
 #include <conio.h>
-#include <iostream>
-#include <dos.h>
-#include <windows.h>
+#include <direct.h>
 #include <process.h>
+#include <windows.h>
 #else
-
-#include <unistd.h>
 #include <sys/stat.h>
 #include <thread>
-
+#include <unistd.h>
 #endif
+
+std::ofstream process_log;
 
 /**
  * EQEmuLogSys Constructor

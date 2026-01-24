@@ -1,35 +1,36 @@
 #ifdef LUA_EQEMU
 
-#include "lua.hpp"
-#include <luabind/luabind.hpp>
+#include "lua_general.h"
 
-#include <sstream>
+#include "common/classes.h"
+#include "common/content/world_content_service.h"
+#include "common/data_bucket.h"
+#include "common/events/player_event_logs.h"
+#include "common/rulesys.h"
+#include "common/timer.h"
+#include "zone/dialogue_window.h"
+#include "zone/dynamic_zone.h"
+#include "zone/encounter.h"
+#include "zone/lua_client.h"
+#include "zone/lua_encounter.h"
+#include "zone/lua_entity_list.h"
+#include "zone/lua_expedition.h"
+#include "zone/lua_item.h"
+#include "zone/lua_iteminst.h"
+#include "zone/lua_npc.h"
+#include "zone/lua_spell.h"
+#include "zone/lua_zone.h"
+#include "zone/qglobals.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/questmgr.h"
+#include "zone/worldserver.h"
+#include "zone/zone.h"
+
+#include "lua.hpp"
+#include "luabind/luabind.hpp"
 #include <list>
 #include <map>
-
-#include "../common/content/world_content_service.h"
-#include "../common/timer.h"
-#include "../common/classes.h"
-#include "../common/rulesys.h"
-#include "lua_item.h"
-#include "lua_iteminst.h"
-#include "lua_client.h"
-#include "lua_npc.h"
-#include "lua_entity_list.h"
-#include "lua_expedition.h"
-#include "lua_spell.h"
-#include "lua_zone.h"
-#include "quest_parser_collection.h"
-#include "questmgr.h"
-#include "qglobals.h"
-#include "encounter.h"
-#include "lua_encounter.h"
-#include "../common/data_bucket.h"
-#include "dialogue_window.h"
-#include "dynamic_zone.h"
-#include "../common/events/player_event_logs.h"
-#include "worldserver.h"
-#include "zone.h"
+#include <sstream>
 
 struct Events { };
 struct Factions { };
@@ -933,23 +934,23 @@ std::string lua_get_rule(std::string rule_name) {
 }
 
 std::string lua_get_data(std::string bucket_key) {
-	return DataBucket::GetData(bucket_key);
+	return DataBucket::GetData(&database, bucket_key);
 }
 
 std::string lua_get_data_expires(std::string bucket_key) {
-	return DataBucket::GetDataExpires(bucket_key);
+	return DataBucket::GetDataExpires(&database, bucket_key);
 }
 
 void lua_set_data(std::string bucket_key, std::string bucket_value) {
-	DataBucket::SetData(bucket_key, bucket_value);
+	DataBucket::SetData(&database, bucket_key, bucket_value);
 }
 
 void lua_set_data(std::string bucket_key, std::string bucket_value, std::string expires_at) {
-	DataBucket::SetData(bucket_key, bucket_value, expires_at);
+	DataBucket::SetData(&database, bucket_key, bucket_value, expires_at);
 }
 
 bool lua_delete_data(std::string bucket_key) {
-	return DataBucket::DeleteData(bucket_key);
+	return DataBucket::DeleteData(&database, bucket_key);
 }
 
 std::string lua_get_char_name_by_id(uint32 char_id) {
@@ -2030,7 +2031,7 @@ void lua_rename(std::string name) {
 }
 
 std::string lua_get_data_remaining(std::string bucket_name) {
-	return DataBucket::GetDataRemaining(bucket_name);
+	return DataBucket::GetDataRemaining(&database, bucket_name);
 }
 
 const int lua_get_item_stat(uint32 item_id, std::string identifier) {
@@ -8082,4 +8083,4 @@ luabind::scope lua_register_exp_source() {
 		)];
 }
 
-#endif
+#endif // LUA_EQEMU

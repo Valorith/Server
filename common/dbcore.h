@@ -1,17 +1,10 @@
-#ifndef DBCORE_H
-#define DBCORE_H
+#pragma once
 
-#ifdef _WINDOWS
-#include <winsock2.h>
-#include <windows.h>
-#endif
+#include "common/mutex.h"
+#include "common/mysql_request_result.h"
+#include "common/types.h"
 
-#include "../common/mutex.h"
-#include "../common/mysql_request_result.h"
-#include "../common/types.h"
-
-#include <mysql.h>
-#include <string.h>
+#include "mysql.h"
 #include <mutex>
 
 #define CR_SERVER_GONE_ERROR    2006
@@ -102,6 +95,3 @@ private:
 		mysql_set_server_option(mysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
 	}
 };
-
-
-#endif

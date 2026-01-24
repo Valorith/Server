@@ -1,6 +1,9 @@
 #pragma once
-#include <functional>
+
 #include "event_loop.h"
+
+#include <cstring>
+#include <functional>
 
 namespace EQ {
 	class Timer

@@ -16,19 +16,14 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
+#include "eqtime.h"
+
+#include "common/eq_packet_structs.h"
+#include "common/eqemu_logsys.h"
+
 #include <fstream>
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
-#include "../common/eqtime.h"
-#include "../common/eq_packet_structs.h"
-#include <memory.h>
 #include <iostream>
-	/*#ifdef _CRTDBG_MAP_ALLOC
-		#undef new
-	#endif*/
-	/*#ifdef _CRTDBG_MAP_ALLOC
-		#define new new(_NORMAL_BLOCK, __FILE__, __LINE__)
-	#endif*/
+#include <memory.h>
 
 #define EQT_VERSION 1000
 

@@ -1,10 +1,6 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(perlbind LANGUAGES CXX)
-
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib" ".so" ".a")
-
-find_package(PerlLibs)
 
 set(PERLBIND_HEADERS
   include/perlbind/array.h

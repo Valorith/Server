@@ -1,9 +1,8 @@
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
-#include <iostream>
-#include <map>
+
 #include "database.h"
-#include "../common/strings.h"
+
+#include "common/eqemu_logsys.h"
+#include "common/strings.h"
 
 // this function does not delete the ServerPacket, so it must be handled at call site
 void QSDatabase::GeneralQueryReceive(ServerPacket *pack)
