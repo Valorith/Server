@@ -46,7 +46,7 @@ jobs:
           cd build/bin
           
           # Verify that critical binaries exist
-          REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory)
+          REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory loginserver import_client_files export_client_files)
           MISSING_BINARIES=()
           
           for binary in "${REQUIRED_BINARIES[@]}"; do
