@@ -46,10 +46,10 @@ jobs:
           cd build/bin
           
           # Verify that critical binaries exist
-          REQUIRED_BINARIES="world zone ucs queryserv eqlaunch shared_memory"
+          REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory)
           MISSING_BINARIES=""
           
-          for binary in $REQUIRED_BINARIES; do
+          for binary in "${REQUIRED_BINARIES[@]}"; do
             if [ ! -f "$binary" ]; then
               MISSING_BINARIES="$MISSING_BINARIES $binary"
             fi
@@ -80,8 +80,9 @@ jobs:
           fi
           
           FILE_COUNT=$(unzip -Z1 eqemu-server-linux-x64.zip | wc -l)
-          if [ "$FILE_COUNT" -lt 6 ]; then
-            echo "Error: Zip file contains fewer than expected files ($FILE_COUNT)"
+          EXPECTED_MIN_FILES=${#REQUIRED_BINARIES[@]}
+          if [ "$FILE_COUNT" -lt "$EXPECTED_MIN_FILES" ]; then
+            echo "Error: Zip file contains fewer than expected files ($FILE_COUNT, expected at least $EXPECTED_MIN_FILES)"
             unzip -l eqemu-server-linux-x64.zip
             exit 1
           fi
@@ -133,6 +134,8 @@ jobs:
         run: |
           $binDir = "build/bin/RelWithDebInfo"
           $outZip = "eqemu-server-windows-x64.zip"
+          # Minimum expected zip size (core binaries should be at least this size)
+          $minZipSize = 100KB
 
           # Verify that critical binaries exist
           $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe")
@@ -187,11 +190,10 @@ jobs:
             exit 1
           }
 
-          # Verify zip contains files (minimum 100KB - should contain at least the core binaries)
+          # Verify zip contains files (should contain at least the core binaries)
           $zipInfo = Get-Item $outZip
-          $minSize = 100KB
-          if ($zipInfo.Length -lt $minSize) {
-            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes, expected at least $minSize)"
+          if ($zipInfo.Length -lt $minZipSize) {
+            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes, expected at least $minZipSize)"
             exit 1
           }
 
