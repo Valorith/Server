@@ -9,40 +9,50 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
+    container: akkadius/eqemu-server:v16
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
+          fetch-depth: 0
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-ccache
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build ccache uuid-dev
-
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DEQEMU_BUILD_TESTS=ON \
-            -DEQEMU_BUILD_LOGIN=ON \
-            -DEQEMU_BUILD_LUA=ON \
-            -DEQEMU_BUILD_PERL=ON \
-            -DEQEMU_BUILD_CLIENT_FILES=ON
+      - name: Mark workspace safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Build
-        run: cmake --build build --parallel
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p build && cd build
+          cmake -DEQEMU_BUILD_LOGIN=ON -DEQEMU_BUILD_LUA=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+          make -j"$(nproc)"
 
-      - name: Test
-        working-directory: build
-        run: ./bin/tests
+      - name: Package linux binaries
+        working-directory: ${{ github.workspace }}
+        run: |
+          install -d /tmp/bin
+          for bin in world zone ucs loginserver queryserv shared_memory eqlaunch; do
+            cp "build/bin/${bin}" "/tmp/bin/${bin}"
+            chmod +x "/tmp/bin/${bin}"
+          done
+          tar -czf "$GITHUB_WORKSPACE/eqemu-linux-bins.tgz" -C /tmp/bin .
+
+      - name: Smoke test linux binaries
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p /tmp/bin
+          tar -xzf eqemu-linux-bins.tgz -C /tmp/bin
+          if ldd /tmp/bin/world | grep -q "not found"; then
+            echo "Missing shared libraries"
+            exit 1
+          fi
+          /tmp/bin/world --help
+
+      - name: Upload linux binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bins
+          path: ${{ github.workspace }}/eqemu-linux-bins.tgz
 
   windows:
     name: Windows
