@@ -44,14 +44,10 @@ jobs:
       - name: Package binaries
         run: |
           cd build/bin
-          zip -j eqemu-server-linux-x64.zip \
-            world zone ucs queryserv eqlaunch shared_memory \
-            loginserver import_client_files export_client_files \
-            2>/dev/null || true
-          # Include any additional binaries that exist
+          # Add all executable files (excluding tests)
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip -u eqemu-server-linux-x64.zip "$f" 2>/dev/null || true
+              zip -j eqemu-server-linux-x64.zip "$f" 2>/dev/null || true
             fi
           done
           ls -la eqemu-server-linux-x64.zip
