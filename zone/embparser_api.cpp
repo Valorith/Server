@@ -2057,13 +2057,13 @@ bool Perl__IsTeleportSpell(uint16 spell_id)
 	return IsTeleportSpell(spell_id);
 }
 
-int Perl__IsTranslocateSpell(int spell_id)
+bool Perl__IsTranslocateSpell(int spell_id)
 {
 	if (spell_id < 0 || spell_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		return 0;
+		return false;
 	}
 
-	return IsTranslocateSpell(static_cast<uint16>(spell_id)) ? 1 : 0;
+	return IsTranslocateSpell(static_cast<uint16>(spell_id));
 }
 
 bool Perl__IsGateSpell(uint16 spell_id)
