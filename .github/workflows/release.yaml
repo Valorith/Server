@@ -136,7 +136,7 @@ jobs:
           $minZipSize = 100KB
 
           # Verify that critical binaries exist
-          $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe")
+          $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe", "loginserver.exe", "import_client_files.exe", "export_client_files.exe")
           $missingBinaries = @()
           
           foreach ($binary in $requiredBinaries) {
@@ -240,6 +240,12 @@ jobs:
       - name: List artifacts
         run: ls -la artifacts/
 
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -250,3 +256,4 @@ jobs:
           files: |
             artifacts/eqemu-server-linux-x64.zip
             artifacts/eqemu-server-windows-x64.zip
+            artifacts/SHA256SUMS.txt
