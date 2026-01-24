@@ -6,7 +6,7 @@
 	the Free Software Foundation; version 2 of the License.
 
 	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY except by those people which sell it, which
+	but WITHOUT ANY WARRANTY except by those people who sell it, which
 	are required to give you total support for your newly bought product;
 	without even the implied warranty of MERCHANTABILITY or FITNESS FOR
 	A PARTICULAR PURPOSE. See the GNU General Public License for more details.
@@ -40,7 +40,7 @@ private:
 		InspectMessage_Struct incoming{};
 		InspectMessage_Struct stored{};
 
-		std::string long_text(300, 'A');
+		std::string long_text(sizeof(incoming.text) + 44, 'A');
 		strn0cpy(incoming.text, long_text.c_str(), sizeof(incoming.text));
 		strn0cpy(stored.text, incoming.text, sizeof(stored.text));
 
