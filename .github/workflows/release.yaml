@@ -79,7 +79,7 @@ jobs:
             exit 1
           fi
           
-          FILE_COUNT=$(unzip -l eqemu-server-linux-x64.zip | grep -v "Archive:" | grep -v "Length" | grep -v "---" | grep -v "files" | wc -l)
+          FILE_COUNT=$(unzip -Z1 eqemu-server-linux-x64.zip | wc -l)
           if [ "$FILE_COUNT" -lt 6 ]; then
             echo "Error: Zip file contains fewer than expected files ($FILE_COUNT)"
             unzip -l eqemu-server-linux-x64.zip
@@ -187,10 +187,11 @@ jobs:
             exit 1
           }
 
-          # Verify zip contains files
+          # Verify zip contains files (minimum 100KB - should contain at least the core binaries)
           $zipInfo = Get-Item $outZip
-          if ($zipInfo.Length -lt 1KB) {
-            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes)"
+          $minSize = 100KB
+          if ($zipInfo.Length -lt $minSize) {
+            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes, expected at least $minSize)"
             exit 1
           }
 
