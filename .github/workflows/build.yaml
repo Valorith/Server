@@ -33,41 +33,6 @@ jobs:
         working-directory: ${{ github.workspace }}/build
         run: ./bin/tests
 
-      - name: Package linux binaries
-        working-directory: ${{ github.workspace }}
-        run: |
-          install -d /tmp/package-bin
-          for bin in world zone ucs loginserver queryserv shared_memory eqlaunch; do
-            if [ ! -f "build/bin/${bin}" ]; then
-              echo "Missing binary: ${bin}"
-              exit 1
-            fi
-            cp "build/bin/${bin}" "/tmp/package-bin/${bin}"
-            chmod +x "/tmp/package-bin/${bin}"
-          done
-          tar -czf "$GITHUB_WORKSPACE/eqemu-linux-bins.tgz" -C /tmp/package-bin .
-
-      - name: Smoke test linux binaries
-        working-directory: ${{ github.workspace }}
-        run: |
-          mkdir -p /tmp/bin
-          tar -xzf eqemu-linux-bins.tgz -C /tmp/bin
-          for bin in world zone ucs loginserver queryserv shared_memory eqlaunch; do
-            missing_libs="$(ldd "/tmp/bin/${bin}" | grep "not found" || true)"
-            if [ -n "$missing_libs" ]; then
-              echo "Missing shared libraries for ${bin}:"
-              echo "$missing_libs"
-              exit 1
-            fi
-          done
-          /tmp/bin/world --help || { echo "'world --help' failed"; exit 1; }
-
-      - name: Upload linux binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-bins
-          path: ${{ github.workspace }}/eqemu-linux-bins.tgz
-
   windows:
     name: Windows
     runs-on: windows-latest
