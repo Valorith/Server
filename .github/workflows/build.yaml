@@ -32,6 +32,10 @@ jobs:
         run: |
           install -d /tmp/package-bin
           for bin in world zone ucs loginserver queryserv shared_memory eqlaunch; do
+            if [ ! -f "build/bin/${bin}" ]; then
+              echo "Missing binary: ${bin}"
+              exit 1
+            fi
             cp "build/bin/${bin}" "/tmp/package-bin/${bin}"
             chmod +x "/tmp/package-bin/${bin}"
           done
@@ -42,8 +46,10 @@ jobs:
         run: |
           mkdir -p /tmp/bin
           tar -xzf eqemu-linux-bins.tgz -C /tmp/bin
-          if ldd /tmp/bin/world | grep -q "not found"; then
-            echo "Missing shared libraries"
+          missing_libs="$(ldd /tmp/bin/world | grep "not found" || true)"
+          if [ -n "$missing_libs" ]; then
+            echo "Missing shared libraries:"
+            echo "$missing_libs"
             exit 1
           fi
           /tmp/bin/world --help
