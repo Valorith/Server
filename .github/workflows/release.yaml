@@ -47,7 +47,7 @@ jobs:
           # Add all executable files (excluding tests)
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip -j eqemu-server-linux-x64.zip "$f" 2>/dev/null || true
+              zip -uj eqemu-server-linux-x64.zip "$f" 2>/dev/null || true
             fi
           done
           ls -la eqemu-server-linux-x64.zip
