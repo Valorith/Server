@@ -52,7 +52,7 @@ jobs:
             echo "$missing_libs"
             exit 1
           fi
-          /tmp/bin/world --help
+          /tmp/bin/world --help || { echo "'world --help' failed"; exit 1; }
 
       - name: Upload linux binaries
         uses: actions/upload-artifact@v4
