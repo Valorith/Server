@@ -11,13 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: akkadius/eqemu-server:v16
-      # Run as root to allow GitHub Actions runner file command writes in the container.
+      # Run as root to avoid EACCES on GitHub Actions runner file command writes in the container.
       options: --user 0
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/build.yaml') }}
 
       - name: Mark workspace safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -26,7 +31,16 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           mkdir -p build && cd build
-          cmake -DEQEMU_BUILD_TESTS=ON -DEQEMU_BUILD_LOGIN=ON -DEQEMU_BUILD_LUA=ON -DEQEMU_BUILD_PERL=ON -DEQEMU_BUILD_CLIENT_FILES=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+          cmake \
+            -DEQEMU_BUILD_TESTS=ON \
+            -DEQEMU_BUILD_LOGIN=ON \
+            -DEQEMU_BUILD_LUA=ON \
+            -DEQEMU_BUILD_PERL=ON \
+            -DEQEMU_BUILD_CLIENT_FILES=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            ..
           make -j"$(nproc)"
 
       - name: Test
