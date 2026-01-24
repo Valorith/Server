@@ -61,15 +61,10 @@ jobs:
             exit 1
           fi
           
-          # Create zip with core binaries
-          zip -j eqemu-server-linux-x64.zip \
-            world zone ucs queryserv eqlaunch shared_memory \
-            loginserver import_client_files export_client_files
-          
-          # Include any additional binaries that exist
+          # Add all executable files (excluding tests)
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip -u eqemu-server-linux-x64.zip "$f"
+              zip -uj eqemu-server-linux-x64.zip "$f"
             fi
           done
           
