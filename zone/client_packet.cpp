@@ -9062,10 +9062,10 @@ void Client::Handle_OP_InspectAnswer(const EQApplicationPacket *app)
 		}
 	}
 
-	auto message         = (InspectMessage_Struct *) insr->text;
-	auto inspect_message = GetInspectMessage();
+	auto message          = reinterpret_cast<InspectMessage_Struct *>(insr->text);
+	auto &inspect_message = GetInspectMessage();
 
-	memcpy(&inspect_message, message, sizeof(InspectMessage_Struct));
+	strn0cpy(inspect_message.text, message->text, sizeof(inspect_message.text));
 	database.SaveCharacterInspectMessage(CharacterID(), &inspect_message);
 
 	if (
@@ -9084,9 +9084,9 @@ void Client::Handle_OP_InspectMessageUpdate(const EQApplicationPacket *app)
 		return;
 	}
 
-	InspectMessage_Struct* newmessage = (InspectMessage_Struct*)app->pBuffer;
-	InspectMessage_Struct& playermessage = GetInspectMessage();
-	memcpy(&playermessage, newmessage, sizeof(InspectMessage_Struct));
+	auto *newmessage       = reinterpret_cast<const InspectMessage_Struct *>(app->pBuffer);
+	auto &playermessage    = GetInspectMessage();
+	strn0cpy(playermessage.text, newmessage->text, sizeof(playermessage.text));
 	database.SaveCharacterInspectMessage(CharacterID(), &playermessage);
 }
 

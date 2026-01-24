@@ -1853,7 +1853,7 @@ void SharedDatabase::LoadCharacterInspectMessage(uint32 character_id, InspectMes
 		return;
 	}
 
-	memcpy(s, e.inspect_message.c_str(), sizeof(InspectMessage_Struct));
+	strn0cpy(s->text, e.inspect_message.c_str(), sizeof(s->text));
 }
 
 void SharedDatabase::SaveCharacterInspectMessage(uint32 character_id, const InspectMessage_Struct* s)

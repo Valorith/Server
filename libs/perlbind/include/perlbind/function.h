@@ -74,7 +74,7 @@ struct function : public function_base, function_traits<T>
 
   std::string get_signature() const override
   {
-    return util::type_name<target_t>::str();
+    return util::type_name<return_t>::str() + "(" + util::type_name<typename function::sig_t>::str() + ")";
   };
 
   bool is_compatible(xsub_stack& stack) const override
