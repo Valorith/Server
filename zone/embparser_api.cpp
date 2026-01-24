@@ -3701,18 +3701,29 @@ void Perl__crosszonemoveplayerbyraidid(uint32 raid_id, std::string zone_short_na
 
 void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name)
 {
+	if (raid_id < 0) {
+		return;
+	}
+
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name, float x, float y, float z)
 {
+	if (raid_id < 0) {
+		return;
+	}
+
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name, x, y, z);
 }
 
 void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
+	if (raid_id < 0) {
+		return;
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name, x, y, z, heading);
 }
