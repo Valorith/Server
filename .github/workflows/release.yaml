@@ -68,6 +68,7 @@ jobs:
             exit 1
           fi
           
+          ZIP_CONTENTS=""
           zip_add() {
             zip -uj eqemu-server-linux-x64.zip "$1"
           }
