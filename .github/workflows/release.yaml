@@ -49,6 +49,7 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Package binaries
+        shell: bash
         run: |
           cd build/bin
           
