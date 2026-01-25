@@ -3589,6 +3589,9 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 		Perl__debug("crosszonemoveplayerbycharid: negative character_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name);
 }
@@ -3599,6 +3602,9 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 		Perl__debug("crosszonemoveplayerbycharid: negative character_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name, x, y, z);
 }
@@ -3608,6 +3614,9 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 	if (character_id < 0) {
 		Perl__debug("crosszonemoveplayerbycharid: negative character_id");
 		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name, x, y, z, heading);
@@ -3657,6 +3666,9 @@ void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_nam
 		Perl__debug("crosszonemoveplayerbygroupid: negative group_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbygroupid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name);
 }
@@ -3667,6 +3679,9 @@ void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_nam
 		Perl__debug("crosszonemoveplayerbygroupid: negative group_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbygroupid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name, x, y, z);
 }
@@ -3676,6 +3691,9 @@ void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_nam
 	if (group_id < 0) {
 		Perl__debug("crosszonemoveplayerbygroupid: negative group_id");
 		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbygroupid: null zone_short_name");
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name, x, y, z, heading);
@@ -3725,6 +3743,9 @@ void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name)
 		Perl__debug("crosszonemoveplayerbyraidid: negative raid_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyraidid: null zone_short_name");
+	}
 
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name);
@@ -3736,6 +3757,9 @@ void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name,
 		Perl__debug("crosszonemoveplayerbyraidid: negative raid_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyraidid: null zone_short_name");
+	}
 
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name, x, y, z);
@@ -3746,6 +3770,9 @@ void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name,
 	if (raid_id < 0) {
 		Perl__debug("crosszonemoveplayerbyraidid: negative raid_id");
 		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyraidid: null zone_short_name");
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyraidid(static_cast<uint32>(raid_id), safe_zone_short_name, x, y, z, heading);
@@ -3795,6 +3822,9 @@ void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_nam
 		Perl__debug("crosszonemoveplayerbyguildid: negative guild_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyguildid: null zone_short_name");
+	}
 
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name);
@@ -3806,6 +3836,9 @@ void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_nam
 		Perl__debug("crosszonemoveplayerbyguildid: negative guild_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyguildid: null zone_short_name");
+	}
 
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name, x, y, z);
@@ -3816,6 +3849,9 @@ void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_nam
 	if (guild_id < 0) {
 		Perl__debug("crosszonemoveplayerbyguildid: negative guild_id");
 		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyguildid: null zone_short_name");
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name, x, y, z, heading);
@@ -3865,6 +3901,9 @@ void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone
 		Perl__debug("crosszonemoveplayerbyexpeditionid: negative expedition_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyexpeditionid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyexpeditionid(static_cast<uint32>(expedition_id), safe_zone_short_name);
 }
@@ -3875,6 +3914,9 @@ void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone
 		Perl__debug("crosszonemoveplayerbyexpeditionid: negative expedition_id");
 		return;
 	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyexpeditionid: null zone_short_name");
+	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyexpeditionid(static_cast<uint32>(expedition_id), safe_zone_short_name, x, y, z);
 }
@@ -3884,6 +3926,9 @@ void Perl__crosszonemoveplayerbyexpeditionid(int expedition_id, const char* zone
 	if (expedition_id < 0) {
 		Perl__debug("crosszonemoveplayerbyexpeditionid: negative expedition_id");
 		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyexpeditionid: null zone_short_name");
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyexpeditionid(static_cast<uint32>(expedition_id), safe_zone_short_name, x, y, z, heading);
@@ -5385,6 +5430,7 @@ std::string Perl__varlink(int item_id, int charges, int aug1, int aug2, int aug3
 	if (item_id < 0 || charges < std::numeric_limits<int16>::min() ||
 		charges > std::numeric_limits<int16>::max() || aug1 < 0 || aug2 < 0 ||
 		aug3 < 0 || aug4 < 0 || aug5 < 0 || aug6 < 0) {
+		Perl__debug("varlink: invalid item_id/charges/aug values");
 		return std::string();
 	}
 
