@@ -307,3 +307,52 @@ jobs:
             artifacts/eqemu-server-linux-x64.zip
             artifacts/eqemu-server-windows-x64.zip
             artifacts/SHA256SUMS.txt
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            exit 0
+          fi
+          LINUX_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-linux-x64.zip"
+          WINDOWS_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-windows-x64.zip"
+          SHA_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/SHA256SUMS.txt"
+          payload=$(jq -n \
+            --arg tag "$TAG_NAME" \
+            --arg repo "$REPO" \
+            --arg linux "$LINUX_URL" \
+            --arg windows "$WINDOWS_URL" \
+            --arg sha "$SHA_URL" \
+            --arg footer "Clumsy's World EQEmu Release" \
+            '{
+              embeds: [
+                {
+                  title: ("Release " + $tag),
+                  url: ("https://github.com/" + $repo + "/releases/tag/" + $tag),
+                  color: 5793266,
+                  thumbnail: { url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" },
+                  fields: [
+                    { name: "Linux (x64)", value: ("[Download](" + $linux + ")"), inline: true },
+                    { name: "Windows (x64)", value: ("[Download](" + $windows + ")"), inline: true },
+                    { name: "Checksums", value: ("[SHA256SUMS.txt](" + $sha + ")"), inline: false }
+                  ],
+                  footer: { text: $footer }
+                }
+              ]
+            }')
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+          http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL")
+          curl_status=$?
+          if [ $curl_status -ne 0 ]; then
+            echo "Failed to send Discord notification (curl exit $curl_status)."
+            exit 0
+          fi
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "Discord notification failed with HTTP $http_code: $(cat "$response_file")"
+            echo "Continuing without failing the release job."
+          fi
