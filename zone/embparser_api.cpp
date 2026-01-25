@@ -1670,6 +1670,9 @@ std::string Perl__saylink(std::string text)
 
 std::string Perl__saylink(const char* text)
 {
+	if (!text) {
+		Perl__debug("saylink: null text");
+	}
 	const std::string safe_text = text ? text : "";
 	return Saylink::Create(safe_text);
 }
@@ -1686,12 +1689,21 @@ std::string Perl__saylink(std::string text, bool silent, std::string link_name)
 
 std::string Perl__saylink(const char* text, int silent)
 {
+	if (!text) {
+		Perl__debug("saylink: null text");
+	}
 	const std::string safe_text = text ? text : "";
 	return Saylink::Create(safe_text, silent != 0);
 }
 
 std::string Perl__saylink(const char* text, int silent, const char* link_name)
 {
+	if (!text) {
+		Perl__debug("saylink: null text");
+	}
+	if (!link_name) {
+		Perl__debug("saylink: null link_name");
+	}
 	const std::string safe_text = text ? text : "";
 	const std::string safe_link_name = link_name ? link_name : "";
 	return Saylink::Create(safe_text, silent != 0, safe_link_name);
@@ -2808,6 +2820,9 @@ void Perl__SetContentFlag(std::string flag_name, bool enabled)
 
 void Perl__SetContentFlag(const char* flag_name, int enabled)
 {
+	if (!flag_name) {
+		Perl__debug("set_content_flag: null flag_name");
+	}
 	const std::string safe_flag_name = flag_name ? flag_name : "";
 	WorldContentService::Instance()->SetContentFlag(safe_flag_name, enabled != 0);
 	zone->ReloadContentFlags();
@@ -3989,6 +4004,14 @@ void Perl__crosszonemoveplayerbyname(std::string client_name, std::string zone_s
 
 void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_short_name)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveplayerbyname: null client_name");
+		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
+		return;
+	}
 	const std::string safe_client_name = client_name ? client_name : "";
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name);
@@ -3996,6 +4019,14 @@ void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_s
 
 void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_short_name, float x, float y, float z)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveplayerbyname: null client_name");
+		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
+		return;
+	}
 	const std::string safe_client_name = client_name ? client_name : "";
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name, x, y, z);
@@ -4003,6 +4034,14 @@ void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_s
 
 void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_short_name, float x, float y, float z, float heading)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveplayerbyname: null client_name");
+		return;
+	}
+	if (!zone_short_name) {
+		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
+		return;
+	}
 	const std::string safe_client_name = client_name ? client_name : "";
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name, x, y, z, heading);
@@ -4388,33 +4427,45 @@ void Perl__crosszonemoveinstancebyclientname(std::string client_name, uint16 ins
 
 void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instance_id)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveinstancebyclientname: null client_name");
+		return;
+	}
 	if (instance_id < 0 || instance_id > std::numeric_limits<uint16>::max()) {
 		Perl__debug("crosszonemoveinstancebyclientname: invalid instance_id");
 		return;
 	}
-	const std::string safe_client_name = client_name ? client_name : "";
+	const std::string safe_client_name = client_name;
 	const auto safe_instance_id = static_cast<uint16>(instance_id);
 	Perl__crosszonemoveinstancebyclientname(safe_client_name, safe_instance_id);
 }
 
 void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instance_id, float x, float y, float z)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveinstancebyclientname: null client_name");
+		return;
+	}
 	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
 		Perl__debug("crosszonemoveinstancebyclientname: invalid instance_id");
 		return;
 	}
 
-	const std::string safe_client_name = client_name ? client_name : "";
+	const std::string safe_client_name = client_name;
 	Perl__crosszonemoveinstancebyclientname(safe_client_name, static_cast<uint16>(instance_id), x, y, z);
 }
 
 void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instance_id, float x, float y, float z, float heading)
 {
+	if (!client_name) {
+		Perl__debug("crosszonemoveinstancebyclientname: null client_name");
+		return;
+	}
 	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
 		Perl__debug("crosszonemoveinstancebyclientname: invalid instance_id");
 		return;
 	}
-	const std::string safe_client_name = client_name ? client_name : "";
+	const std::string safe_client_name = client_name;
 	const auto safe_instance_id = static_cast<uint16>(instance_id);
 	Perl__crosszonemoveinstancebyclientname(safe_client_name, safe_instance_id, x, y, z, heading);
 }
