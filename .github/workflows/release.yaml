@@ -74,17 +74,20 @@ jobs:
           zip_add_unique() {
             local target_name
             target_name="$(basename "$1")"
-            if [ -f eqemu-server-linux-x64.zip ] && unzip -Z1 eqemu-server-linux-x64.zip | grep -qx "$target_name"; then
+            if [ -f eqemu-server-linux-x64.zip ] && printf '%s\n' "$ZIP_CONTENTS" | grep -qx "$target_name"; then
               echo "Skipping duplicate library: $target_name"
               return 0
             fi
             zip_add "$1"
+            ZIP_CONTENTS="${ZIP_CONTENTS}${target_name}"$'\n'
           }
 
           # Add all executable files (excluding tests)
+          ZIP_CONTENTS="$(unzip -Z1 eqemu-server-linux-x64.zip 2>/dev/null || true)"
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
               zip_add "$f"
+              ZIP_CONTENTS="${ZIP_CONTENTS}${f}"$'\n'
             fi
           done
 
