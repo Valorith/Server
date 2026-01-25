@@ -120,9 +120,9 @@ jobs:
 
           for vcpkg_dir in ../vcpkg_installed ../../vcpkg_installed; do
             if [ -d "$vcpkg_dir" ]; then
-              lib_count="$(find "$vcpkg_dir" -path "*/debug/*" -prune -o -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print | wc -l)"
+              lib_count="$(find "$vcpkg_dir" -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) ! -path "*/debug/*" -print | wc -l)"
               if [ "$lib_count" -gt 0 ]; then
-                find "$vcpkg_dir" -path "*/debug/*" -prune -o -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+                find "$vcpkg_dir" -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) ! -path "*/debug/*" -print0 | \
                   while IFS= read -r -d '' lib; do
                     zip_add_unique "$lib"
                   done
