@@ -6,7 +6,23 @@ on:
   pull_request:
 
 jobs:
+  # Check if we should skip this workflow run (e.g., if the same code already built successfully)
+  pre_job:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          # Skip if a successful run exists for the same tree hash (same file content)
+          skip_after_successful_duplicate: 'true'
+          # Never skip PR builds - we always want to see status before merge
+          do_not_skip: '["pull_request"]'
+
   linux:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: Linux
     runs-on: ubuntu-latest
     container:
@@ -57,6 +73,8 @@ jobs:
         run: ./bin/tests
 
   windows:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: Windows
     runs-on: windows-latest
     steps:
