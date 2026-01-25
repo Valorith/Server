@@ -2057,13 +2057,9 @@ bool Perl__IsTeleportSpell(uint16 spell_id)
 	return IsTeleportSpell(spell_id);
 }
 
-bool Perl__IsTranslocateSpell(int spell_id)
+bool Perl__IsTranslocateSpell(uint16 spell_id)
 {
-	if (spell_id < 0 || spell_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		return false;
-	}
-
-	return IsTranslocateSpell(static_cast<uint16>(spell_id));
+	return IsTranslocateSpell(spell_id);
 }
 
 bool Perl__IsGateSpell(uint16 spell_id)
@@ -3949,6 +3945,15 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 	);
 }
 
+void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id)
+{
+	if (character_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id));
+}
+
 void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id, float x, float y, float z)
 {
 	quest_manager.CrossZoneMove(
@@ -3960,6 +3965,15 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id, float x, float y, float z)
+{
+	if (character_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id), x, y, z);
 }
 
 void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id, float x, float y, float z, float heading)
@@ -3975,6 +3989,15 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 	);
 }
 
+void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id, float x, float y, float z, float heading)
+{
+	if (character_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id), x, y, z, heading);
+}
+
 void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id)
 {
 	quest_manager.CrossZoneMove(
@@ -3985,6 +4008,15 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id)
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id)
+{
+	if (group_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id));
 }
 
 void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, float x, float y, float z)
@@ -4000,6 +4032,15 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, f
 	);
 }
 
+void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id, float x, float y, float z)
+{
+	if (group_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id), x, y, z);
+}
+
 void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, float x, float y, float z, float heading)
 {
 	quest_manager.CrossZoneMove(
@@ -4013,6 +4054,15 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, f
 	);
 }
 
+void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id, float x, float y, float z, float heading)
+{
+	if (group_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id), x, y, z, heading);
+}
+
 void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id)
 {
 	quest_manager.CrossZoneMove(
@@ -4023,6 +4073,15 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id)
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id)
+{
+	if (raid_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id));
 }
 
 void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, float x, float y, float z)
@@ -4038,6 +4097,15 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, flo
 	);
 }
 
+void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id, float x, float y, float z)
+{
+	if (raid_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id), x, y, z);
+}
+
 void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, float x, float y, float z, float heading)
 {
 	quest_manager.CrossZoneMove(
@@ -4051,6 +4119,15 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, flo
 	);
 }
 
+void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id, float x, float y, float z, float heading)
+{
+	if (raid_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id), x, y, z, heading);
+}
+
 void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id)
 {
 	quest_manager.CrossZoneMove(
@@ -4061,6 +4138,15 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id)
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id)
+{
+	if (guild_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id));
 }
 
 void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, float x, float y, float z)
@@ -4076,6 +4162,15 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, f
 	);
 }
 
+void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id, float x, float y, float z)
+{
+	if (guild_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id), x, y, z);
+}
+
 void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, float x, float y, float z, float heading)
 {
 	quest_manager.CrossZoneMove(
@@ -4089,6 +4184,15 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, f
 	);
 }
 
+void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id, float x, float y, float z, float heading)
+{
+	if (guild_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id), x, y, z, heading);
+}
+
 void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id)
 {
 	quest_manager.CrossZoneMove(
@@ -4099,6 +4203,15 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id)
+{
+	if (expedition_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id));
 }
 
 void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id, float x, float y, float z)
@@ -4114,6 +4227,15 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 	);
 }
 
+void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id, float x, float y, float z)
+{
+	if (expedition_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id), x, y, z);
+}
+
 void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id, float x, float y, float z, float heading)
 {
 	quest_manager.CrossZoneMove(
@@ -4125,6 +4247,15 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
 		}
 	);
+}
+
+void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id, float x, float y, float z, float heading)
+{
+	if (expedition_id < 0 || instance_id < 0 ||
+		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		return;
+	}
+	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id), x, y, z, heading);
 }
 
 void Perl__crosszonemoveinstancebyclientname(std::string client_name, uint16 instance_id)
@@ -6740,21 +6871,21 @@ void perl_register_quest()
 	package.add("crosszonemoveplayerbyname", (void(*)(const char*, const char*))&Perl__crosszonemoveplayerbyname);
 	package.add("crosszonemoveplayerbyname", (void(*)(const char*, const char*, float, float, float))&Perl__crosszonemoveplayerbyname);
 	package.add("crosszonemoveplayerbyname", (void(*)(const char*, const char*, float, float, float, float))&Perl__crosszonemoveplayerbyname);
-	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebycharid);
-	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebycharid);
-	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebycharid);
-	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebygroupid);
-	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebygroupid);
-	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebygroupid);
-	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyraidid);
-	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyraidid);
-	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyraidid);
-	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyguildid);
-	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyguildid);
-	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyguildid);
-	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyexpeditionid);
-	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
-	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebycharid", (void(*)(int, int))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebycharid", (void(*)(int, int, float, float, float))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebycharid", (void(*)(int, int, float, float, float, float))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(int, int))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(int, int, float, float, float))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(int, int, float, float, float, float))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(int, int))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(int, int, float, float, float))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(int, int, float, float, float, float))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(int, int))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(int, int, float, float, float))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(int, int, float, float, float, float))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(int, int))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(int, int, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(int, int, float, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
 	package.add("crosszonemoveinstancebyclientname", (void(*)(const char*, int))&Perl__crosszonemoveinstancebyclientname);
 	package.add("crosszonemoveinstancebyclientname", (void(*)(const char*, int, float, float, float))&Perl__crosszonemoveinstancebyclientname);
 	package.add("crosszonemoveinstancebyclientname", (void(*)(const char*, int, float, float, float, float))&Perl__crosszonemoveinstancebyclientname);
