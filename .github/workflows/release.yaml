@@ -95,7 +95,7 @@ jobs:
             fi
           done
 
-          # Add shared libraries needed for runtime (from build/bin and build/libs)
+          # Add shared libraries needed for runtime (from build/bin, build/libs, and vcpkg_installed)
           bin_lib_count="$(find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
           if [ "$bin_lib_count" -gt 0 ]; then
             find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
@@ -117,6 +117,22 @@ jobs:
           else
             echo "No build/libs directory found; skipping shared library packaging"
           fi
+
+          for vcpkg_dir in ../vcpkg_installed ../../vcpkg_installed; do
+            if [ -d "$vcpkg_dir" ]; then
+              lib_count="$(find "$vcpkg_dir" -path "*/debug/*" -prune -o -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print | wc -l)"
+              if [ "$lib_count" -gt 0 ]; then
+                find "$vcpkg_dir" -path "*/debug/*" -prune -o -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+                  while IFS= read -r -d '' lib; do
+                    zip_add_unique "$lib"
+                  done
+              else
+                echo "No shared libraries found in $vcpkg_dir"
+              fi
+            else
+              echo "No $vcpkg_dir directory found; skipping vcpkg shared library packaging"
+            fi
+          done
           
           # Verify zip file was created and contains files
           if [ ! -f eqemu-server-linux-x64.zip ]; then
