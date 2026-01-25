@@ -68,21 +68,32 @@ jobs:
             exit 1
           fi
           
+          zip_add() {
+            zip -uj eqemu-server-linux-x64.zip "$1"
+          }
+
           # Add all executable files (excluding tests)
-          ZIP_CMD="zip -uj eqemu-server-linux-x64.zip"
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              $ZIP_CMD "$f"
+              zip_add "$f"
             fi
           done
 
           # Add shared libraries needed for runtime (from build/bin and build/libs)
+          bin_lib_count="$(find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
+          if [ "$bin_lib_count" -gt 0 ]; then
+            find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+              while IFS= read -r -d '' lib; do
+                zip_add "$lib"
+              done
+          fi
+
           if [ -d ../libs ]; then
             lib_count="$(find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
             if [ "$lib_count" -gt 0 ]; then
               find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
                 while IFS= read -r -d '' lib; do
-                  $ZIP_CMD "$lib"
+                  zip_add "$lib"
                 done
             else
               echo "No shared libraries found in build/libs"
