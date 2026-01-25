@@ -29,11 +29,6 @@ jobs:
         with:
           key: ${{ runner.os }}-release-ccache-${{ hashFiles('.github/workflows/release.yaml') }}
 
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y build-essential ninja-build ccache uuid-dev
-
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
