@@ -339,6 +339,7 @@ jobs:
               ]
             }')
           response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
           http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
             -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL")
           curl_status=$?
@@ -349,3 +350,4 @@ jobs:
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             echo "Discord notification failed with HTTP $http_code: $(cat "$response_file")"
           fi
+          exit 0
