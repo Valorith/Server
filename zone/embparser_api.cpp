@@ -1672,6 +1672,7 @@ std::string Perl__saylink(const char* text)
 {
 	if (!text) {
 		Perl__debug("saylink: null text");
+		return std::string();
 	}
 	const std::string safe_text = text ? text : "";
 	return Saylink::Create(safe_text);
@@ -1691,6 +1692,7 @@ std::string Perl__saylink(const char* text, int silent)
 {
 	if (!text) {
 		Perl__debug("saylink: null text");
+		return std::string();
 	}
 	const std::string safe_text = text ? text : "";
 	return Saylink::Create(safe_text, silent != 0);
@@ -1700,9 +1702,11 @@ std::string Perl__saylink(const char* text, int silent, const char* link_name)
 {
 	if (!text) {
 		Perl__debug("saylink: null text");
+		return std::string();
 	}
 	if (!link_name) {
 		Perl__debug("saylink: null link_name");
+		return std::string();
 	}
 	const std::string safe_text = text ? text : "";
 	const std::string safe_link_name = link_name ? link_name : "";
@@ -2822,6 +2826,7 @@ void Perl__SetContentFlag(const char* flag_name, int enabled)
 {
 	if (!flag_name) {
 		Perl__debug("set_content_flag: null flag_name");
+		return;
 	}
 	const std::string safe_flag_name = flag_name ? flag_name : "";
 	WorldContentService::Instance()->SetContentFlag(safe_flag_name, enabled != 0);
