@@ -29,6 +29,11 @@ jobs:
         with:
           key: ${{ runner.os }}-release-ccache-${{ hashFiles('.github/workflows/release.yaml') }}
 
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential ninja-build ccache uuid-dev
+
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
@@ -66,6 +71,13 @@ jobs:
           # Add all executable files (excluding tests)
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
+              zip -uj eqemu-server-linux-x64.zip "$f"
+            fi
+          done
+
+          # Add shared libraries needed for runtime
+          for f in *.so*; do
+            if [ -f "$f" ]; then
               zip -uj eqemu-server-linux-x64.zip "$f"
             fi
           done
