@@ -30,7 +30,7 @@ jobs:
             echo "ccache not found in container; installing."
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache
-            command -v ccache >/dev/null 2>&1
+            command -v ccache >/dev/null 2>&1 || { echo "ccache install failed"; exit 1; }
           fi
 
       - name: Mark workspace safe

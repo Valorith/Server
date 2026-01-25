@@ -83,11 +83,9 @@ jobs:
           }
 
           # Add all executable files (excluding tests)
-          ZIP_CONTENTS="$(unzip -Z1 eqemu-server-linux-x64.zip 2>/dev/null || true)"
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip_add "$f"
-              ZIP_CONTENTS="${ZIP_CONTENTS}${f}"$'\n'
+              zip_add_unique "$f"
             fi
           done
 
