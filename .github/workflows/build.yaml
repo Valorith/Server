@@ -9,6 +9,10 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
+    container:
+      image: akkadius/eqemu-server:v16
+      # Run as root to avoid EACCES on GitHub Actions runner file command writes in the container.
+      options: --user 0
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
@@ -18,30 +22,38 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ runner.os }}-ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/build.yaml') }}
 
-      - name: Install dependencies
+      - name: Ensure ccache installed
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build ccache uuid-dev
+          if ! command -v ccache >/dev/null 2>&1; then
+            echo "ccache not found in container; installing."
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache
+            command -v ccache >/dev/null 2>&1 || { echo "ccache install failed"; exit 1; }
+          fi
 
-      - name: Configure
+      - name: Mark workspace safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build
+        working-directory: ${{ github.workspace }}
         run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          mkdir -p build && cd build
+          cmake \
             -DEQEMU_BUILD_TESTS=ON \
             -DEQEMU_BUILD_LOGIN=ON \
             -DEQEMU_BUILD_LUA=ON \
             -DEQEMU_BUILD_PERL=ON \
-            -DEQEMU_BUILD_CLIENT_FILES=ON
-
-      - name: Build
-        run: cmake --build build --parallel
+            -DEQEMU_BUILD_CLIENT_FILES=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            ..
+          make -j"$(nproc)"
 
       - name: Test
-        working-directory: build
+        working-directory: ${{ github.workspace }}/build
         run: ./bin/tests
 
   windows:

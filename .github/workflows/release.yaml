@@ -11,11 +11,18 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    container:
+      image: akkadius/eqemu-server:v16
+      # Run as root to avoid EACCES on GitHub Actions runner file command writes in the container.
+      options: --user 0
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      - name: Mark workspace safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -24,8 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build ccache uuid-dev
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build ccache uuid-dev
 
       - name: Configure
         run: |
@@ -61,12 +68,50 @@ jobs:
             exit 1
           fi
           
+          ZIP_CONTENTS=""
+          zip_add() {
+            zip -uj eqemu-server-linux-x64.zip "$1"
+          }
+          zip_add_unique() {
+            local target_name
+            target_name="$(basename "$1")"
+            if [ -f eqemu-server-linux-x64.zip ] && printf '%s\n' "$ZIP_CONTENTS" | grep -qx "$target_name"; then
+              echo "Skipping duplicate library: $target_name"
+              return 0
+            fi
+            zip_add "$1"
+            ZIP_CONTENTS="${ZIP_CONTENTS}${target_name}"$'\n'
+          }
+
           # Add all executable files (excluding tests)
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip -uj eqemu-server-linux-x64.zip "$f"
+              zip_add_unique "$f"
             fi
           done
+
+          # Add shared libraries needed for runtime (from build/bin and build/libs)
+          bin_lib_count="$(find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
+          if [ "$bin_lib_count" -gt 0 ]; then
+            find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+              while IFS= read -r -d '' lib; do
+                zip_add_unique "$lib"
+              done
+          fi
+
+          if [ -d ../libs ]; then
+            lib_count="$(find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
+            if [ "$lib_count" -gt 0 ]; then
+              find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+                while IFS= read -r -d '' lib; do
+                  zip_add_unique "$lib"
+                done
+            else
+              echo "No shared libraries found in build/libs"
+            fi
+          else
+            echo "No build/libs directory found; skipping shared library packaging"
+          fi
           
           # Verify zip file was created and contains files
           if [ ! -f eqemu-server-linux-x64.zip ]; then
