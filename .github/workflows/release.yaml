@@ -75,12 +75,11 @@ jobs:
             fi
           done
 
-          # Add shared libraries needed for runtime
-          for f in *.so*; do
-            if [ -f "$f" ]; then
-              zip -uj eqemu-server-linux-x64.zip "$f"
-            fi
-          done
+          # Add shared libraries needed for runtime (from build/bin and build/libs)
+          find .. -type f -name "*.so*" \( -path "../bin/*" -o -path "../libs/*" \) -print0 | \
+            while IFS= read -r -d '' lib; do
+              zip -uj eqemu-server-linux-x64.zip "$lib"
+            done
           
           # Verify zip file was created and contains files
           if [ ! -f eqemu-server-linux-x64.zip ]; then
