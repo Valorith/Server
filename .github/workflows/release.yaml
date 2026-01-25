@@ -71,6 +71,15 @@ jobs:
           zip_add() {
             zip -uj eqemu-server-linux-x64.zip "$1"
           }
+          zip_add_unique() {
+            local target_name
+            target_name="$(basename "$1")"
+            if unzip -Z1 eqemu-server-linux-x64.zip | grep -qx "$target_name"; then
+              echo "Skipping duplicate library: $target_name"
+              return 0
+            fi
+            zip_add "$1"
+          }
 
           # Add all executable files (excluding tests)
           for f in *; do
@@ -84,7 +93,7 @@ jobs:
           if [ "$bin_lib_count" -gt 0 ]; then
             find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
               while IFS= read -r -d '' lib; do
-                zip_add "$lib"
+                zip_add_unique "$lib"
               done
           fi
 
@@ -93,7 +102,7 @@ jobs:
             if [ "$lib_count" -gt 0 ]; then
               find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
                 while IFS= read -r -d '' lib; do
-                  zip_add "$lib"
+                  zip_add_unique "$lib"
                 done
             else
               echo "No shared libraries found in build/libs"

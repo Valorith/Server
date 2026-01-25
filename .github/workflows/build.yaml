@@ -24,6 +24,13 @@ jobs:
         with:
           key: ${{ runner.os }}-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/build.yaml') }}
 
+      - name: Ensure ccache installed
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache
+          fi
+
       - name: Mark workspace safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
