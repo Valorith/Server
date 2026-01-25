@@ -11,11 +11,18 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    container:
+      image: akkadius/eqemu-server:v16
+      # Run as root to avoid EACCES on GitHub Actions runner file command writes in the container.
+      options: --user 0
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      - name: Mark workspace safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -24,8 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build ccache uuid-dev
+          apt-get update
+          apt-get install -y build-essential ninja-build ccache uuid-dev
 
       - name: Configure
         run: |
