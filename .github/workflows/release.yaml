@@ -302,3 +302,36 @@ jobs:
             artifacts/eqemu-server-linux-x64.zip
             artifacts/eqemu-server-windows-x64.zip
             artifacts/SHA256SUMS.txt
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            exit 0
+          fi
+          LINUX_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-linux-x64.zip"
+          WINDOWS_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-windows-x64.zip"
+          SHA_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/SHA256SUMS.txt"
+          payload=$(cat <<EOF
+          {
+            "embeds": [
+              {
+                "title": "Release ${TAG_NAME}",
+                "url": "https://github.com/${REPO}/releases/tag/${TAG_NAME}",
+                "color": 5793266,
+                "thumbnail": { "url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" },
+                "fields": [
+                  { "name": "Linux (x64)", "value": "[Download](${LINUX_URL})", "inline": true },
+                  { "name": "Windows (x64)", "value": "[Download](${WINDOWS_URL})", "inline": true },
+                  { "name": "Checksums", "value": "[SHA256SUMS.txt](${SHA_URL})", "inline": false }
+                ],
+                "footer": { "text": "Clumsy's World EQEmu Release" }
+              }
+            ]
+          }
+          EOF
+          )
+          curl -sS -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
