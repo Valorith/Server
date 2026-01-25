@@ -3659,20 +3659,6 @@ void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_nam
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name);
-{
-	if (group_id < 0) {
-		return;
-	}
-
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name);
-}
-{
-	if (group_id < 0) {
-		return;
-	}
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbygroupid(static_cast<uint32>(group_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_name, float x, float y, float z)
@@ -3686,12 +3672,6 @@ void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_nam
 
 void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
-	if (group_id < 0) {
-		return;
-	}
-	if (group_id < 0) {
-		return;
-	}
 	if (group_id < 0) {
 		return;
 	}
