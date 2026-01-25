@@ -69,7 +69,7 @@ jobs:
           fi
           
           # Add all executable files (excluding tests)
-          ZIP_CMD="zip -uj -j eqemu-server-linux-x64.zip"
+          ZIP_CMD="zip -uj eqemu-server-linux-x64.zip"
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
               $ZIP_CMD "$f"
@@ -77,10 +77,12 @@ jobs:
           done
 
           # Add shared libraries needed for runtime (from build/bin and build/libs)
-          find . ../libs -type f -name "*.so*" -print0 | \
-            while IFS= read -r -d '' lib; do
-              $ZIP_CMD "$lib"
-            done
+          if [ -d ../libs ]; then
+            find . ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+              while IFS= read -r -d '' lib; do
+                $ZIP_CMD "$lib"
+              done
+          fi
           
           # Verify zip file was created and contains files
           if [ ! -f eqemu-server-linux-x64.zip ]; then
