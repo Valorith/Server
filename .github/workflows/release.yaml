@@ -349,5 +349,5 @@ jobs:
           fi
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             echo "Discord notification failed with HTTP $http_code: $(cat "$response_file")"
+            echo "Continuing without failing the release job."
           fi
-          exit 0
