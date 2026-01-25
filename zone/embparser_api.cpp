@@ -1674,7 +1674,7 @@ std::string Perl__saylink(const char* text)
 		Perl__debug("saylink: null text");
 		return std::string();
 	}
-	const std::string safe_text = text ? text : "";
+	const std::string safe_text = text;
 	return Saylink::Create(safe_text);
 }
 
@@ -1694,7 +1694,7 @@ std::string Perl__saylink(const char* text, int silent)
 		Perl__debug("saylink: null text");
 		return std::string();
 	}
-	const std::string safe_text = text ? text : "";
+	const std::string safe_text = text;
 	return Saylink::Create(safe_text, silent != 0);
 }
 
@@ -1708,8 +1708,8 @@ std::string Perl__saylink(const char* text, int silent, const char* link_name)
 		Perl__debug("saylink: null link_name");
 		return std::string();
 	}
-	const std::string safe_text = text ? text : "";
-	const std::string safe_link_name = link_name ? link_name : "";
+	const std::string safe_text = text;
+	const std::string safe_link_name = link_name;
 	return Saylink::Create(safe_text, silent != 0, safe_link_name);
 }
 
@@ -2828,7 +2828,7 @@ void Perl__SetContentFlag(const char* flag_name, int enabled)
 		Perl__debug("set_content_flag: null flag_name");
 		return;
 	}
-	const std::string safe_flag_name = flag_name ? flag_name : "";
+	const std::string safe_flag_name = flag_name;
 	WorldContentService::Instance()->SetContentFlag(safe_flag_name, enabled != 0);
 	zone->ReloadContentFlags();
 }
@@ -4017,8 +4017,8 @@ void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_s
 		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
 		return;
 	}
-	const std::string safe_client_name = client_name ? client_name : "";
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
+	const std::string safe_client_name = client_name;
+	const std::string safe_zone_short_name = zone_short_name;
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name);
 }
 
@@ -4032,8 +4032,8 @@ void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_s
 		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
 		return;
 	}
-	const std::string safe_client_name = client_name ? client_name : "";
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
+	const std::string safe_client_name = client_name;
+	const std::string safe_zone_short_name = zone_short_name;
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name, x, y, z);
 }
 
@@ -4047,8 +4047,8 @@ void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_s
 		Perl__debug("crosszonemoveplayerbyname: null zone_short_name");
 		return;
 	}
-	const std::string safe_client_name = client_name ? client_name : "";
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
+	const std::string safe_client_name = client_name;
+	const std::string safe_zone_short_name = zone_short_name;
 	Perl__crosszonemoveplayerbyname(safe_client_name, safe_zone_short_name, x, y, z, heading);
 }
 
