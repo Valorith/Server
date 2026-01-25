@@ -27,6 +27,7 @@ jobs:
       - name: Ensure ccache installed
         run: |
           if ! command -v ccache >/dev/null 2>&1; then
+            echo "ccache not found in container; installing."
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache
           fi

@@ -74,7 +74,7 @@ jobs:
           zip_add_unique() {
             local target_name
             target_name="$(basename "$1")"
-            if unzip -Z1 eqemu-server-linux-x64.zip | grep -qx "$target_name"; then
+            if [ -f eqemu-server-linux-x64.zip ] && unzip -Z1 eqemu-server-linux-x64.zip | grep -qx "$target_name"; then
               echo "Skipping duplicate library: $target_name"
               return 0
             fi
