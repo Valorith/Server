@@ -31,8 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y build-essential ninja-build ccache uuid-dev
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build ccache uuid-dev
 
       - name: Configure
         run: |
@@ -69,16 +69,17 @@ jobs:
           fi
           
           # Add all executable files (excluding tests)
+          ZIP_CMD="zip -uj -j eqemu-server-linux-x64.zip"
           for f in *; do
             if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip -uj eqemu-server-linux-x64.zip "$f"
+              $ZIP_CMD "$f"
             fi
           done
 
           # Add shared libraries needed for runtime (from build/bin and build/libs)
-          find .. -type f -name "*.so*" \( -path "../bin/*" -o -path "../libs/*" \) -print0 | \
+          find . ../libs -type f -name "*.so*" -print0 | \
             while IFS= read -r -d '' lib; do
-              zip -uj eqemu-server-linux-x64.zip "$lib"
+              $ZIP_CMD "$lib"
             done
           
           # Verify zip file was created and contains files
