@@ -78,7 +78,7 @@ jobs:
 
           # Add shared libraries needed for runtime (from build/bin and build/libs)
           if [ -d ../libs ]; then
-            find . ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
+            find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
               while IFS= read -r -d '' lib; do
                 $ZIP_CMD "$lib"
               done
