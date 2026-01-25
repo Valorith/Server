@@ -3792,13 +3792,6 @@ void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_nam
 
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name);
-{
-	if (guild_id < 0) {
-		return;
-	}
-
-	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
-	Perl__crosszonemoveplayerbyguildid(static_cast<uint32>(guild_id), safe_zone_short_name);
 }
 
 void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name, float x, float y, float z)
@@ -3813,9 +3806,6 @@ void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_nam
 
 void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name, float x, float y, float z, float heading)
 {
-	if (guild_id < 0) {
-		return;
-	}
 	if (guild_id < 0) {
 		return;
 	}
@@ -4184,22 +4174,6 @@ void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instan
 	const auto safe_instance_id = static_cast<uint16>(instance_id);
 	Perl__crosszonemoveinstancebyclientname(safe_client_name, safe_instance_id);
 }
-{
-	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		return;
-	}
-
-	const std::string safe_client_name = client_name ? client_name : "";
-	Perl__crosszonemoveinstancebyclientname(safe_client_name, static_cast<uint16>(instance_id));
-}
-{
-	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		return;
-	}
-
-	const std::string safe_client_name = client_name ? client_name : "";
-	Perl__crosszonemoveinstancebyclientname(safe_client_name, static_cast<uint16>(instance_id));
-}
 
 void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instance_id, float x, float y, float z)
 {
@@ -4216,13 +4190,7 @@ void Perl__crosszonemoveinstancebyclientname(const char* client_name, int instan
 	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
 		return;
 	}
-	if (instance_id < 0 || instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		return;
-	}
 	const std::string safe_client_name = client_name ? client_name : "";
-	if (instance_id < 0 || instance_id > std::numeric_limits<uint16>::max()) {
-		return;
-	}
 	const auto safe_instance_id = static_cast<uint16>(instance_id);
 	Perl__crosszonemoveinstancebyclientname(safe_client_name, safe_instance_id, x, y, z, heading);
 }
