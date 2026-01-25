@@ -3591,6 +3591,7 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 	}
 	if (!zone_short_name) {
 		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
+		return;
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name);
@@ -3604,6 +3605,7 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 	}
 	if (!zone_short_name) {
 		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
+		return;
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name, x, y, z);
@@ -3617,6 +3619,7 @@ void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_
 	}
 	if (!zone_short_name) {
 		Perl__debug("crosszonemoveplayerbycharid: null zone_short_name");
+		return;
 	}
 	const std::string safe_zone_short_name = zone_short_name ? zone_short_name : "";
 	Perl__crosszonemoveplayerbycharid(static_cast<uint32>(character_id), safe_zone_short_name, x, y, z, heading);
