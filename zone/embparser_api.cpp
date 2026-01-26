@@ -41,6 +41,9 @@ extern Zone      *zone;
 extern QueryServ *QServ;
 extern WorldServer worldserver;
 
+void Perl__debug(const char* message);
+void Perl__debug(const char* message, int level);
+
 #ifdef EMBPERL_XS_CLASSES
 
 //Any creation of new Client objects gets the current quest Client
