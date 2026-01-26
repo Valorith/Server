@@ -4069,9 +4069,16 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 
 void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id)
 {
-	if (character_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebycharid: invalid ids");
+	if (character_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative character_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebycharid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id));
@@ -4092,9 +4099,16 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 
 void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id, float x, float y, float z)
 {
-	if (character_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebycharid: invalid ids");
+	if (character_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative character_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebycharid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id), x, y, z);
@@ -4115,9 +4129,16 @@ void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id
 
 void Perl__crosszonemoveinstancebycharid(int character_id, int instance_id, float x, float y, float z, float heading)
 {
-	if (character_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebycharid: invalid ids");
+	if (character_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative character_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebycharid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebycharid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebycharid(static_cast<uint32>(character_id), static_cast<uint16>(instance_id), x, y, z, heading);
@@ -4137,9 +4158,16 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id)
 
 void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id)
 {
-	if (group_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebygroupid: invalid ids");
+	if (group_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative group_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebygroupid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id));
@@ -4160,9 +4188,16 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, f
 
 void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id, float x, float y, float z)
 {
-	if (group_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebygroupid: invalid ids");
+	if (group_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative group_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebygroupid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id), x, y, z);
@@ -4183,9 +4218,16 @@ void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, f
 
 void Perl__crosszonemoveinstancebygroupid(int group_id, int instance_id, float x, float y, float z, float heading)
 {
-	if (group_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebygroupid: invalid ids");
+	if (group_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative group_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebygroupid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebygroupid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebygroupid(static_cast<uint32>(group_id), static_cast<uint16>(instance_id), x, y, z, heading);
@@ -4205,9 +4247,16 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id)
 
 void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id)
 {
-	if (raid_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyraidid: invalid ids");
+	if (raid_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative raid_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyraidid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id));
@@ -4228,9 +4277,16 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, flo
 
 void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id, float x, float y, float z)
 {
-	if (raid_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyraidid: invalid ids");
+	if (raid_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative raid_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyraidid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id), x, y, z);
@@ -4251,9 +4307,16 @@ void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, flo
 
 void Perl__crosszonemoveinstancebyraidid(int raid_id, int instance_id, float x, float y, float z, float heading)
 {
-	if (raid_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyraidid: invalid ids");
+	if (raid_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative raid_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyraidid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyraidid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyraidid(static_cast<uint32>(raid_id), static_cast<uint16>(instance_id), x, y, z, heading);
@@ -4273,9 +4336,16 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id)
 
 void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id)
 {
-	if (guild_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyguildid: invalid ids");
+	if (guild_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative guild_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyguildid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id));
@@ -4296,9 +4366,16 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, f
 
 void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id, float x, float y, float z)
 {
-	if (guild_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyguildid: invalid ids");
+	if (guild_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative guild_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyguildid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id), x, y, z);
@@ -4319,9 +4396,16 @@ void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, f
 
 void Perl__crosszonemoveinstancebyguildid(int guild_id, int instance_id, float x, float y, float z, float heading)
 {
-	if (guild_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyguildid: invalid ids");
+	if (guild_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative guild_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyguildid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyguildid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyguildid(static_cast<uint32>(guild_id), static_cast<uint16>(instance_id), x, y, z, heading);
@@ -4341,9 +4425,16 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 
 void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id)
 {
-	if (expedition_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyexpeditionid: invalid ids");
+	if (expedition_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative expedition_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id));
@@ -4364,9 +4455,16 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 
 void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id, float x, float y, float z)
 {
-	if (expedition_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyexpeditionid: invalid ids");
+	if (expedition_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative expedition_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id), x, y, z);
@@ -4387,9 +4485,16 @@ void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 inst
 
 void Perl__crosszonemoveinstancebyexpeditionid(int expedition_id, int instance_id, float x, float y, float z, float heading)
 {
-	if (expedition_id < 0 || instance_id < 0 ||
-		instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
-		Perl__debug("crosszonemoveinstancebyexpeditionid: invalid ids");
+	if (expedition_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative expedition_id");
+		return;
+	}
+	if (instance_id < 0) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: negative instance_id");
+		return;
+	}
+	if (instance_id > static_cast<int>(std::numeric_limits<uint16>::max())) {
+		Perl__debug("crosszonemoveinstancebyexpeditionid: instance_id exceeds uint16");
 		return;
 	}
 	Perl__crosszonemoveinstancebyexpeditionid(static_cast<uint32>(expedition_id), static_cast<uint16>(instance_id), x, y, z, heading);
