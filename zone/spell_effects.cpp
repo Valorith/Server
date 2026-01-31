@@ -4693,6 +4693,11 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			if (!IsValidSpell(buffs[slot].spellid))
 				return false;
 			const auto& spell = spells[buffs[slot].spellid];
+			// Restore nimbus (visual aura) effect before processing individual spell effects,
+			// mirroring Client::ReapplyBuff and bot buff restoration behavior.
+			if (spell.nimbus_effect) {
+				SetNimbusEffect(spell.nimbus_effect);
+			}
 			for (int i = 0; i < EFFECT_COUNT; i++) {
 				switch (spell.effect_id[i]) {
 				case SpellEffect::Illusion:
