@@ -4693,6 +4693,45 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			client->QueuePacket(action_packet);
 			safe_delete(action_packet);
 			client->ReapplyBuff(slot, true);
+		} else if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
+			// Reapply visual/state effects for client pets only
+			// All other non-client mobs (NPCs, bots, mercs) use normal dispel mechanic
+			if (!IsValidSpell(buffs[slot].spellid))
+				return;
+			const auto& spell = spells[buffs[slot].spellid];
+			if (IsValidSpell(buffs[slot].spellid)) {
+				const auto &spell = spells[buffs[slot].spellid];
+				// Restore nimbus (visual aura) effect before processing individual spell effects,
+				// mirroring Client::ReapplyBuff and bot buff restoration behavior.
+				if (spell.nimbus_effect) {
+					SetNimbusEffect(spell.nimbus_effect);
+				}
+				for (int i = 0; i < EFFECT_COUNT; i++) {
+					switch (spell.effect_id[i]) {
+					case SpellEffect::Illusion:
+						ApplySpellEffectIllusion(spell.id, entity_list.GetMobID(buffs[slot].casterid), slot, spell.base_value[i], spell.limit_value[i], spell.max_value[i]);
+						break;
+					case SpellEffect::Silence:
+						Silence(true);
+						break;
+					case SpellEffect::Amnesia:
+						Amnesia(true);
+						break;
+					case SpellEffect::AddMeleeProc:
+					case SpellEffect::WeaponProc:
+						AddProcToWeapon(GetProcID(buffs[slot].spellid, i), false, 100 + spell.limit_value[i], buffs[slot].spellid, buffs[slot].casterlevel, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::MELEE_PROC));
+						break;
+					case SpellEffect::DefensiveProc:
+						AddDefensiveProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::DEFENSIVE_PROC));
+						break;
+					case SpellEffect::RangedProc:
+						AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
+						break;
+					default:
+						break;
+					}
+				}
+			}
 		}
 	} else {
 		buffs[slot].spellid = SPELL_UNKNOWN;
