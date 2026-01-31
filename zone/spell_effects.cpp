@@ -4688,8 +4688,9 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			client->QueuePacket(action_packet);
 			safe_delete(action_packet);
 			client->ReapplyBuff(slot, true);
-		} else {
-			// Reapply visual/state effects for non-client mobs (pets, NPCs, bots)
+		} else if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
+			// Reapply visual/state effects for client pets only
+			// All other non-client mobs (NPCs, bots, mercs) use normal dispel mechanic
 			if (!IsValidSpell(buffs[slot].spellid))
 				return;
 			const auto& spell = spells[buffs[slot].spellid];
