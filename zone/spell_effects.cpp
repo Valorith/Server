@@ -4721,6 +4721,7 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 					break;
 				case SpellEffect::Levitate:
 				{
+					// Restore levitate visual effects after suppression expires
 					if (!zone->CanLevitate()) {
 						SendAppearancePacket(AppearanceType::FlyMode, 0);
 						BuffFadeByEffect(SpellEffect::Levitate);
