@@ -4270,6 +4270,9 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 		}
 	}
 
+	// Skip effect removal for suppressed slots — effects were already removed
+	// during initial suppression, and accessing spells[SPELL_SUPPRESSED] would be OOB.
+	if (buffs[slot].spellid != SPELL_SUPPRESSED)
 	for (int i=0; i < EFFECT_COUNT; i++)
 	{
 		if(IsBlankSpellEffect(buffs[slot].spellid, i))
