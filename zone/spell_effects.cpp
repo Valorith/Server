@@ -3812,7 +3812,9 @@ void Mob::BuffProcess()
 	{
 		if (IsValidOrSuppressedSpell(buffs[buffs_i].spellid))
 		{
-			DoBuffTic(buffs[buffs_i], buffs_i, entity_list.GetMob(buffs[buffs_i].casterid));
+			if (buffs[buffs_i].spellid != SPELL_SUPPRESSED) {
+				DoBuffTic(buffs[buffs_i], buffs_i, entity_list.GetMob(buffs[buffs_i].casterid));
+			}
 			// If the Mob died during DoBuffTic, then the buff we are currently processing will have been removed
 			if(!IsValidOrSuppressedSpell(buffs[buffs_i].spellid)) {
 				continue;
