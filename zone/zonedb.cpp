@@ -2928,6 +2928,7 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		e.caston_z       = buffs[slot_id].caston_z;
 		e.ExtraDIChance  = buffs[slot_id].ExtraDIChance;
 		e.instrument_mod = buffs[slot_id].instrument_mod;
+		e.suppressed     = suppressed ? 1 : 0;
 
 		v.emplace_back(e);
 	}
@@ -2999,14 +3000,26 @@ void ZoneDatabase::LoadBuffs(Client *client)
 		buffs[e.slot_id].virus_spread_time = 0;
 		buffs[e.slot_id].UpdateClient      = false;
 		buffs[e.slot_id].instrument_mod    = e.instrument_mod;
-		buffs[e.slot_id].suppressedid            = 0;
-		buffs[e.slot_id].suppressedticsremaining = -1;
+
+		if (e.suppressed) {
+			buffs[e.slot_id].suppressedid            = e.spell_id;
+			buffs[e.slot_id].suppressedticsremaining = e.ticsremaining;
+			buffs[e.slot_id].spellid                 = SPELL_SUPPRESSED;
+			buffs[e.slot_id].ticsremaining           = 0;
+		} else {
+			buffs[e.slot_id].suppressedid            = 0;
+			buffs[e.slot_id].suppressedticsremaining = -1;
+		}
 	}
 
 	// We load up to the most our client supports
 	max_buff_slots = EQ::spells::StaticLookup(client->ClientVersion())->LongBuffs;
 
 	for (int slot_id = 0; slot_id < max_buff_slots; ++slot_id) {
+		if (buffs[slot_id].spellid == SPELL_SUPPRESSED) {
+			continue;
+		}
+
 		if (!IsValidSpell(buffs[slot_id].spellid)) {
 			continue;
 		}
