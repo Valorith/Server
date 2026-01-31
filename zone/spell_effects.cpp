@@ -4691,7 +4691,7 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 		} else {
 			// Reapply visual/state effects for non-client mobs (pets, NPCs, bots)
 			if (!IsValidSpell(buffs[slot].spellid))
-				return false;
+				return;
 			const auto& spell = spells[buffs[slot].spellid];
 			// Restore nimbus (visual aura) effect before processing individual spell effects,
 			// mirroring Client::ReapplyBuff and bot buff restoration behavior.
