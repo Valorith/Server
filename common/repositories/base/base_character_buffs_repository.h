@@ -36,6 +36,7 @@ public:
 		int32_t     caston_z;
 		int32_t     ExtraDIChance;
 		int32_t     instrument_mod;
+		uint8_t     suppressed;
 	};
 
 	static std::string PrimaryKey()
@@ -63,6 +64,7 @@ public:
 			"caston_z",
 			"ExtraDIChance",
 			"instrument_mod",
+			"suppressed",
 		};
 	}
 
@@ -86,6 +88,7 @@ public:
 			"caston_z",
 			"ExtraDIChance",
 			"instrument_mod",
+			"suppressed",
 		};
 	}
 
@@ -143,6 +146,7 @@ public:
 		e.caston_z       = 0;
 		e.ExtraDIChance  = 0;
 		e.instrument_mod = 10;
+		e.suppressed     = 0;
 
 		return e;
 	}
@@ -196,6 +200,7 @@ public:
 			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
 			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
 			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
+			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
 
 			return e;
 		}
@@ -246,6 +251,7 @@ public:
 		v.push_back(columns[14] + " = " + std::to_string(e.caston_z));
 		v.push_back(columns[15] + " = " + std::to_string(e.ExtraDIChance));
 		v.push_back(columns[16] + " = " + std::to_string(e.instrument_mod));
+		v.push_back(columns[17] + " = " + std::to_string(e.suppressed));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -284,6 +290,7 @@ public:
 		v.push_back(std::to_string(e.caston_z));
 		v.push_back(std::to_string(e.ExtraDIChance));
 		v.push_back(std::to_string(e.instrument_mod));
+		v.push_back(std::to_string(e.suppressed));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -330,6 +337,7 @@ public:
 			v.push_back(std::to_string(e.caston_z));
 			v.push_back(std::to_string(e.ExtraDIChance));
 			v.push_back(std::to_string(e.instrument_mod));
+			v.push_back(std::to_string(e.suppressed));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
@@ -380,6 +388,7 @@ public:
 			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
 			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
 			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
+			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -421,6 +430,7 @@ public:
 			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
 			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
 			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
+			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -512,6 +522,7 @@ public:
 		v.push_back(std::to_string(e.caston_z));
 		v.push_back(std::to_string(e.ExtraDIChance));
 		v.push_back(std::to_string(e.instrument_mod));
+		v.push_back(std::to_string(e.suppressed));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -551,6 +562,7 @@ public:
 			v.push_back(std::to_string(e.caston_z));
 			v.push_back(std::to_string(e.ExtraDIChance));
 			v.push_back(std::to_string(e.instrument_mod));
+			v.push_back(std::to_string(e.suppressed));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
