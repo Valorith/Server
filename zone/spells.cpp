@@ -4843,7 +4843,20 @@ void Mob::BuffFadeNonPersistDeath()
 	int buff_count = GetMaxTotalSlots();
 	for (int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
 		auto current_spell_id = buffs[buff_slot].spellid;
-		if (
+		if (current_spell_id == SPELL_SUPPRESSED) {
+			auto suppressed_id = buffs[buff_slot].suppressedid;
+			if (
+				IsValidSpell(suppressed_id) &&
+				!IsPersistDeathSpell(suppressed_id) &&
+				!HasPersistDeathIllusion(suppressed_id)
+			) {
+				buffs[buff_slot].spellid = SPELL_UNKNOWN;
+				buffs[buff_slot].suppressedid = 0;
+				buffs[buff_slot].suppressedticsremaining = -1;
+				recalc_bonus = true;
+			}
+		}
+		else if (
 			IsValidSpell(current_spell_id) &&
 			!IsPersistDeathSpell(current_spell_id) &&
 			!HasPersistDeathIllusion(current_spell_id)
@@ -4863,7 +4876,15 @@ void Mob::BuffFadeBeneficial() {
 	int buff_count = GetMaxTotalSlots();
 	for (int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
 		auto current_spell_id = buffs[buff_slot].spellid;
-		if (
+		if (current_spell_id == SPELL_SUPPRESSED) {
+			if (IsValidSpell(buffs[buff_slot].suppressedid) && IsBeneficialSpell(buffs[buff_slot].suppressedid)) {
+				buffs[buff_slot].spellid = SPELL_UNKNOWN;
+				buffs[buff_slot].suppressedid = 0;
+				buffs[buff_slot].suppressedticsremaining = -1;
+				recalc_bonus = true;
+			}
+		}
+		else if (
 			IsValidSpell(current_spell_id) &&
 			IsBeneficialSpell(current_spell_id)
 		) {
@@ -4882,7 +4903,15 @@ void Mob::BuffFadeDetrimental() {
 	int buff_count = GetMaxTotalSlots();
 	for (int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
 		auto current_spell_id = buffs[buff_slot].spellid;
-		if (
+		if (current_spell_id == SPELL_SUPPRESSED) {
+			if (IsValidSpell(buffs[buff_slot].suppressedid) && IsDetrimentalSpell(buffs[buff_slot].suppressedid)) {
+				buffs[buff_slot].spellid = SPELL_UNKNOWN;
+				buffs[buff_slot].suppressedid = 0;
+				buffs[buff_slot].suppressedticsremaining = -1;
+				recalc_bonus = true;
+			}
+		}
+		else if (
 			IsValidSpell(current_spell_id) &&
 			IsDetrimentalSpell(current_spell_id)
 		) {
@@ -4982,7 +5011,15 @@ void Mob::BuffFadeByEffect(int effect_id, int slot_to_skip)
 	int buff_count = GetMaxTotalSlots();
 	for(int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
 		auto current_spell_id = buffs[buff_slot].spellid;
-		if (
+		if (current_spell_id == SPELL_SUPPRESSED && buff_slot != slot_to_skip) {
+			if (IsValidSpell(buffs[buff_slot].suppressedid) && IsEffectInSpell(buffs[buff_slot].suppressedid, effect_id)) {
+				buffs[buff_slot].spellid = SPELL_UNKNOWN;
+				buffs[buff_slot].suppressedid = 0;
+				buffs[buff_slot].suppressedticsremaining = -1;
+				recalc_bonus = true;
+			}
+		}
+		else if (
 			IsValidSpell(current_spell_id) &&
 			IsEffectInSpell(current_spell_id, effect_id) &&
 			buff_slot != slot_to_skip
