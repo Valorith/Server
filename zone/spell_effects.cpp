@@ -4719,6 +4719,20 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 				case SpellEffect::RangedProc:
 					AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
 					break;
+				case SpellEffect::Levitate:
+				{
+					if (!zone->CanLevitate()) {
+						SendAppearancePacket(AppearanceType::FlyMode, 0);
+						BuffFadeByEffect(SpellEffect::Levitate);
+					} else {
+						if (spell.limit_value[i] == 1) {
+							SendAppearancePacket(AppearanceType::FlyMode, EQ::constants::GravityBehavior::LevitateWhileRunning);
+						} else {
+							SendAppearancePacket(AppearanceType::FlyMode, EQ::constants::GravityBehavior::Levitating);
+						}
+					}
+					break;
+				}
 				default:
 					break;
 				}
