@@ -4691,7 +4691,7 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 		} else {
 			// Reapply visual/state effects for non-client mobs (pets, NPCs, bots)
 			if (!IsValidSpell(buffs[slot].spellid))
-				return false;
+				return;
 			const auto& spell = spells[buffs[slot].spellid];
 			for (int i = 0; i < EFFECT_COUNT; i++) {
 				switch (spell.effect_id[i]) {
