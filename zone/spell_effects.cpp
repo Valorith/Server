@@ -4709,6 +4709,9 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 				case SpellEffect::Amnesia:
 					Amnesia(true);
 					break;
+				case SpellEffect::DivineAura:
+					invulnerable = true;
+					break;
 				case SpellEffect::AddMeleeProc:
 				case SpellEffect::WeaponProc:
 					AddProcToWeapon(GetProcID(buffs[slot].spellid, i), false, 100 + spell.limit_value[i], buffs[slot].spellid, buffs[slot].casterlevel, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::MELEE_PROC));
