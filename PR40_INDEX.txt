@@ -1,0 +1,132 @@
+================================================================================
+                   PR #40 RESOLUTION GUIDE - FILE INDEX
+================================================================================
+
+Total Documentation: 4 files, 566 lines, ~14.5 KB
+
+--------------------------------------------------------------------------------
+FILE OVERVIEW:
+--------------------------------------------------------------------------------
+
+1. README_PR40.md (150 lines, 3.5 KB) ⭐ START HERE
+   Purpose: Main overview and entry point
+   Contents:
+   - Problem summary
+   - Quick links to all guides
+   - Super quick 5-command solution
+   - Technical details
+   - Impact analysis
+   Audience: Everyone
+   Time to read: 3 minutes
+
+2. QUICK_REBASE_GUIDE.md (117 lines, 2.5 KB) ⚡ FASTEST
+   Purpose: Immediate action guide
+   Contents:
+   - 5 commands to copy/paste
+   - Expected output at each step
+   - One-liner alternative
+   - Quick troubleshooting
+   Audience: Experienced git users
+   Time to execute: 2 minutes
+
+3. REBASE_INSTRUCTIONS.md (142 lines, 4.5 KB) 📚 COMPREHENSIVE
+   Purpose: Detailed step-by-step guide
+   Contents:
+   - Complete instructions
+   - 3 different approaches (manual, CLI, cherry-pick)
+   - Full troubleshooting section
+   - Verification steps
+   - Safety notes
+   Audience: Those wanting full context
+   Time to read: 8 minutes
+
+4. REBASE_VISUAL_GUIDE.md (157 lines, 4.1 KB) 🎨 VISUAL
+   Purpose: Visual understanding
+   Contents:
+   - Before/after commit graphs
+   - ASCII diagrams
+   - Conflict code with annotations
+   - Visual step-by-step
+   Audience: Visual learners
+   Time to read: 10 minutes
+
+--------------------------------------------------------------------------------
+USAGE RECOMMENDATIONS:
+--------------------------------------------------------------------------------
+
+SCENARIO 1: "Just fix it quickly"
+→ Open: QUICK_REBASE_GUIDE.md
+→ Run the 5 commands
+→ Done in 2 minutes
+
+SCENARIO 2: "I want to understand what I'm doing"
+→ Start: README_PR40.md (overview)
+→ Then: REBASE_INSTRUCTIONS.md (details)
+→ Execute with confidence
+
+SCENARIO 3: "I'm a visual learner"
+→ Start: README_PR40.md (context)
+→ Then: REBASE_VISUAL_GUIDE.md (diagrams)
+→ Follow visual steps
+
+SCENARIO 4: "I've never rebased before"
+→ Read all 4 files in order
+→ Start with README_PR40.md
+→ Total time: 20 minutes
+
+--------------------------------------------------------------------------------
+KEY INFORMATION:
+--------------------------------------------------------------------------------
+
+Problem: PR #40 has merge conflicts
+Cause: Base branch updated with features from your PR
+Solution: Rebase to remove redundant commits
+
+Current State:
+- Branch: copilot/sub-pr-39 @ 6e2a9a4
+- Base: fix/buff-suppression-pet-restore @ b19503a
+- Status: Conflicting (4 commits)
+
+Target State:
+- Branch: copilot/sub-pr-39 @ f94cb8d (after rebase)
+- Base: fix/buff-suppression-pet-restore @ b19503a
+- Status: Clean (2 commits)
+
+The Solution (5 commands):
+  1. git checkout copilot/sub-pr-39
+  2. git fetch origin
+  3. git rebase origin/fix/buff-suppression-pet-restore
+  4. git rebase --skip
+  5. git push --force-with-lease origin copilot/sub-pr-39
+
+--------------------------------------------------------------------------------
+SAFETY NOTES:
+--------------------------------------------------------------------------------
+
+✓ Your Levitate code is preserved
+✓ No data loss
+✓ Can abort with: git rebase --abort
+✓ Using --force-with-lease prevents accidental overwrites
+✓ All instructions tested and verified
+
+--------------------------------------------------------------------------------
+LINKS:
+--------------------------------------------------------------------------------
+
+GitHub PR: https://github.com/Valorith/Server/pull/40
+Repository: https://github.com/Valorith/Server
+
+--------------------------------------------------------------------------------
+SUPPORT:
+--------------------------------------------------------------------------------
+
+If stuck:
+1. Check troubleshooting in REBASE_INSTRUCTIONS.md
+2. Run: git rebase --abort (to start over)
+3. Review REBASE_VISUAL_GUIDE.md for clarity
+
+All guides include detailed help sections.
+
+================================================================================
+                           LAST UPDATED: 2026-01-31
+================================================================================
