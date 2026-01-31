@@ -4688,6 +4688,34 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			client->QueuePacket(action_packet);
 			safe_delete(action_packet);
 			client->ReapplyBuff(slot, true);
+		} else {
+			// Reapply visual/state effects for non-client mobs (pets, NPCs, bots)
+			const auto& spell = spells[buffs[slot].spellid];
+			for (int i = 0; i < EFFECT_COUNT; i++) {
+				switch (spell.effect_id[i]) {
+				case SpellEffect::Illusion:
+					ApplySpellEffectIllusion(spell.id, entity_list.GetMobID(buffs[slot].casterid), slot, spell.base_value[i], spell.limit_value[i], spell.max_value[i]);
+					break;
+				case SpellEffect::Silence:
+					Silence(true);
+					break;
+				case SpellEffect::Amnesia:
+					Amnesia(true);
+					break;
+				case SpellEffect::AddMeleeProc:
+				case SpellEffect::WeaponProc:
+					AddProcToWeapon(GetProcID(buffs[slot].spellid, i), false, 100 + spell.limit_value[i], buffs[slot].spellid, buffs[slot].casterlevel, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::MELEE_PROC));
+					break;
+				case SpellEffect::DefensiveProc:
+					AddDefensiveProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::DEFENSIVE_PROC));
+					break;
+				case SpellEffect::RangedProc:
+					AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
+					break;
+				default:
+					break;
+				}
+			}
 		}
 	} else {
 		buffs[slot].spellid = SPELL_UNKNOWN;
