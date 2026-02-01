@@ -4695,16 +4695,13 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			client->ReapplyBuff(slot, true);
 		} else if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
 			// Reapply visual/state effects for client pets only
-			// All other non-client mobs (NPCs, bots, mercs) use normal dispel mechanic
-			if (!IsValidSpell(buffs[slot].spellid))
-				return;
-			const auto& spell = spells[buffs[slot].spellid];
+			// Other non-client mobs (NPCs, bots, mercs) use the normal dispel mechanic
 			if (IsValidSpell(buffs[slot].spellid)) {
-				const auto &spell = spells[buffs[slot].spellid];
+				const auto& spell = spells[buffs[slot].spellid];
 				// Restore nimbus (visual aura) effect before processing individual spell effects,
-				// mirroring Client::ReapplyBuff and bot buff restoration behavior.
-				if (spell.nimbus_effect) {
-					SetNimbusEffect(spell.nimbus_effect);
+				// mirroring Client::ReapplyBuff behavior for client-owned pets.
+				if (spell.nimbus_effect > 0) {
+					SetNimbusEffect(static_cast<uint32>(spell.nimbus_effect));
 				}
 				for (int i = 0; i < EFFECT_COUNT; i++) {
 					switch (spell.effect_id[i]) {
