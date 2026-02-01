@@ -4700,8 +4700,8 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 				const auto& spell = spells[buffs[slot].spellid];
 				// Restore nimbus (visual aura) effect before processing individual spell effects,
 				// mirroring Client::ReapplyBuff behavior for client-owned pets.
-				if (spell.nimbus_effect) {
-					SetNimbusEffect(spell.nimbus_effect);
+				if (spell.nimbus_effect > 0) {
+					SetNimbusEffect(static_cast<uint32>(spell.nimbus_effect));
 				}
 				for (int i = 0; i < EFFECT_COUNT; i++) {
 					switch (spell.effect_id[i]) {
