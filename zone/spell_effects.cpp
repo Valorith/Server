@@ -4695,14 +4695,11 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			client->ReapplyBuff(slot, true);
 		} else if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
 			// Reapply visual/state effects for client pets only
-			// All other non-client mobs (NPCs, bots, mercs) use normal dispel mechanic
-			if (!IsValidSpell(buffs[slot].spellid))
-				return;
-			const auto& spell = spells[buffs[slot].spellid];
+			// Other non-client mobs (NPCs, bots, mercs) use the normal dispel mechanic
 			if (IsValidSpell(buffs[slot].spellid)) {
-				const auto &spell = spells[buffs[slot].spellid];
+				const auto& spell = spells[buffs[slot].spellid];
 				// Restore nimbus (visual aura) effect before processing individual spell effects,
-				// mirroring Client::ReapplyBuff and bot buff restoration behavior.
+				// mirroring Client::ReapplyBuff behavior for client-owned pets.
 				if (spell.nimbus_effect) {
 					SetNimbusEffect(spell.nimbus_effect);
 				}
@@ -4727,8 +4724,7 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 					case SpellEffect::RangedProc:
 						AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
 						break;
-					case SpellEffect::Levitate:
-					{
+					case SpellEffect::Levitate: {
 						// Restore levitate visual effects after suppression expires
 						if (!zone->CanLevitate()) {
 							SendAppearancePacket(AppearanceType::FlyMode, 0);
