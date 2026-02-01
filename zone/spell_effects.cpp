@@ -4724,7 +4724,8 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 					case SpellEffect::RangedProc:
 						AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
 						break;
-					case SpellEffect::Levitate: {
+					case SpellEffect::Levitate:
+					{
 						// Restore levitate visual effects after suppression expires
 						if (!zone->CanLevitate()) {
 							SendAppearancePacket(AppearanceType::FlyMode, 0);
