@@ -1,6 +1,7 @@
 #include "servertalk_client_connection.h"
 
 #include "common/eqemu_logsys.h"
+#include "common/ip_util.h"
 #include "common/net/dns.h"
 
 EQ::Net::ServertalkClient::ServertalkClient(const std::string &addr, int port, bool ipv6, const std::string &identifier, const std::string &credentials)
@@ -11,9 +12,15 @@ EQ::Net::ServertalkClient::ServertalkClient(const std::string &addr, int port, b
 	m_identifier = identifier.empty() ? "Unknown" : identifier;
 	m_credentials = credentials;
 	m_connecting = false;
-	DNSLookup(addr, port, false, [this](const std::string &address) {
-		m_addr = address;
-	});
+
+	if (IpUtil::IsIPAddress(addr)) {
+		m_addr = addr;
+	}
+	else {
+		DNSLookup(addr, port, false, [this](const std::string &address) {
+			m_addr = address;
+		});
+	}
 }
 
 EQ::Net::ServertalkClient::~ServertalkClient()

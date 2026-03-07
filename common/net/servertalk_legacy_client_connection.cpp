@@ -1,7 +1,8 @@
 #include "servertalk_legacy_client_connection.h"
 
-#include "common/net/dns.h"
 #include "common/eqemu_logsys.h"
+#include "common/ip_util.h"
+#include "common/net/dns.h"
 
 EQ::Net::ServertalkLegacyClient::ServertalkLegacyClient(const std::string &addr, int port, bool ipv6)
 	: m_timer(std::make_unique<EQ::Timer>(100, true, std::bind(&EQ::Net::ServertalkLegacyClient::Connect, this)))
@@ -9,9 +10,15 @@ EQ::Net::ServertalkLegacyClient::ServertalkLegacyClient(const std::string &addr,
 	m_port = port;
 	m_ipv6 = ipv6;
 	m_connecting = false;
-	DNSLookup(addr, port, false, [this](const std::string &address) {
-		m_addr = address;
-	});
+
+	if (IpUtil::IsIPAddress(addr)) {
+		m_addr = addr;
+	}
+	else {
+		DNSLookup(addr, port, false, [this](const std::string &address) {
+			m_addr = address;
+		});
+	}
 }
 
 EQ::Net::ServertalkLegacyClient::~ServertalkLegacyClient()

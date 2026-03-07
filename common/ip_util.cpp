@@ -21,8 +21,6 @@
 #include "ip_util.h"
 
 #include "common/eqemu_logsys.h"
-#include "common/event/event_loop.h"
-#include "common/event/task_scheduler.h"
 #include "common/http/httplib.h"
 #include "common/http/uri.h"
 #include "common/net/dns.h"
@@ -86,12 +84,13 @@ bool IpUtil::IsIpInPrivateRfc1918(const std::string &ip)
 
 #ifdef _WIN32
 #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #pragma comment(lib, "Ws2_32.lib")
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
 #else
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
 #endif
@@ -205,52 +204,53 @@ std::string IpUtil::GetPublicIPAddress()
 
 std::string IpUtil::DNSLookupSync(const std::string &addr, int port)
 {
-	auto task_runner = new EQ::Event::TaskScheduler();
-	auto res         = task_runner->Enqueue(
-		[&]() -> std::string {
-			bool        running = true;
-			std::string ret;
+	if (IpUtil::IsIPAddress(addr)) {
+		return addr;
+	}
 
-			EQ::Net::DNSLookup(
-				addr, port, false, [&](const std::string &addr) {
-					ret = addr;
-					if (addr.empty()) {
-						ret     = "";
-						running = false;
-					}
+#ifdef _WIN32
+	WSADATA wsa_data;
+	if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+		return {};
+	}
+#endif
 
-					return ret;
-				}
-			);
+	addrinfo hints{};
+	hints.ai_family   = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
 
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+	addrinfo *result = nullptr;
+	const auto service = std::to_string(port);
+	const auto status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
+	if (status != 0) {
+#ifdef _WIN32
+		WSACleanup();
+#endif
+		return {};
+	}
 
-			auto &loop = EQ::EventLoop::Get();
-			while (running) {
-				if (!ret.empty()) {
-					running = false;
-				}
-
-				std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-				if (std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() > 1500) {
-					LogInfo(
-						"Deadline exceeded [{}]",
-						1500
-					);
-					running = false;
-				}
-
-				loop.Process();
-			}
-
-			return ret;
+	std::string resolved_address;
+	for (auto *entry = result; entry; entry = entry->ai_next) {
+		if (entry->ai_family != AF_INET || !entry->ai_addr) {
+			continue;
 		}
-	);
 
-	std::string result = res.get();
-	safe_delete(task_runner);
+		char buffer[INET_ADDRSTRLEN] = {0};
+		auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
+		if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
+			resolved_address = buffer;
+			break;
+		}
+	}
 
-	return result;
+	freeaddrinfo(result);
+
+#ifdef _WIN32
+	WSACleanup();
+#endif
+
+	return resolved_address;
 }
 
 bool IpUtil::IsIPAddress(const std::string &ip_address)

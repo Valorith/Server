@@ -268,18 +268,18 @@ int main(int argc, char **argv)
 		}
 	);
 
-	server_connection->OnConnectionRemoved(
-		"UCS", [](std::shared_ptr<EQ::Net::ServertalkServerConnection> connection) {
-			LogInfo("Connection lost from UCS Server [{}]", connection->GetUUID());
+		server_connection->OnConnectionRemoved(
+			"UCS", [](std::shared_ptr<EQ::Net::ServertalkServerConnection> connection) {
+				LogInfo("Connection lost from UCS Server [{}]", connection->GetUUID());
 
-			auto ucs_connection = UCSConnection::Instance()->GetConnection();
+				auto ucs_connection = UCSConnection::Instance()->GetConnection();
 
-			if (ucs_connection->GetUUID() == connection->GetUUID()) {
-				LogInfo("Removing currently active UCS connection");
-				UCSConnection::Instance()->SetConnection(nullptr);
-				ZSList::Instance()->UpdateUCSServerAvailable(false);
+				if (ucs_connection && ucs_connection->GetUUID() == connection->GetUUID()) {
+					LogInfo("Removing currently active UCS connection");
+					UCSConnection::Instance()->SetConnection(nullptr);
+					ZSList::Instance()->UpdateUCSServerAvailable(false);
+				}
 			}
-		}
 	);
 
 	server_connection->OnConnectionIdentified(
@@ -306,7 +306,9 @@ int main(int argc, char **argv)
 		}
 	);
 
+	LogInfo("Startup checkpoint [pre_config_check]");
 	WorldBoot::CheckForPossibleConfigurationIssues();
+	LogInfo("Startup checkpoint [post_config_check]");
 
 	EQStreamManagerInterfaceOptions opts(9000, false, false);
 	opts.reliable_stream_options.resend_delay_ms     = RuleI(Network, ResendDelayBaseMS);
@@ -341,8 +343,14 @@ int main(int argc, char **argv)
 		}
 	);
 
+	LogInfo("Startup checkpoint [pre_player_event_logs]");
 	if (PlayerEventLogs::Instance()->LoadDatabaseConnection()) {
+		LogInfo("Startup checkpoint [player_event_logs_database_loaded]");
 		PlayerEventLogs::Instance()->Init();
+		LogInfo("Startup checkpoint [post_player_event_logs]");
+	}
+	else {
+		LogInfo("Startup checkpoint [player_event_logs_database_skipped]");
 	}
 
 	auto loop_fn = [&](EQ::Timer* t) {

@@ -2,6 +2,7 @@
 
 #include "common/eq_packet_structs.h"
 #include "common/eqemu_logsys.h"
+#include "common/misc.h"
 #include "common/misc_functions.h"
 #include "common/packet_dump.h"
 #include "common/servertalk.h"
@@ -356,9 +357,13 @@ bool LoginServer::Connect()
 		return false;
 	}
 
+	// Resolve once here and reuse the numeric address so startup does not
+	// schedule a second libuv DNS lookup for the same loginserver.
+	const auto resolved_loginserver_address = long2ip(m_loginserver_ip);
+
 	if (m_is_legacy) {
 		m_legacy_client = std::make_unique<EQ::Net::ServertalkLegacyClient>(
-			m_loginserver_address,
+			resolved_loginserver_address,
 			m_loginserver_port,
 			false
 		);
@@ -466,7 +471,7 @@ bool LoginServer::Connect()
 	}
 	else {
 		m_client = std::make_unique<EQ::Net::ServertalkClient>(
-			m_loginserver_address,
+			resolved_loginserver_address,
 			m_loginserver_port,
 			false,
 			"World",
@@ -686,4 +691,3 @@ void LoginServer::SendAccountUpdate(ServerPacket *pack)
 		SendPacket(pack);
 	}
 }
-
