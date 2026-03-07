@@ -237,7 +237,7 @@ bool EQ::ProfanityManager::load_database_entries(DBcore *db) {
 		}
 	}
 
-	LogInfo("Loaded [{}] profanity entries", Strings::Commify(profanity_list.size()));
+	LogInfo("Loaded [{}] profanity entries", Strings::Commify(std::to_string(profanity_list.size())));
 
 	return true;
 }
