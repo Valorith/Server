@@ -351,6 +351,8 @@ int main(int argc, char **argv)
 	}
 	else {
 		LogInfo("Startup checkpoint [player_event_logs_database_skipped]");
+		LogError("PlayerEventLogs database connection failed; aborting world startup to avoid runtime crashes.");
+		return 1;
 	}
 
 	auto loop_fn = [&](EQ::Timer* t) {
