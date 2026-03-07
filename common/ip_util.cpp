@@ -26,8 +26,12 @@
 #include "common/net/dns.h"
 
 #include "fmt/format.h"
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <csignal>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 /**
@@ -202,55 +206,81 @@ std::string IpUtil::GetPublicIPAddress()
 	return {};
 }
 
-std::string IpUtil::DNSLookupSync(const std::string &addr, int port)
+std::string IpUtil::DNSLookupSync(const std::string &addr, int port, int timeout_ms)
 {
 	if (IpUtil::IsIPAddress(addr)) {
 		return addr;
 	}
 
+	// Shared state between the caller and the worker thread.
+	// Using shared_ptr so that if we detach on timeout, the worker can still
+	// safely write without touching stack variables that have gone out of scope.
+	struct State {
+		std::string             result;
+		std::mutex              mtx;
+		std::condition_variable cv;
+		bool                    done = false;
+	};
+	auto state = std::make_shared<State>();
+
+	// Capture addr and port by value; state by shared_ptr.
+	std::thread worker([addr, port, state]() {
 #ifdef _WIN32
-	WSADATA wsa_data;
-	if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-		return {};
-	}
+		WSADATA wsa_data;
+		if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+			std::unique_lock<std::mutex> lock(state->mtx);
+			state->done = true;
+			state->cv.notify_one();
+			return;
+		}
 #endif
 
-	addrinfo hints{};
-	hints.ai_family   = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
+		addrinfo hints{};
+		hints.ai_family   = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
 
-	addrinfo *result = nullptr;
-	const auto service = std::to_string(port);
-	const auto status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
-	if (status != 0) {
+		addrinfo   *result  = nullptr;
+		const auto  service = std::to_string(port);
+		const auto  status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
+
+		std::string local_result;
+		if (status == 0) {
+			for (auto *entry = result; entry; entry = entry->ai_next) {
+				if (entry->ai_family != AF_INET || !entry->ai_addr) {
+					continue;
+				}
+				char buffer[INET_ADDRSTRLEN] = {0};
+				auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
+				if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
+					local_result = buffer;
+					break;
+				}
+			}
+			freeaddrinfo(result);
+		}
+
 #ifdef _WIN32
 		WSACleanup();
 #endif
-		return {};
+
+		std::unique_lock<std::mutex> lock(state->mtx);
+		state->result = local_result;
+		state->done   = true;
+		state->cv.notify_one();
+	});
+
+	{
+		std::unique_lock<std::mutex> lock(state->mtx);
+		if (!state->cv.wait_for(lock, std::chrono::milliseconds(timeout_ms), [state] { return state->done; })) {
+			// Timeout: detach so startup is not blocked; shared state keeps the worker safe.
+			worker.detach();
+			return {};
+		}
 	}
 
-	std::string resolved_address;
-	for (auto *entry = result; entry; entry = entry->ai_next) {
-		if (entry->ai_family != AF_INET || !entry->ai_addr) {
-			continue;
-		}
-
-		char buffer[INET_ADDRSTRLEN] = {0};
-		auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
-		if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
-			resolved_address = buffer;
-			break;
-		}
-	}
-
-	freeaddrinfo(result);
-
-#ifdef _WIN32
-	WSACleanup();
-#endif
-
-	return resolved_address;
+	worker.join();
+	return state->result;
 }
 
 bool IpUtil::IsIPAddress(const std::string &ip_address)
