@@ -268,18 +268,18 @@ int main(int argc, char **argv)
 		}
 	);
 
-		server_connection->OnConnectionRemoved(
-			"UCS", [](std::shared_ptr<EQ::Net::ServertalkServerConnection> connection) {
-				LogInfo("Connection lost from UCS Server [{}]", connection->GetUUID());
+	server_connection->OnConnectionRemoved(
+		"UCS", [](std::shared_ptr<EQ::Net::ServertalkServerConnection> connection) {
+			LogInfo("Connection lost from UCS Server [{}]", connection->GetUUID());
 
-				auto ucs_connection = UCSConnection::Instance()->GetConnection();
+			auto ucs_connection = UCSConnection::Instance()->GetConnection();
 
-				if (ucs_connection && ucs_connection->GetUUID() == connection->GetUUID()) {
-					LogInfo("Removing currently active UCS connection");
-					UCSConnection::Instance()->SetConnection(nullptr);
-					ZSList::Instance()->UpdateUCSServerAvailable(false);
-				}
+			if (ucs_connection && ucs_connection->GetUUID() == connection->GetUUID()) {
+				LogInfo("Removing currently active UCS connection");
+				UCSConnection::Instance()->SetConnection(nullptr);
+				ZSList::Instance()->UpdateUCSServerAvailable(false);
 			}
+		}
 	);
 
 	server_connection->OnConnectionIdentified(
