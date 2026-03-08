@@ -895,7 +895,7 @@ inline void TestClientBuffPersistence()
 	Client loader;
 	loader.SetCharacterId(test_character_id);
 	loader.SetName("buff-persistence-load");
-	loader.SetClientVersion(ClientVersion::RoF2);
+	loader.SetClientVersion(EQ::versions::ClientVersion::RoF2);
 	database.LoadBuffs(&loader);
 
 	auto loaded_buffs = loader.GetBuffs();
