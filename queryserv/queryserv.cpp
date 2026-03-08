@@ -107,6 +107,8 @@ int main()
 		EQ::InitializeDynamicLookups();
 	}
 
+	PlayerEventLogs::Instance()->SetDatabase(&qs_database)->Init();
+
 	std::unique_ptr<EQ::Net::ConsoleServer> console;
 	EQ::Net::ServertalkServerOptions        server_opts;
 	auto                                    server_connection = std::make_unique<EQ::Net::ServertalkServer>();
@@ -152,7 +154,6 @@ int main()
 	LFGuildManager::Instance()->LoadDatabase();
 
 	Timer player_event_process_timer(1000);
-	PlayerEventLogs::Instance()->SetDatabase(&qs_database)->Init();
 
 	auto loop_fn = [&](EQ::Timer *t) {
 		Timer::SetCurrentTime();

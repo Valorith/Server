@@ -14,6 +14,13 @@
 
 const uint32 PROCESS_RETENTION_TRUNCATION_TIMER_INTERVAL = 60 * 60 * 1000; // 1 hour
 
+namespace {
+bool IsValidPlayerEventTypeId(int32_t event_type_id)
+{
+	return event_type_id >= PlayerEvent::GM_COMMAND && event_type_id < PlayerEvent::EventType::MAX;
+}
+}
+
 // general initialization routine
 void PlayerEventLogs::Init()
 {
@@ -456,6 +463,11 @@ void PlayerEventLogs::ProcessBatchQueue()
 // adds a player event to the queue
 void PlayerEventLogs::AddToQueue(PlayerEventLogsRepository::PlayerEventLogs &log)
 {
+	if (!IsValidPlayerEventTypeId(log.event_type_id)) {
+		LogError("Dropping invalid PlayerEvent type id [{}]", log.event_type_id);
+		return;
+	}
+
 	m_batch_queue_lock.lock();
 	m_record_batch_queue.emplace_back(log);
 	m_batch_queue_lock.unlock();
@@ -501,7 +513,7 @@ const PlayerEventLogSettingsRepository::PlayerEventLogSettings *PlayerEventLogs:
 bool PlayerEventLogs::IsEventDiscordEnabled(int32_t event_type_id)
 {
 	// out of bounds check
-	if (event_type_id >= PlayerEvent::EventType::MAX) {
+	if (!IsValidPlayerEventTypeId(event_type_id)) {
 		return false;
 	}
 
@@ -521,7 +533,7 @@ bool PlayerEventLogs::IsEventDiscordEnabled(int32_t event_type_id)
 std::string PlayerEventLogs::GetDiscordWebhookUrlFromEventType(int32_t event_type_id)
 {
 	// out of bounds check
-	if (event_type_id >= PlayerEvent::EventType::MAX) {
+	if (!IsValidPlayerEventTypeId(event_type_id)) {
 		return "";
 	}
 

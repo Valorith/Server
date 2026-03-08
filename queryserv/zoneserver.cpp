@@ -27,11 +27,32 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 	switch (opcode) {
 		case ServerOP_PlayerEvent: {
+			if (pack->size < sizeof(ServerSendPlayerEvent_Struct)) {
+				LogError("ServerOP_PlayerEvent: packet too small");
+				break;
+			}
+
+			auto *s = reinterpret_cast<ServerSendPlayerEvent_Struct *>(pack->pBuffer);
+			const uint32_t expected_size = sizeof(ServerSendPlayerEvent_Struct) + s->cereal_size;
+			if (pack->size < expected_size) {
+				LogError(
+					"ServerOP_PlayerEvent: packet size mismatch, expected {}, got {}",
+					expected_size,
+					pack->size
+				);
+				break;
+			}
+
 			auto n = PlayerEvent::PlayerEventContainer{};
-			auto s = reinterpret_cast<ServerSendPlayerEvent_Struct *>(pack->pBuffer);
-			EQ::Util::MemoryStreamReader ss(s->cereal_data, s->cereal_size);
-			cereal::BinaryInputArchive archive(ss);
-			archive(n);
+			try {
+				EQ::Util::MemoryStreamReader ss(s->cereal_data, s->cereal_size);
+				cereal::BinaryInputArchive archive(ss);
+				archive(n);
+			}
+			catch (const std::exception &ex) {
+				LogError("ServerOP_PlayerEvent: failed to deserialize payload: {}", ex.what());
+				break;
+			}
 
 			PlayerEventLogs::Instance()->AddToQueue(n.player_event_log);
 
