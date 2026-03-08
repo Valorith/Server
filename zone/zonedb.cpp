@@ -2877,14 +2877,6 @@ void ZoneDatabase::UpdateAltCurrencyValue(uint32 char_id, uint32 currency_id, ui
 
 void ZoneDatabase::SaveBuffs(Client *client)
 {
-	CharacterBuffsRepository::DeleteWhere(
-		database,
-		fmt::format(
-			"`character_id` = {}",
-			client->CharacterID()
-		)
-	);
-
 	auto      buffs          = client->GetBuffs();
 	const int max_buff_slots = client->GetMaxBuffSlots();
 
@@ -2933,9 +2925,20 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		v.emplace_back(e);
 	}
 
+	database.TransactionBegin();
+
+	CharacterBuffsRepository::DeleteWhere(
+		database,
+		fmt::format(
+			"`character_id` = {}",
+			client->CharacterID()
+		)
+	);
+
 	if (!v.empty()) {
 		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
 		if (saved_count != static_cast<int>(v.size())) {
+			database.TransactionRollback();
 			LogError(
 				"Failed to save all buffs for character [{}] [{}]. Expected [{}] rows, saved [{}]. Verify the `character_buffs` schema is up to date.",
 				client->GetCleanName(),
@@ -2943,8 +2946,11 @@ void ZoneDatabase::SaveBuffs(Client *client)
 				v.size(),
 				saved_count
 			);
+			return;
 		}
 	}
+
+	database.TransactionCommit();
 }
 
 void ZoneDatabase::LoadBuffs(Client *client)
