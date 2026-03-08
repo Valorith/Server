@@ -50,13 +50,14 @@ namespace EQ
 					return;
 				}
 
-				char addr[40] = { 0 };
+				char addr[INET6_ADDRSTRLEN] = { 0 };
+				int name_result;
 
 				if (baton->ipv6) {
-					uv_ip6_name((struct sockaddr_in6*)res->ai_addr, addr, 40);
+					name_result = uv_ip6_name((struct sockaddr_in6*)res->ai_addr, addr, sizeof(addr));
 				}
 				else {
-					uv_ip4_name((struct sockaddr_in*)res->ai_addr, addr, 40);
+					name_result = uv_ip4_name((struct sockaddr_in*)res->ai_addr, addr, sizeof(addr));
 				}
 
 				auto cb = baton->cb;
@@ -64,7 +65,7 @@ namespace EQ
 				delete req;
 				uv_freeaddrinfo(res);
 
-				cb(addr);
+				cb(name_result == 0 ? addr : "");
 			}, baton->host.c_str(), baton->service.c_str(), &hints);
 
 			if (submit_result < 0) {
