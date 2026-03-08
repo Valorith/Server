@@ -739,7 +739,7 @@ bool Database::LoadVariables()
 
 	LogInfo(
 		"Loaded [{}] Variable{}",
-			Strings::Commify(std::to_string(l.size())),
+		Strings::Commify(std::to_string(l.size())),
 		l.size() != 1 ? "s" : ""
 	);
 
@@ -2037,7 +2037,7 @@ bool Database::CopyCharacter(
 			size_t rows_copied = insert_rows.size(); // Rows copied for this table
 			total_rows_copied += rows_copied; // Increment grand total
 
-				LogInfo("Copying table [{}] rows [{}]", table_name, Strings::Commify(std::to_string(rows_copied)));
+			LogInfo("Copying table [{}] rows [{}]", table_name, Strings::Commify(std::to_string(rows_copied)));
 
 			if (!insert.ErrorMessage().empty()) {
 				LogError("Error copying table [{}] [{}]", table_name, insert.ErrorMessage());
@@ -2057,7 +2057,7 @@ bool Database::CopyCharacter(
 		"Character [{}] copied to [{}] total rows [{}]",
 		source_character_name,
 		destination_character_name,
-			Strings::Commify(std::to_string(total_rows_copied))
+		Strings::Commify(std::to_string(total_rows_copied))
 	);
 
 	return true;

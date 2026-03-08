@@ -363,7 +363,9 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			}
 
 			auto *s = reinterpret_cast<ServerSendPlayerEvent_Struct *>(pack->pBuffer);
-			const uint64_t expected_size = static_cast<uint64_t>(sizeof(ServerSendPlayerEvent_Struct)) + s->cereal_size;
+			const uint64_t expected_size =
+				static_cast<uint64_t>(sizeof(ServerSendPlayerEvent_Struct)) +
+				static_cast<uint64_t>(s->cereal_size);
 			if (static_cast<uint64_t>(pack->size) < expected_size) {
 				LogError(
 					"ServerOP_PlayerEvent: packet size mismatch, expected {}, got {}",
