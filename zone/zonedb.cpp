@@ -2950,7 +2950,15 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		}
 	}
 
-	database.TransactionCommit();
+	const auto commit_result = database.TransactionCommit();
+	if (!commit_result) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to commit buff save transaction for character [{}] [{}].",
+			client->GetCleanName(),
+			client->CharacterID()
+		);
+	}
 }
 
 void ZoneDatabase::LoadBuffs(Client *client)
