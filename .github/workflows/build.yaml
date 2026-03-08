@@ -56,7 +56,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: submodules/vcpkg/downloads
-          key: ${{ runner.os }}-vcpkg-downloads-${{ hashFiles('submodules/vcpkg/vcpkg.json', 'submodules/vcpkg/ports/**', 'submodules/vcpkg/versions/**') }}
+          key: ${{ runner.os }}-vcpkg-downloads-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/ports/**', 'submodules/vcpkg/versions/**') }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-downloads-
 
