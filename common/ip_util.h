@@ -34,7 +34,8 @@ public:
 	static std::string GetPublicIPAddress();
 	static std::string DNSLookupSync(
 		const std::string &addr,
-		int port
+		int port,
+		int timeout_ms = 1500
 	);
 	static bool IsIPAddress(const std::string &ip_address);
 	static bool IsPortInUse(const std::string& ip, int port);
