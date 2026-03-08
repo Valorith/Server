@@ -828,9 +828,9 @@ inline void TestHpManaEnd()
 
 inline void TestClientBuffPersistence()
 {
-	constexpr uint32 test_character_id = 99999991;
-	constexpr uint16 normal_spell_id   = 6824;
-	constexpr uint16 suppressed_spell_id = 6824;
+	constexpr uint32 test_character_id  = 99999991;
+	constexpr uint16 normal_spell_id    = 6824;
+	constexpr uint16 suppressed_spell_id = 2550;
 
 	auto schema_check = database.QueryDatabase("SHOW COLUMNS FROM `character_buffs` LIKE 'suppressed'");
 	RunTest(
