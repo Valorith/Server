@@ -26,6 +26,7 @@
 #include "common/net/dns.h"
 
 #include "fmt/format.h"
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -207,10 +208,31 @@ std::string IpUtil::GetPublicIPAddress()
 	return {};
 }
 
+// Limits concurrent detached DNS resolver threads to prevent resource exhaustion
+// when getaddrinfo stalls and queries are repeated.
+static constexpr int    k_max_dns_inflight = 1;
+static std::atomic<int> s_dns_inflight{0};
+
 std::string IpUtil::DNSLookupSync(const std::string &addr, int port, int timeout_ms)
 {
 	if (IpUtil::IsIPAddress(addr)) {
 		return addr;
+	}
+
+	// Atomically claim a slot; if the limit is already reached, return empty
+	// immediately rather than spawning another thread that would just be detached.
+	int current = s_dns_inflight.load(std::memory_order_acquire);
+	while (current < k_max_dns_inflight) {
+		if (s_dns_inflight.compare_exchange_weak(
+			current, current + 1,
+			std::memory_order_acq_rel,
+			std::memory_order_acquire)) {
+			break;
+		}
+		// current was reloaded by compare_exchange_weak; loop and retry.
+	}
+	if (current >= k_max_dns_inflight) {
+		return {};
 	}
 
 	// Shared state between the caller and the worker thread.
@@ -225,56 +247,71 @@ std::string IpUtil::DNSLookupSync(const std::string &addr, int port, int timeout
 	auto state = std::make_shared<State>();
 
 	// Capture addr and port by value; state by shared_ptr.
-	std::thread worker([addr, port, state]() {
+	// The worker always decrements s_dns_inflight before signalling, whether
+	// or not the caller timed out, so the counter stays bounded.
+	std::thread worker;
+	try {
+		worker = std::thread([addr, port, state]() {
 #ifdef _WIN32
-		WSADATA wsa_data;
-		if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-			std::unique_lock<std::mutex> lock(state->mtx);
-			state->done = true;
-			state->cv.notify_one();
-			return;
-		}
-#endif
-
-		addrinfo hints{};
-		hints.ai_family   = AF_INET;
-		hints.ai_socktype = SOCK_STREAM;
-		hints.ai_protocol = IPPROTO_TCP;
-
-		addrinfo   *result  = nullptr;
-		const auto  service = std::to_string(port);
-		const auto  status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
-
-		std::string local_result;
-		if (status == 0) {
-			for (auto *entry = result; entry; entry = entry->ai_next) {
-				if (entry->ai_family != AF_INET || !entry->ai_addr) {
-					continue;
-				}
-				char buffer[INET_ADDRSTRLEN] = {0};
-				auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
-				if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
-					local_result = buffer;
-					break;
-				}
+			WSADATA wsa_data;
+			if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+				s_dns_inflight.fetch_sub(1, std::memory_order_release);
+				std::unique_lock<std::mutex> lock(state->mtx);
+				state->done = true;
+				state->cv.notify_one();
+				return;
 			}
-			freeaddrinfo(result);
-		}
-
-#ifdef _WIN32
-		WSACleanup();
 #endif
 
-		std::unique_lock<std::mutex> lock(state->mtx);
-		state->result = local_result;
-		state->done   = true;
-		state->cv.notify_one();
-	});
+			addrinfo hints{};
+			hints.ai_family   = AF_INET;
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_protocol = IPPROTO_TCP;
+
+			addrinfo   *result  = nullptr;
+			const auto  service = std::to_string(port);
+			const auto  status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
+
+			std::string local_result;
+			if (status == 0) {
+				for (auto *entry = result; entry; entry = entry->ai_next) {
+					if (entry->ai_family != AF_INET || !entry->ai_addr) {
+						continue;
+					}
+					char buffer[INET_ADDRSTRLEN] = {0};
+					auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
+					if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
+						local_result = buffer;
+						break;
+					}
+				}
+				freeaddrinfo(result);
+			}
+
+#ifdef _WIN32
+			WSACleanup();
+#endif
+			// Decrement before signalling so the slot is freed as soon as the
+			// system call returns, regardless of whether the caller is still waiting.
+			s_dns_inflight.fetch_sub(1, std::memory_order_release);
+
+			std::unique_lock<std::mutex> lock(state->mtx);
+			state->result = local_result;
+			state->done   = true;
+			state->cv.notify_one();
+		});
+	} catch (const std::system_error &) {
+		// Thread creation failed (e.g., resource limits). Release the slot and
+		// return empty so startup continues without hanging.
+		s_dns_inflight.fetch_sub(1, std::memory_order_release);
+		return {};
+	}
 
 	{
 		std::unique_lock<std::mutex> lock(state->mtx);
 		if (!state->cv.wait_for(lock, std::chrono::milliseconds(timeout_ms), [state] { return state->done; })) {
-			// Timeout: detach so startup is not blocked; shared state keeps the worker safe.
+			// Timeout: detach so startup is not blocked. The worker will decrement
+			// s_dns_inflight when getaddrinfo eventually returns, keeping the count bounded.
 			worker.detach();
 			return {};
 		}
