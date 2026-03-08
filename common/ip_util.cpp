@@ -31,6 +31,7 @@
 #include <cstring>
 #include <csignal>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <vector>
 
