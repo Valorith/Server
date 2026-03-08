@@ -7536,16 +7536,19 @@ void Mob::DispelMagic(Mob* caster, uint16 spell_id, int effect_value, int chance
 
 	for (int slot = 0; slot < GetMaxTotalSlots(); ++slot) {
 		auto s = buffs[slot].spellid;
+		// Suppressed slots store a sentinel in spellid, so use the underlying spell
+		// for any lookup into the spell data table.
+		auto dispel_spell_id = s == SPELL_SUPPRESSED ? buffs[slot].suppressedid : s;
 
-		if (s == SPELL_UNKNOWN || spells[s].dispel_flag != 0 || IsDiscipline(s)) {
+		if (!IsValidSpell(dispel_spell_id) || spells[dispel_spell_id].dispel_flag != 0 || IsDiscipline(dispel_spell_id)) {
 			continue;
 		}
 
-		if (detrimental_only && !IsDetrimentalSpell(s)) {
+		if (detrimental_only && !IsDetrimentalSpell(dispel_spell_id)) {
 			continue;
 		}
 
-		if (beneficial_only && IsDetrimentalSpell(s)) {
+		if (beneficial_only && IsDetrimentalSpell(dispel_spell_id)) {
 			continue;
 		}
 
@@ -7567,7 +7570,7 @@ void Mob::DispelMagic(Mob* caster, uint16 spell_id, int effect_value, int chance
 			break;
 		} else {
 			//Additional restrictions on which buffs can be suppressed
-			if (spells[s].short_buff_box) {
+			if (spells[dispel_spell_id].short_buff_box) {
 				continue;
 			}
 
