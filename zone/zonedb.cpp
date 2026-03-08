@@ -2935,9 +2935,9 @@ void ZoneDatabase::SaveBuffs(Client *client)
 
 	if (!v.empty()) {
 		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
-		if (saved_count != static_cast<int>(v.size())) {
+		if (saved_count < static_cast<int>(v.size())) {
 			LogError(
-				"Failed to save all buffs for character [{}] [{}]. Expected [{}] rows, saved [{}]. Verify the `character_buffs` schema is up to date.",
+				"Failed to save all buffs for character [{}] [{}]. Expected at least [{}] rows saved, got [{}]. Verify the `character_buffs` schema is up to date.",
 				client->GetCleanName(),
 				client->CharacterID(),
 				v.size(),
