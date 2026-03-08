@@ -84,9 +84,9 @@ void QueryServ::HandleMessage(uint16 opcode, const EQ::Net::Packet& p)
 			}
 
 			auto*          data          = reinterpret_cast<const ServerSendPlayerEvent_Struct*>(pack->pBuffer);
-			const uint32_t expected_size = sizeof(ServerSendPlayerEvent_Struct) + data->cereal_size;
+			const uint64_t expected_size = static_cast<uint64_t>(sizeof(ServerSendPlayerEvent_Struct)) + data->cereal_size;
 
-			if (pack->size < expected_size) {
+			if (static_cast<uint64_t>(pack->size) < expected_size) {
 				LogError(
 					"ServerOP_SendPlayerEventSettings: packet size mismatch, expected {}, got {}", expected_size,
 					pack->size
