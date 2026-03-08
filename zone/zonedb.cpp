@@ -2934,7 +2934,16 @@ void ZoneDatabase::SaveBuffs(Client *client)
 	}
 
 	if (!v.empty()) {
-		CharacterBuffsRepository::ReplaceMany(database, v);
+		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
+		if (saved_count != static_cast<int>(v.size())) {
+			LogError(
+				"Failed to save all buffs for character [{}] [{}]. Expected [{}] rows, saved [{}]. Verify the `character_buffs` schema is up to date.",
+				client->GetCleanName(),
+				client->CharacterID(),
+				v.size(),
+				saved_count
+			);
+		}
 	}
 }
 

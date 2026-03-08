@@ -7190,6 +7190,17 @@ ALTER TABLE `character_parcels_containers`
 )",
 		.content_schema_update = false
 	},
+	ManifestEntry{
+		.version = 9329,
+		.description = "2025_06_27_add_suppressed_to_character_buffs.sql",
+		.check = "SHOW COLUMNS FROM `character_buffs` LIKE 'suppressed'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_buffs`
+	ADD COLUMN `suppressed` tinyint(1) unsigned NOT NULL DEFAULT 0 AFTER `instrument_mod`;
+)"
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,
