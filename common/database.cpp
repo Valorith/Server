@@ -739,7 +739,7 @@ bool Database::LoadVariables()
 
 	LogInfo(
 		"Loaded [{}] Variable{}",
-			Strings::Commify(std::to_string(l.size())),
+		Strings::Commify(std::to_string(l.size())),
 		l.size() != 1 ? "s" : ""
 	);
 
