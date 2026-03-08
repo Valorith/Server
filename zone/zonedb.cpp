@@ -2951,12 +2951,13 @@ void ZoneDatabase::SaveBuffs(Client *client)
 	}
 
 	const auto commit_result = database.TransactionCommit();
-	if (!commit_result) {
+	if (!commit_result.Success()) {
 		database.TransactionRollback();
 		LogError(
-			"Failed to commit buff save transaction for character [{}] [{}].",
+			"Failed to commit buff save transaction for character [{}] [{}]: {}",
 			client->GetCleanName(),
-			client->CharacterID()
+			client->CharacterID(),
+			commit_result.ErrorMessage()
 		);
 	}
 }
