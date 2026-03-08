@@ -26,8 +26,12 @@
 #include "common/net/dns.h"
 
 #include "fmt/format.h"
+#include <chrono>
 #include <cstring>
 #include <csignal>
+#include <future>
+#include <memory>
+#include <thread>
 #include <vector>
 
 /**
@@ -208,49 +212,69 @@ std::string IpUtil::DNSLookupSync(const std::string &addr, int port)
 		return addr;
 	}
 
+	// Run getaddrinfo in a detached thread so we can enforce a deadline.
+	// The promise is heap-allocated and shared with the worker thread so the
+	// worker can safely fulfil it even after this function has returned due to
+	// a timeout.
+	static constexpr int DNS_LOOKUP_TIMEOUT_MS = 1500;
+
+	auto promise = std::make_shared<std::promise<std::string>>();
+	auto future  = promise->get_future();
+
+	std::thread(
+		[promise, host = addr, port]() mutable {
 #ifdef _WIN32
-	WSADATA wsa_data;
-	if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+			WSADATA wsa_data;
+			if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+				promise->set_value({});
+				return;
+			}
+#endif
+			addrinfo hints{};
+			hints.ai_family   = AF_INET;
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_protocol = IPPROTO_TCP;
+
+			addrinfo *result = nullptr;
+			const auto service = std::to_string(port);
+			const auto status  = getaddrinfo(host.c_str(), service.c_str(), &hints, &result);
+			if (status != 0) {
+#ifdef _WIN32
+				WSACleanup();
+#endif
+				promise->set_value({});
+				return;
+			}
+
+			std::string resolved_address;
+			for (auto *entry = result; entry; entry = entry->ai_next) {
+				if (entry->ai_family != AF_INET || !entry->ai_addr) {
+					continue;
+				}
+
+				char buffer[INET_ADDRSTRLEN] = {0};
+				auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
+				if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
+					resolved_address = buffer;
+					break;
+				}
+			}
+
+			freeaddrinfo(result);
+
+#ifdef _WIN32
+			WSACleanup();
+#endif
+			promise->set_value(resolved_address);
+		}
+	).detach();
+
+	if (future.wait_for(std::chrono::milliseconds(DNS_LOOKUP_TIMEOUT_MS)) != std::future_status::ready) {
+		LogWarning("DNS lookup for [{}] timed out after [{}ms]", addr, DNS_LOOKUP_TIMEOUT_MS);
 		return {};
 	}
-#endif
 
-	addrinfo hints{};
-	hints.ai_family   = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
-
-	addrinfo *result = nullptr;
-	const auto service = std::to_string(port);
-	const auto status  = getaddrinfo(addr.c_str(), service.c_str(), &hints, &result);
-	if (status != 0) {
-#ifdef _WIN32
-		WSACleanup();
-#endif
-		return {};
-	}
-
-	std::string resolved_address;
-	for (auto *entry = result; entry; entry = entry->ai_next) {
-		if (entry->ai_family != AF_INET || !entry->ai_addr) {
-			continue;
-		}
-
-		char buffer[INET_ADDRSTRLEN] = {0};
-		auto *ipv4 = reinterpret_cast<sockaddr_in *>(entry->ai_addr);
-		if (inet_ntop(AF_INET, &ipv4->sin_addr, buffer, sizeof(buffer))) {
-			resolved_address = buffer;
-			break;
-		}
-	}
-
-	freeaddrinfo(result);
-
-#ifdef _WIN32
-	WSACleanup();
-#endif
-
-	return resolved_address;
+	return future.get();
 }
 
 bool IpUtil::IsIPAddress(const std::string &ip_address)
