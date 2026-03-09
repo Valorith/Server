@@ -64,12 +64,11 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -e
-          cd submodules/vcpkg
-          ./bootstrap-vcpkg.sh -disableMetrics
+          ./submodules/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
           for i in 1 2 3 4 5; do
             echo "vcpkg install attempt $i..."
-            if ./vcpkg install --triplet x64-linux; then
+            if ./submodules/vcpkg/vcpkg install --triplet x64-linux; then
               exit 0
             fi
             echo "vcpkg install failed; sleeping before retry..."
