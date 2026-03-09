@@ -3053,6 +3053,13 @@ void ZoneDatabase::LoadBuffs(Client *client)
 
 	for (int slot_id = 0; slot_id < max_buff_slots; ++slot_id) {
 		if (buffs[slot_id].spellid == SPELL_SUPPRESSED) {
+			// Suppressed illusions should drop on zone/relog rather than being unsuppressed later
+			if (IsValidSpell(buffs[slot_id].suppressedid) &&
+			    IsEffectInSpell(buffs[slot_id].suppressedid, SpellEffect::Illusion)) {
+				buffs[slot_id].spellid                 = SPELL_UNKNOWN;
+				buffs[slot_id].suppressedid            = SPELL_UNKNOWN;
+				buffs[slot_id].suppressedticsremaining = -1;
+			}
 			continue;
 		}
 
