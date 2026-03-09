@@ -4851,9 +4851,9 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 				}
 				ReapplyBuffEffects(slot, true);
 			}
-		} else {
-			buffs[slot].spellid = SPELL_UNKNOWN;
 		}
+	} else {
+		buffs[slot].spellid = SPELL_UNKNOWN;
 	}
 
 	if(IsPet() && GetOwner() && GetOwner()->IsClient()) {
