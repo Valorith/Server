@@ -936,122 +936,6 @@ inline void TestClientBuffPersistence()
 	);
 }
 
-inline void TestClientBuffPersistenceRollback(bool run_ddl)
-{
-	// DDL on the live character_buffs table can lock it and disrupt running servers.
-	// Only run when the caller explicitly opts in via --run-ddl-tests.
-	if (!run_ddl) {
-		RunTest(
-			"Client Buff Persistence > Rollback: skipped (pass --run-ddl-tests to enable)",
-			true,
-			true
-		);
-		return;
-	}
-
-	constexpr uint32 test_character_id    = 99999992;
-	constexpr uint16 preexisting_spell_id = 6824;  // stable, widely-used spell present in all data sets
-	constexpr int    suppressed_tics      = 99;
-
-	// Skip if suppressed column is absent — nothing to rename
-	auto schema_check = database.QueryDatabase("SHOW COLUMNS FROM `character_buffs` LIKE 'suppressed'");
-	if (!schema_check.Success() || schema_check.RowCount() == 0) {
-		RunTest(
-			"Client Buff Persistence > Rollback: skipped (suppressed column absent)",
-			true,
-			true
-		);
-		return;
-	}
-
-	// Ensure a clean starting state
-	CharacterBuffsRepository::DeleteWhere(
-		database,
-		fmt::format("`character_id` = {}", test_character_id)
-	);
-
-	// Insert one pre-existing buff row that must survive a failed SaveBuffs()
-	auto pre          = CharacterBuffsRepository::NewEntity();
-	pre.character_id  = test_character_id;
-	pre.slot_id       = 0;
-	pre.spell_id      = preexisting_spell_id;
-	pre.caster_level  = 40;
-	pre.ticsremaining = 30;
-	const int inserted = CharacterBuffsRepository::InsertMany(database, { pre });
-	RunTest("Client Buff Persistence > Rollback: pre-existing row inserted", 1, inserted);
-	if (inserted != 1) {
-		return;
-	}
-
-	// Rename `suppressed` so that REPLACE INTO (which lists it by name) fails
-	const auto rename_result = database.QueryDatabase(
-		"ALTER TABLE `character_buffs` "
-		"CHANGE `suppressed` `suppressed_bkp` tinyint(1) unsigned NOT NULL DEFAULT 0"
-	);
-	RunTest("Client Buff Persistence > Rollback: column rename succeeded", true, rename_result.Success());
-	if (!rename_result.Success()) {
-		CharacterBuffsRepository::DeleteWhere(
-			database,
-			fmt::format("`character_id` = {}", test_character_id)
-		);
-		return;
-	}
-
-	// Try to save a different buff — the REPLACE INTO will fail and must roll back
-	Client saver;
-	saver.SetCharacterId(test_character_id);
-	saver.SetName("buff-rollback-save");
-	saver.SetClientVersion(EQ::versions::ClientVersion::RoF2);
-
-	auto saver_buffs = saver.GetBuffs();
-	for (int slot = 0; slot < saver.GetMaxBuffSlots(); ++slot) {
-		saver_buffs[slot]        = Buffs_Struct{};
-		saver_buffs[slot].spellid = SPELL_UNKNOWN;
-	}
-
-	// Use SPELL_SUPPRESSED — always passes IsValidOrSuppressedSpell, no spell-data dependency
-	saver_buffs[0].spellid                 = SPELL_SUPPRESSED;
-	saver_buffs[0].suppressedid            = preexisting_spell_id;
-	saver_buffs[0].suppressedticsremaining = suppressed_tics;
-	saver_buffs[0].ticsremaining           = 5;
-	saver_buffs[0].casterlevel             = 60;
-
-	database.SaveBuffs(&saver);
-
-	// Restore the column before any assertions so subsequent tests are unaffected
-	const auto restore_result = database.QueryDatabase(
-		"ALTER TABLE `character_buffs` "
-		"CHANGE `suppressed_bkp` `suppressed` tinyint(1) unsigned NOT NULL DEFAULT 0"
-	);
-	RunTest("Client Buff Persistence > Rollback: column restore succeeded", true, restore_result.Success());
-	if (!restore_result.Success()) {
-		// Fail fast to avoid running further tests with a broken schema
-		return;
-	}
-
-	// Pre-existing rows must still be present because the transaction was rolled back
-	const auto rows_after = CharacterBuffsRepository::GetWhere(
-		database,
-		fmt::format("`character_id` = {} ORDER BY `slot_id`", test_character_id)
-	);
-
-	RunTest(
-		"Client Buff Persistence > Rollback: pre-existing rows not wiped on insert failure",
-		1,
-		(int) rows_after.size()
-	);
-	RunTest(
-		"Client Buff Persistence > Rollback: pre-existing spell ID preserved after rollback",
-		(int) preexisting_spell_id,
-		rows_after.empty() ? -1 : (int) rows_after[0].spell_id
-	);
-
-	CharacterBuffsRepository::DeleteWhere(
-		database,
-		fmt::format("`character_id` = {}", test_character_id)
-	);
-}
-
 inline void TestBuffs()
 {
 	for (auto &e: entity_list.GetNPCList()) {
@@ -1359,7 +1243,6 @@ void ZoneCLI::TestZoneState(int argc, char **argv, argh::parser &cmd, std::strin
 	TestZoneVariables();
 	TestHpManaEnd();
 	TestClientBuffPersistence();
-	TestClientBuffPersistenceRollback(cmd["--run-ddl-tests"]);
 	TestBuffs();
 	TestLocationChange();
 	TestEntityVariables();

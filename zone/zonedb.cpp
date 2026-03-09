@@ -2925,16 +2925,7 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		v.emplace_back(e);
 	}
 
-	const auto begin_result = database.QueryDatabase("START TRANSACTION");
-	if (!begin_result.Success()) {
-		LogError(
-			"Failed to begin buff save transaction for character [{}] [{}]: {}",
-			client->GetCleanName(),
-			client->CharacterID(),
-			begin_result.ErrorMessage()
-		);
-		return;
-	}
+	database.TransactionBegin();
 
 	const auto delete_result = database.QueryDatabase(
 		fmt::format(
@@ -2954,6 +2945,9 @@ void ZoneDatabase::SaveBuffs(Client *client)
 	}
 
 	if (!v.empty()) {
+		// Use < rather than != because REPLACE INTO can report 2× affected rows when it replaces
+		// an existing row (delete + insert). Since we DELETE first in the same transaction, these
+		// are always pure inserts, but < is more defensive and avoids false-positive failures.
 		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
 		if (saved_count < static_cast<int>(v.size())) {
 			database.TransactionRollback();
