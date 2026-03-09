@@ -2925,15 +2925,33 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		v.emplace_back(e);
 	}
 
-	database.TransactionBegin();
+	const auto begin_result = database.QueryDatabase("START TRANSACTION");
+	if (!begin_result.Success()) {
+		LogError(
+			"Failed to begin buff save transaction for character [{}] [{}]: {}",
+			client->GetCleanName(),
+			client->CharacterID(),
+			begin_result.ErrorMessage()
+		);
+		return;
+	}
 
-	CharacterBuffsRepository::DeleteWhere(
-		database,
+	const auto delete_result = database.QueryDatabase(
 		fmt::format(
-			"`character_id` = {}",
+			"DELETE FROM `character_buffs` WHERE `character_id` = {}",
 			client->CharacterID()
 		)
 	);
+	if (!delete_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to delete existing buffs for character [{}] [{}]: {}",
+			client->GetCleanName(),
+			client->CharacterID(),
+			delete_result.ErrorMessage()
+		);
+		return;
+	}
 
 	if (!v.empty()) {
 		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
