@@ -936,8 +936,19 @@ inline void TestClientBuffPersistence()
 	);
 }
 
-inline void TestClientBuffPersistenceRollback()
+inline void TestClientBuffPersistenceRollback(bool run_ddl)
 {
+	// DDL on the live character_buffs table can lock it and disrupt running servers.
+	// Only run when the caller explicitly opts in via --run-ddl-tests.
+	if (!run_ddl) {
+		RunTest(
+			"Client Buff Persistence > Rollback: skipped (pass --run-ddl-tests to enable)",
+			true,
+			true
+		);
+		return;
+	}
+
 	constexpr uint32 test_character_id    = 99999992;
 	constexpr uint16 preexisting_spell_id = 6824;  // stable, widely-used spell present in all data sets
 	constexpr int    suppressed_tics      = 99;
@@ -1344,7 +1355,7 @@ void ZoneCLI::TestZoneState(int argc, char **argv, argh::parser &cmd, std::strin
 	TestZoneVariables();
 	TestHpManaEnd();
 	TestClientBuffPersistence();
-	TestClientBuffPersistenceRollback();
+	TestClientBuffPersistenceRollback(cmd["--run-ddl-tests"]);
 	TestBuffs();
 	TestLocationChange();
 	TestEntityVariables();
