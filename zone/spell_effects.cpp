@@ -4222,7 +4222,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 // Re-applies runtime-only buff effects after unsuppression or zone-in
 void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 {
-	if (!IsValidSpell(buffs[index].spellid)) {
+	if (index >= GetMaxTotalSlots() || !IsValidSpell(buffs[index].spellid)) {
 		return;
 	}
 
@@ -4268,7 +4268,9 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 		}
 		case SpellEffect::DivineAura:
 		{
-			SetInvul(true);
+			if (IsClient()) {
+				SetInvul(true);
+			}
 			break;
 		}
 		case SpellEffect::Invisibility2:
@@ -4298,26 +4300,13 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 				}
 			}
 
+			auto fly_mode = (spell.limit_value[i] == 1)
+				? EQ::constants::GravityBehavior::LevitateWhileRunning
+				: EQ::constants::GravityBehavior::Levitating;
 			if (IsClient()) {
-				SendAppearancePacket(
-					AppearanceType::FlyMode,
-					(
-						spell.limit_value[i] == 1 ?
-							EQ::constants::GravityBehavior::LevitateWhileRunning :
-							EQ::constants::GravityBehavior::Levitating
-					),
-					true,
-					!from_suppress
-				);
+				SendAppearancePacket(AppearanceType::FlyMode, fly_mode, true, !from_suppress);
 			} else {
-				SendAppearancePacket(
-					AppearanceType::FlyMode,
-					(
-						spell.limit_value[i] == 1 ?
-							EQ::constants::GravityBehavior::LevitateWhileRunning :
-							EQ::constants::GravityBehavior::Levitating
-					)
-				);
+				SendAppearancePacket(AppearanceType::FlyMode, fly_mode);
 			}
 
 			break;
