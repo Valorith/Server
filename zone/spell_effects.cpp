@@ -4219,7 +4219,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 		CalcBonuses();
 }
 
-// removes the buff in the buff slot 'slot'
+// Re-applies runtime-only buff effects after unsuppression or zone-in
 void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 {
 	if (!IsValidSpell(buffs[index].spellid)) {
@@ -4369,6 +4369,7 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 	}
 }
 
+// removes the buff in the buff slot 'slot'
 void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 suppresstics)
 {
 	if(slot < 0 || slot > GetMaxTotalSlots())
