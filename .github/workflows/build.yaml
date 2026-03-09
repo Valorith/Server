@@ -52,32 +52,6 @@ jobs:
       - name: Mark workspace safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Cache vcpkg downloads
-        uses: actions/cache@v4
-        with:
-          path: submodules/vcpkg/downloads
-          key: ${{ runner.os }}-vcpkg-downloads-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/ports/**', 'submodules/vcpkg/versions/**') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-downloads-
-
-      - name: vcpkg install (retry)
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -e
-          ./submodules/vcpkg/bootstrap-vcpkg.sh -disableMetrics
-
-          for i in 1 2 3 4 5; do
-            echo "vcpkg install attempt $i..."
-            if ./submodules/vcpkg/vcpkg install --triplet x64-linux; then
-              exit 0
-            fi
-            echo "vcpkg install failed; sleeping before retry..."
-            sleep $((i * 10))
-          done
-
-          echo "vcpkg install failed after retries"
-          exit 1
-
       - name: Build
         working-directory: ${{ github.workspace }}
         run: |
