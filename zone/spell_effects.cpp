@@ -4226,7 +4226,11 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 		return;
 	}
 
-	const auto &spell = spells[buffs[index].spellid];
+	// Snapshot the spell ID before the loop so that if BuffFadeByEffect
+	// clears buffs[index].spellid mid-iteration the remaining effect
+	// handlers still reference the correct spell.
+	const uint32 spell_id = buffs[index].spellid;
+	const auto &spell = spells[spell_id];
 	bool refresh_weapon_stance = false;
 
 	for (int i = 0; i < EFFECT_COUNT; ++i) {
@@ -4251,8 +4255,9 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 
 			if (!from_suppress && (RuleB(Character, PreventMountsFromZoning) || !zone->CanCastOutdoor())) {
 				BuffFadeByEffect(SpellEffect::SummonHorse);
+				return;
 			} else {
-				CastToClient()->SummonHorse(buffs[index].spellid);
+				CastToClient()->SummonHorse(spell_id);
 			}
 			break;
 		}
@@ -4291,12 +4296,12 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 						SendAppearancePacket(AppearanceType::FlyMode, 0);
 						BuffFadeByEffect(SpellEffect::Levitate);
 						Message(Chat::Red, "You can't levitate in this zone.");
-						break;
+						return;
 					}
 				} else {
 					SendAppearancePacket(AppearanceType::FlyMode, 0);
 					BuffFadeByEffect(SpellEffect::Levitate);
-					break;
+					return;
 				}
 			}
 
@@ -4314,17 +4319,17 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 		case SpellEffect::AddMeleeProc:
 		case SpellEffect::WeaponProc:
 		{
-			AddProcToWeapon(GetProcID(buffs[index].spellid, i), false, 100 + spell.limit_value[i], buffs[index].spellid, buffs[index].casterlevel, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::MELEE_PROC));
+			AddProcToWeapon(GetProcID(spell_id, i), false, 100 + spell.limit_value[i], spell_id, buffs[index].casterlevel, GetSpellProcLimitTimer(spell_id, ProcType::MELEE_PROC));
 			break;
 		}
 		case SpellEffect::DefensiveProc:
 		{
-			AddDefensiveProc(GetProcID(buffs[index].spellid, i), 100 + spell.limit_value[i], buffs[index].spellid, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::DEFENSIVE_PROC));
+			AddDefensiveProc(GetProcID(spell_id, i), 100 + spell.limit_value[i], spell_id, GetSpellProcLimitTimer(spell_id, ProcType::DEFENSIVE_PROC));
 			break;
 		}
 		case SpellEffect::RangedProc:
 		{
-			AddRangedProc(GetProcID(buffs[index].spellid, i), 100 + spell.limit_value[i], buffs[index].spellid, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::RANGED_PROC));
+			AddRangedProc(GetProcID(spell_id, i), 100 + spell.limit_value[i], spell_id, GetSpellProcLimitTimer(spell_id, ProcType::RANGED_PROC));
 			break;
 		}
 		case SpellEffect::BindSight:
