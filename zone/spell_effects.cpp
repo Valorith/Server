@@ -7537,7 +7537,12 @@ void Mob::DispelMagic(Mob* caster, uint16 spell_id, int effect_value, int chance
 	for (int slot = 0; slot < GetMaxTotalSlots(); ++slot) {
 		auto s = buffs[slot].spellid;
 
-		if (s == SPELL_UNKNOWN || spells[s].dispel_flag != 0 || IsDiscipline(s)) {
+		// Suppressed buffs always return when suppression ends; they cannot be dispelled.
+		if (s == SPELL_SUPPRESSED) {
+			continue;
+		}
+
+		if (!IsValidSpell(s) || spells[s].dispel_flag != 0 || IsDiscipline(s)) {
 			continue;
 		}
 
