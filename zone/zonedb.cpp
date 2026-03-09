@@ -3128,8 +3128,8 @@ void ZoneDatabase::SavePetInfo(Client *client)
 	std::vector<CharacterPetInfoRepository::CharacterPetInfo> pet_infos;
 	auto pet_info = CharacterPetInfoRepository::NewEntity();
 
-	std::vector<CharacterPetBuffsRepository::CharacterPetBuffs> pet_buffs;
-	auto pet_buff = CharacterPetBuffsRepository::NewEntity();
+	std::vector<CharacterPetBuffsRepository::CharacterPetBuffsWithSuppressed> pet_buffs;
+	auto pet_buff = CharacterPetBuffsRepository::NewEntityWithSuppressed();
 
 	std::vector<CharacterPetInventoryRepository::CharacterPetInventory> inventory;
 	auto item = CharacterPetInventoryRepository::NewEntity();
@@ -3161,7 +3161,7 @@ void ZoneDatabase::SavePetInfo(Client *client)
 		);
 
 		for (int slot_id = 0; slot_id < max_slots; slot_id++) {
-			if (!IsValidSpell(p->Buffs[slot_id].spellid)) {
+			if (!IsValidOrSuppressedSpell(p->Buffs[slot_id].spellid)) {
 				continue;
 			}
 
@@ -3171,18 +3171,22 @@ void ZoneDatabase::SavePetInfo(Client *client)
 		pet_buffs.reserve(pet_buff_count);
 
 		for (int slot_id = 0; slot_id < max_slots; slot_id++) {
-			if (!IsValidSpell(p->Buffs[slot_id].spellid)) {
+			if (!IsValidOrSuppressedSpell(p->Buffs[slot_id].spellid)) {
 				continue;
 			}
+
+			const bool suppressed = p->Buffs[slot_id].spellid == SPELL_SUPPRESSED;
 
 			pet_buff.char_id        = client->CharacterID();
 			pet_buff.pet            = pet_info_type;
 			pet_buff.slot           = slot_id;
-			pet_buff.spell_id       = p->Buffs[slot_id].spellid;
+			pet_buff.spell_id       = suppressed ? p->Buffs[slot_id].player_id : p->Buffs[slot_id].spellid;
 			pet_buff.caster_level   = p->Buffs[slot_id].level;
 			pet_buff.ticsremaining  = p->Buffs[slot_id].duration;
 			pet_buff.counters       = p->Buffs[slot_id].counters;
+			pet_buff.numhits        = 0;
 			pet_buff.instrument_mod = p->Buffs[slot_id].bard_modifier;
+			pet_buff.suppressed     = suppressed ? 1 : 0;
 
 			pet_buffs.push_back(pet_buff);
 		}
@@ -3242,7 +3246,16 @@ void ZoneDatabase::SavePetInfo(Client *client)
 	);
 
 	if (!pet_buffs.empty()) {
-		CharacterPetBuffsRepository::InsertMany(database, pet_buffs);
+		const auto saved_count = CharacterPetBuffsRepository::InsertManyWithSuppressed(database, pet_buffs);
+		if (saved_count != static_cast<int>(pet_buffs.size())) {
+			LogError(
+				"Failed to save all pet buffs for character [{}] [{}]. Expected [{}] rows, saved [{}]. Verify the `character_pet_buffs` schema is up to date.",
+				client->GetCleanName(),
+				client->CharacterID(),
+				pet_buffs.size(),
+				saved_count
+			);
+		}
 	}
 
 	CharacterPetInventoryRepository::DeleteWhere(
@@ -3332,7 +3345,7 @@ void ZoneDatabase::LoadPetInfo(Client *client)
 		p->taunting = e.taunting;
 	}
 
-	const auto& buffs = CharacterPetBuffsRepository::GetWhere(
+	const auto& buffs = CharacterPetBuffsRepository::GetWhereWithSuppressed(
 		database,
 		fmt::format(
 			"`char_id` = {}",
@@ -3358,9 +3371,11 @@ void ZoneDatabase::LoadPetInfo(Client *client)
 				continue;
 			}
 
-			p->Buffs[e.slot].spellid       = e.spell_id;
+			const bool suppressed = e.suppressed != 0;
+
+			p->Buffs[e.slot].spellid       = suppressed ? SPELL_SUPPRESSED : e.spell_id;
 			p->Buffs[e.slot].level         = e.caster_level;
-			p->Buffs[e.slot].player_id     = 0;
+			p->Buffs[e.slot].player_id     = suppressed ? e.spell_id : 0;
 			p->Buffs[e.slot].effect_type   = BuffEffectType::Buff;
 			p->Buffs[e.slot].duration      = e.ticsremaining;
 			p->Buffs[e.slot].counters      = e.counters;

@@ -481,14 +481,17 @@ void NPC::GetPetState(SpellBuff_Struct *pet_buffs, uint32 *items, char *name) {
 
 	//save their buffs.
 	for (int i=EQ::invslot::EQUIPMENT_BEGIN; i < GetPetMaxTotalSlots(); i++) {
-		if (IsValidSpell(buffs[i].spellid)) {
-			pet_buffs[i].spellid = buffs[i].spellid;
+		if (IsValidOrSuppressedSpell(buffs[i].spellid)) {
+			const bool suppressed = buffs[i].spellid == SPELL_SUPPRESSED;
+
+			pet_buffs[i].spellid = suppressed ? SPELL_SUPPRESSED : buffs[i].spellid;
 			pet_buffs[i].effect_type = i+1;
-			pet_buffs[i].duration = buffs[i].ticsremaining;
+			pet_buffs[i].duration = suppressed ? buffs[i].suppressedticsremaining : buffs[i].ticsremaining;
 			pet_buffs[i].level = buffs[i].casterlevel;
 			pet_buffs[i].bard_modifier = 10;
 			pet_buffs[i].counters = buffs[i].counters;
 			pet_buffs[i].bard_modifier = buffs[i].instrument_mod;
+			pet_buffs[i].player_id = suppressed ? buffs[i].suppressedid : 0;
 		}
 		else {
 			pet_buffs[i].spellid = SPELL_UNKNOWN;
@@ -496,6 +499,7 @@ void NPC::GetPetState(SpellBuff_Struct *pet_buffs, uint32 *items, char *name) {
 			pet_buffs[i].level = 0;
 			pet_buffs[i].bard_modifier = 10;
 			pet_buffs[i].counters = 0;
+			pet_buffs[i].player_id = 0;
 		}
 	}
 }
@@ -505,32 +509,53 @@ void NPC::SetPetState(SpellBuff_Struct *pet_buffs, uint32 *items) {
 
 	int i;
 	for (i = 0; i < GetPetMaxTotalSlots(); i++) {
+		const bool suppressed = pet_buffs[i].spellid == SPELL_SUPPRESSED;
+		uint32 restored_spell_id = suppressed ? pet_buffs[i].player_id : pet_buffs[i].spellid;
+
 		for(int z = 0; z < GetPetMaxTotalSlots(); z++) {
-		// check for duplicates
-			if(IsValidSpell(buffs[z].spellid) && buffs[z].spellid == pet_buffs[i].spellid) {
+			// check for duplicates
+			if (!IsValidOrSuppressedSpell(buffs[z].spellid)) {
+				continue;
+			}
+
+			const uint32 existing_spell_id = buffs[z].spellid == SPELL_SUPPRESSED ? buffs[z].suppressedid : buffs[z].spellid;
+			if (existing_spell_id == restored_spell_id) {
 				buffs[z].spellid = SPELL_UNKNOWN;
+				buffs[z].suppressedid = 0;
+				buffs[z].suppressedticsremaining = -1;
 				pet_buffs[i].spellid = 0xFFFFFFFF;
+				pet_buffs[i].player_id = 0;
+				restored_spell_id = 0xFFFFFFFF;
 			}
 		}
 
-		if (pet_buffs[i].spellid <= (uint32)SPDAT_RECORDS && pet_buffs[i].spellid != 0 && (pet_buffs[i].duration > 0 || pet_buffs[i].duration == -1)) {
+		if (
+			IsValidSpell(restored_spell_id) &&
+			(pet_buffs[i].duration > 0 || pet_buffs[i].duration == -1)
+		) {
 			if(pet_buffs[i].level == 0 || pet_buffs[i].level > 100)
 				pet_buffs[i].level = 1;
-			buffs[i].spellid			= pet_buffs[i].spellid;
-			buffs[i].ticsremaining		= pet_buffs[i].duration;
+
+			buffs[i].spellid = suppressed ? SPELL_SUPPRESSED : restored_spell_id;
+			buffs[i].ticsremaining = suppressed ? 0 : pet_buffs[i].duration;
 			buffs[i].casterlevel		= pet_buffs[i].level;
 			buffs[i].casterid			= 0;
 			buffs[i].counters			= pet_buffs[i].counters;
-			buffs[i].hit_number			= spells[pet_buffs[i].spellid].hit_number;
+			buffs[i].hit_number			= spells[restored_spell_id].hit_number;
 			buffs[i].instrument_mod		= pet_buffs[i].bard_modifier;
+			buffs[i].suppressedid = suppressed ? restored_spell_id : 0;
+			buffs[i].suppressedticsremaining = suppressed ? pet_buffs[i].duration : -1;
 		}
 		else {
 			buffs[i].spellid = SPELL_UNKNOWN;
+			buffs[i].suppressedid = 0;
+			buffs[i].suppressedticsremaining = -1;
 			pet_buffs[i].spellid = 0xFFFFFFFF;
 			pet_buffs[i].effect_type = 0;
 			pet_buffs[i].level = 0;
 			pet_buffs[i].duration = 0;
 			pet_buffs[i].bard_modifier = 0;
+			pet_buffs[i].player_id = 0;
 		}
 	}
 	for (int j1=0; j1 < GetPetMaxTotalSlots(); j1++) {
