@@ -452,6 +452,7 @@ public:
 	void BuffFadeNonPersistDeath();
 	void BuffFadeDetrimental();
 	void BuffFadeBySlot(int slot, bool iRecalcBonuses = true, bool suppress = false, uint32 suppresstics = 0);
+	void ReapplyBuffEffects(uint32 index, bool from_suppress = false);
 	void BuffFadeDetrimentalByCaster(Mob *caster);
 	void BuffFadeBySitModifier();
 	void BuffFadeSongs();

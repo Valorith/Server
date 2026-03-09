@@ -520,100 +520,13 @@ void Client::ReapplyBuff(uint32 index, bool from_suppress)
 	if (!IsValidSpell(buffs[index].spellid))
 		return;
 
-	const SPDat_Spell_Struct &spell = spells[buffs[index].spellid];
-
 	int NimbusEffect = GetSpellNimbusEffect(buffs[index].spellid);
 	if (NimbusEffect) {
 		if (!IsNimbusEffectActive(NimbusEffect))
 			SendSpellEffect(NimbusEffect, 500, 0, 1, 3000, true);
 	}
 
-	for (int x1 = 0; x1 < EFFECT_COUNT; x1++) {
-		switch (spell.effect_id[x1]) {
-		case SpellEffect::Illusion: {
-			if (GetIllusionBlock()) {
-				break;
-			}
-
-			if (from_suppress || buffs[index].persistant_buff) {
-				Mob *caster = entity_list.GetMobID(buffs[index].casterid);
-				ApplySpellEffectIllusion(spell.id, caster, index, spell.base_value[x1], spell.limit_value[x1], spell.max_value[x1]);
-			}
-			break;
-		}
-		case SpellEffect::SummonHorse: {
-			if (!from_suppress && (RuleB(Character, PreventMountsFromZoning) || !zone->CanCastOutdoor())) {
-				BuffFadeByEffect(SpellEffect::SummonHorse);
-			} else {
-				SummonHorse(buffs[index].spellid);
-			}
-			break;
-		}
-		case SpellEffect::Silence:
-		{
-			Silence(true);
-			break;
-		}
-		case SpellEffect::Amnesia:
-		{
-			Amnesia(true);
-			break;
-		}
-		case SpellEffect::DivineAura:
-		{
-			invulnerable = true;
-			break;
-		}
-		case SpellEffect::Invisibility2:
-		case SpellEffect::Invisibility:
-		{
-			SendAppearancePacket(AppearanceType::Invisibility, Invisibility::Invisible);
-			break;
-		}
-		case SpellEffect::Levitate:
-		{
-			if (!zone->CanLevitate()) {
-				if (!GetGM()) {
-					SendAppearancePacket(AppearanceType::FlyMode, 0);
-					BuffFadeByEffect(SpellEffect::Levitate);
-					Message(Chat::Red, "You can't levitate in this zone.");
-					break;
-				}
-
-				Message(Chat::White, "Your GM flag allows you to levitate in this zone.");
-			}
-
-			SendAppearancePacket(
-				AppearanceType::FlyMode,
-				(
-					spell.limit_value[x1] == 1 ?
-						EQ::constants::GravityBehavior::LevitateWhileRunning :
-						EQ::constants::GravityBehavior::Levitating
-				),
-				true,
-				!from_suppress
-			);
-
-			break;
-		}
-		case SpellEffect::AddMeleeProc:
-		case SpellEffect::WeaponProc:
-		{
-			AddProcToWeapon(GetProcID(buffs[index].spellid, x1), false, 100 + spells[buffs[index].spellid].limit_value[x1], buffs[index].spellid, buffs[index].casterlevel, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::MELEE_PROC));
-			break;
-		}
-		case SpellEffect::DefensiveProc:
-		{
-			AddDefensiveProc(GetProcID(buffs[index].spellid, x1), 100 + spells[buffs[index].spellid].limit_value[x1], buffs[index].spellid, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::DEFENSIVE_PROC));
-			break;
-		}
-		case SpellEffect::RangedProc:
-		{
-			AddRangedProc(GetProcID(buffs[index].spellid, x1), 100 + spells[buffs[index].spellid].limit_value[x1], buffs[index].spellid, GetSpellProcLimitTimer(buffs[index].spellid, ProcType::RANGED_PROC));
-			break;
-		}
-		}
-	}
+	ReapplyBuffEffects(index, from_suppress);
 }
 
 // Finish client connecting state
