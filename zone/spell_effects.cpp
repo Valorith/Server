@@ -4332,14 +4332,6 @@ void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
 			AddRangedProc(GetProcID(spell_id, i), 100 + spell.limit_value[i], spell_id, GetSpellProcLimitTimer(spell_id, ProcType::RANGED_PROC));
 			break;
 		}
-		case SpellEffect::BindSight:
-		{
-			auto *caster = entity_list.GetMobID(buffs[index].casterid);
-			if (caster && caster->IsClient()) {
-				caster->CastToClient()->SetBindSightTarget(this);
-			}
-			break;
-		}
 		case SpellEffect::SetBodyType:
 		{
 			SetBodyType(spell.base_value[i], false);
