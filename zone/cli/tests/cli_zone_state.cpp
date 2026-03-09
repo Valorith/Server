@@ -1013,6 +1013,10 @@ inline void TestClientBuffPersistenceRollback()
 		"CHANGE `suppressed_bkp` `suppressed` tinyint(1) unsigned NOT NULL DEFAULT 0"
 	);
 	RunTest("Client Buff Persistence > Rollback: column restore succeeded", true, restore_result.Success());
+	if (!restore_result.Success()) {
+		// Fail fast to avoid running further tests with a broken schema
+		return;
+	}
 
 	// Pre-existing rows must still be present because the transaction was rolled back
 	const auto rows_after = CharacterBuffsRepository::GetWhere(
