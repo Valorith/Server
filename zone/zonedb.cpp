@@ -3168,7 +3168,7 @@ void ZoneDatabase::SavePetInfo(Client *client)
 			pet_buff_count++;
 		}
 
-		pet_buffs.reserve(pet_buff_count);
+		pet_buffs.reserve(pet_buffs.size() + pet_buff_count);
 
 		for (int slot_id = 0; slot_id < max_slots; slot_id++) {
 			if (!IsValidOrSuppressedSpell(p->Buffs[slot_id].spellid)) {
