@@ -4785,6 +4785,67 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 		CalcBonuses();
 }
 
+// Permanently removes a suppressed buff without restoring the original spell.
+// Use this instead of BuffFadeBySlot when you want to truly dispel a buff that
+// is currently suppressed (spellid == SPELL_SUPPRESSED).  BuffFadeBySlot would
+// unsuppress/reapply the original buff in that situation.
+void Mob::RemoveSuppressedBuffBySlot(int slot, bool iRecalcBonuses)
+{
+	if (slot < 0 || slot >= GetMaxTotalSlots())
+		return;
+
+	if (buffs[slot].spellid != SPELL_SUPPRESSED)
+		return;
+
+	// Send the client a buff-fade packet for the visible suppression placeholder.
+	if (IsClient()) {
+		auto client = CastToClient();
+		if (!client->IsDead()) {
+			client->MakeBuffFadePacket(RuleI(Spells, SuppressDebuffSpellID), slot);
+		}
+	}
+
+	LogSpells("Removing suppressed buff (suppressedid [{}]) from slot [{}]", buffs[slot].suppressedid, slot);
+
+	// The spell's effects were already removed when the buff was suppressed,
+	// so we only need to clear the slot bookkeeping.
+	buffs[slot].spellid                = SPELL_UNKNOWN;
+	buffs[slot].suppressedid           = 0;
+	buffs[slot].suppressedticsremaining = -1;
+
+	if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
+		SendPetBuffsToClient();
+	}
+
+	if ((IsClient() && !CastToClient()->GetPVP()) ||
+		(IsPet()  && GetOwner() && GetOwner()->IsClient() && !GetOwner()->CastToClient()->GetPVP()) ||
+		(IsBot()  && GetOwner() && GetOwner()->IsClient() && !GetOwner()->CastToClient()->GetPVP()) ||
+		(IsMerc() && GetOwner() && GetOwner()->IsClient() && !GetOwner()->CastToClient()->GetPVP()))
+	{
+		EQApplicationPacket *outapp = MakeBuffsPacket();
+		entity_list.QueueClientsByTarget(this, outapp, false, nullptr, true, false, EQ::versions::maskSoDAndLater);
+		if (IsClient() && GetTarget() == this) {
+			CastToClient()->QueuePacket(outapp);
+		}
+		safe_delete(outapp);
+	}
+
+	if (IsNPC()) {
+		EQApplicationPacket *outapp = MakeBuffsPacket();
+		entity_list.QueueClientsByTarget(this, outapp, false, nullptr, true, false, EQ::versions::maskSoDAndLater, true);
+		safe_delete(outapp);
+	}
+
+	if (IsClient() && CastToClient()->ClientVersionBit() & EQ::versions::maskUFAndLater) {
+		EQApplicationPacket *outapp = MakeBuffsPacket(false);
+		CastToClient()->FastQueuePacket(&outapp);
+	}
+
+	degenerating_effects = false;
+	if (iRecalcBonuses)
+		CalcBonuses();
+}
+
 int64 Mob::CalcAAFocus(focusType type, const AA::Rank &rank, uint16 spell_id)
 {
 	const SPDat_Spell_Struct &spell = spells[spell_id];
@@ -7566,7 +7627,13 @@ void Mob::DispelMagic(Mob* caster, uint16 spell_id, int effect_value, int chance
 
 		bool perma_remove = caster_is_client || !target_is_client;
 		if (perma_remove || !RuleB(Spells, SuppressDispels)) {
-			BuffFadeBySlot(slot);
+			if (s == SPELL_SUPPRESSED) {
+				// Truly remove a suppressed buff.  BuffFadeBySlot would unsuppress/reapply
+				// the original spell rather than clearing the slot.
+				RemoveSuppressedBuffBySlot(slot);
+			} else {
+				BuffFadeBySlot(slot);
+			}
 			break;
 		} else {
 			//Additional restrictions on which buffs can be suppressed
