@@ -1,7 +1,9 @@
 #include "zone/zone_cli.h"
+#include "zone/client.h"
 #include "zone/corpse.h"
 
 #include "common/cli/eqemu_command_handler.h"
+#include "common/repositories/character_buffs_repository.h"
 #include "common/repositories/npc_types_repository.h"
 #include "common/repositories/respawn_times_repository.h"
 
@@ -824,6 +826,116 @@ inline void TestHpManaEnd()
 	);
 }
 
+inline void TestClientBuffPersistence()
+{
+	constexpr uint32 test_character_id  = 99999991;
+	constexpr uint16 normal_spell_id    = 6824;
+	constexpr uint16 suppressed_spell_id = 2550;
+
+	auto schema_check = database.QueryDatabase("SHOW COLUMNS FROM `character_buffs` LIKE 'suppressed'");
+	RunTest(
+		"Client Buff Persistence > `character_buffs.suppressed` column exists",
+		true,
+		schema_check.Success() && schema_check.RowCount() == 1
+	);
+
+	CharacterBuffsRepository::DeleteWhere(
+		database,
+		fmt::format("`character_id` = {}", test_character_id)
+	);
+
+	Client saver;
+	saver.SetCharacterId(test_character_id);
+	saver.SetName("buff-persistence-save");
+
+	auto saver_buffs = saver.GetBuffs();
+	for (int slot = 0; slot < saver.GetMaxBuffSlots(); ++slot) {
+		saver_buffs[slot]                         = Buffs_Struct{};
+		saver_buffs[slot].spellid                 = SPELL_UNKNOWN;
+		saver_buffs[slot].suppressedid            = 0;
+		saver_buffs[slot].suppressedticsremaining = -1;
+	}
+
+	saver_buffs[0].spellid        = normal_spell_id;
+	saver_buffs[0].casterlevel    = 50;
+	saver_buffs[0].ticsremaining  = 22;
+	saver_buffs[0].instrument_mod = 10;
+
+	saver_buffs[1].spellid                 = SPELL_SUPPRESSED;
+	saver_buffs[1].suppressedid            = suppressed_spell_id;
+	saver_buffs[1].suppressedticsremaining = 18;
+	saver_buffs[1].ticsremaining           = 4;
+	saver_buffs[1].casterlevel             = 55;
+	saver_buffs[1].instrument_mod          = 10;
+
+	database.SaveBuffs(&saver);
+
+	const auto persisted_rows = CharacterBuffsRepository::GetWhere(
+		database,
+		fmt::format("`character_id` = {} ORDER BY `slot_id`", test_character_id)
+	);
+
+	RunTest("Client Buff Persistence > Two buff rows were saved", 2, (int) persisted_rows.size());
+	RunTest(
+		"Client Buff Persistence > Suppressed row persisted with suppressed flag",
+		true,
+		persisted_rows.size() > 1 && persisted_rows[1].suppressed == 1
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed row persisted underlying spell ID",
+		(int) suppressed_spell_id,
+		persisted_rows.size() > 1 ? (int) persisted_rows[1].spell_id : -1
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed row persisted underlying duration",
+		18,
+		persisted_rows.size() > 1 ? persisted_rows[1].ticsremaining : -1
+	);
+
+	Client loader;
+	loader.SetCharacterId(test_character_id);
+	loader.SetName("buff-persistence-load");
+	loader.SetClientVersion(EQ::versions::ClientVersion::RoF2);
+	database.LoadBuffs(&loader);
+
+	auto loaded_buffs = loader.GetBuffs();
+	RunTest(
+		"Client Buff Persistence > Normal buff restored as active spell",
+		(int) normal_spell_id,
+		(int) loaded_buffs[0].spellid
+	);
+	RunTest(
+		"Client Buff Persistence > Normal buff duration restored",
+		22,
+		loaded_buffs[0].ticsremaining
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed buff restored as suppressed placeholder",
+		(int) SPELL_SUPPRESSED,
+		(int) loaded_buffs[1].spellid
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed buff restored underlying spell ID",
+		(int) suppressed_spell_id,
+		(int) loaded_buffs[1].suppressedid
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed buff restored underlying duration",
+		18,
+		(int) loaded_buffs[1].suppressedticsremaining
+	);
+	RunTest(
+		"Client Buff Persistence > Suppressed placeholder timer reset on load",
+		0,
+		loaded_buffs[1].ticsremaining
+	);
+
+	CharacterBuffsRepository::DeleteWhere(
+		database,
+		fmt::format("`character_id` = {}", test_character_id)
+	);
+}
+
 inline void TestBuffs()
 {
 	for (auto &e: entity_list.GetNPCList()) {
@@ -1130,6 +1242,7 @@ void ZoneCLI::TestZoneState(int argc, char **argv, argh::parser &cmd, std::strin
 
 	TestZoneVariables();
 	TestHpManaEnd();
+	TestClientBuffPersistence();
 	TestBuffs();
 	TestLocationChange();
 	TestEntityVariables();

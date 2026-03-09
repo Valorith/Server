@@ -2877,14 +2877,6 @@ void ZoneDatabase::UpdateAltCurrencyValue(uint32 char_id, uint32 currency_id, ui
 
 void ZoneDatabase::SaveBuffs(Client *client)
 {
-	CharacterBuffsRepository::DeleteWhere(
-		database,
-		fmt::format(
-			"`character_id` = {}",
-			client->CharacterID()
-		)
-	);
-
 	auto      buffs          = client->GetBuffs();
 	const int max_buff_slots = client->GetMaxBuffSlots();
 
@@ -2933,8 +2925,52 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		v.emplace_back(e);
 	}
 
+	database.TransactionBegin();
+
+	const auto delete_result = database.QueryDatabase(
+		fmt::format(
+			"DELETE FROM `character_buffs` WHERE `character_id` = {}",
+			client->CharacterID()
+		)
+	);
+	if (!delete_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to delete existing buffs for character [{}] [{}]: {}",
+			client->GetCleanName(),
+			client->CharacterID(),
+			delete_result.ErrorMessage()
+		);
+		return;
+	}
+
 	if (!v.empty()) {
-		CharacterBuffsRepository::ReplaceMany(database, v);
+		// Use < rather than != because REPLACE INTO can report 2× affected rows when it replaces
+		// an existing row (delete + insert). Since we DELETE first in the same transaction, these
+		// are always pure inserts, but < is more defensive and avoids false-positive failures.
+		const auto saved_count = CharacterBuffsRepository::ReplaceMany(database, v);
+		if (saved_count < static_cast<int>(v.size())) {
+			database.TransactionRollback();
+			LogError(
+				"Failed to save all buffs for character [{}] [{}]. Expected at least [{}] rows saved, got [{}]. Verify the `character_buffs` schema is up to date.",
+				client->GetCleanName(),
+				client->CharacterID(),
+				v.size(),
+				saved_count
+			);
+			return;
+		}
+	}
+
+	const auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to commit buff save transaction for character [{}] [{}]: {}",
+			client->GetCleanName(),
+			client->CharacterID(),
+			commit_result.ErrorMessage()
+		);
 	}
 }
 
