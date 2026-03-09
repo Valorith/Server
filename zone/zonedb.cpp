@@ -3363,7 +3363,7 @@ void ZoneDatabase::LoadPetInfo(Client *client)
 				continue;
 			}
 
-			if (e.slot >= RuleI(Spells, MaxTotalSlotsPET)) {
+			if (e.slot >= RuleI(Spells, MaxTotalSlotsPET) || e.slot >= PET_BUFF_COUNT) {
 				continue;
 			}
 
