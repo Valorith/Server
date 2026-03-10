@@ -4219,6 +4219,142 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 		CalcBonuses();
 }
 
+// Re-applies runtime-only buff effects after unsuppression or zone-in
+void Mob::ReapplyBuffEffects(uint32 index, bool from_suppress)
+{
+	if (index >= GetMaxTotalSlots() || !IsValidSpell(buffs[index].spellid)) {
+		return;
+	}
+
+	// Snapshot the spell ID before the loop so that if BuffFadeByEffect
+	// clears buffs[index].spellid mid-iteration the remaining effect
+	// handlers still reference the correct spell.
+	const uint32 spell_id = buffs[index].spellid;
+	const auto &spell = spells[spell_id];
+	bool refresh_weapon_stance = false;
+
+	for (int i = 0; i < EFFECT_COUNT; ++i) {
+		switch (spell.effect_id[i]) {
+		case SpellEffect::Illusion:
+		{
+			if (GetIllusionBlock()) {
+				break;
+			}
+
+			if (from_suppress || buffs[index].persistant_buff) {
+				Mob *caster = entity_list.GetMobID(buffs[index].casterid);
+				ApplySpellEffectIllusion(spell.id, caster, index, spell.base_value[i], spell.limit_value[i], spell.max_value[i]);
+			}
+			break;
+		}
+		case SpellEffect::SummonHorse:
+		{
+			if (!IsClient()) {
+				break;
+			}
+
+			if (!from_suppress && (RuleB(Character, PreventMountsFromZoning) || !zone->CanCastOutdoor())) {
+				BuffFadeByEffect(SpellEffect::SummonHorse);
+				return;
+			} else {
+				CastToClient()->SummonHorse(spell_id);
+			}
+			break;
+		}
+		case SpellEffect::Silence:
+		{
+			Silence(true);
+			break;
+		}
+		case SpellEffect::Amnesia:
+		{
+			Amnesia(true);
+			break;
+		}
+		case SpellEffect::DivineAura:
+		{
+			if (IsClient()) {
+				SetInvul(true);
+			}
+			break;
+		}
+		case SpellEffect::Invisibility2:
+		case SpellEffect::Invisibility:
+		{
+			if (IsClient()) {
+				SendAppearancePacket(AppearanceType::Invisibility, Invisibility::Invisible);
+			}
+			break;
+		}
+		case SpellEffect::Levitate:
+		{
+			if (!zone->CanLevitate()) {
+				if (IsClient()) {
+					if (CastToClient()->GetGM()) {
+						Message(Chat::White, "Your GM flag allows you to levitate in this zone.");
+					} else {
+						SendAppearancePacket(AppearanceType::FlyMode, 0);
+						BuffFadeByEffect(SpellEffect::Levitate);
+						Message(Chat::Red, "You can't levitate in this zone.");
+						return;
+					}
+				} else {
+					SendAppearancePacket(AppearanceType::FlyMode, 0);
+					BuffFadeByEffect(SpellEffect::Levitate);
+					return;
+				}
+			}
+
+			auto fly_mode = (spell.limit_value[i] == 1)
+				? EQ::constants::GravityBehavior::LevitateWhileRunning
+				: EQ::constants::GravityBehavior::Levitating;
+			if (IsClient()) {
+				SendAppearancePacket(AppearanceType::FlyMode, fly_mode, true, !from_suppress);
+			} else {
+				SendAppearancePacket(AppearanceType::FlyMode, fly_mode);
+			}
+
+			break;
+		}
+		case SpellEffect::AddMeleeProc:
+		case SpellEffect::WeaponProc:
+		{
+			AddProcToWeapon(GetProcID(spell_id, i), false, 100 + spell.limit_value[i], spell_id, buffs[index].casterlevel, GetSpellProcLimitTimer(spell_id, ProcType::MELEE_PROC));
+			break;
+		}
+		case SpellEffect::DefensiveProc:
+		{
+			AddDefensiveProc(GetProcID(spell_id, i), 100 + spell.limit_value[i], spell_id, GetSpellProcLimitTimer(spell_id, ProcType::DEFENSIVE_PROC));
+			break;
+		}
+		case SpellEffect::RangedProc:
+		{
+			AddRangedProc(GetProcID(spell_id, i), 100 + spell.limit_value[i], spell_id, GetSpellProcLimitTimer(spell_id, ProcType::RANGED_PROC));
+			break;
+		}
+		case SpellEffect::SetBodyType:
+		{
+			SetBodyType(spell.base_value[i], false);
+			break;
+		}
+		case SpellEffect::Weapon_Stance:
+		{
+			if (IsClient()) {
+				refresh_weapon_stance = true;
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	if (refresh_weapon_stance && IsClient()) {
+		CastToClient()->CalcBonuses();
+		CastToClient()->ApplyWeaponsStance();
+	}
+}
+
 // removes the buff in the buff slot 'slot'
 void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 suppresstics)
 {
@@ -4694,55 +4830,12 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			safe_delete(action_packet);
 			client->ReapplyBuff(slot, true);
 		} else if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
-			// Reapply visual/state effects for client pets only
-			// Other non-client mobs (NPCs, bots, mercs) use the normal dispel mechanic
 			if (IsValidSpell(buffs[slot].spellid)) {
 				const auto& spell = spells[buffs[slot].spellid];
-				// Restore nimbus (visual aura) effect before processing individual spell effects,
-				// mirroring Client::ReapplyBuff behavior for client-owned pets.
 				if (spell.nimbus_effect > 0) {
 					SetNimbusEffect(static_cast<uint32>(spell.nimbus_effect));
 				}
-				for (int i = 0; i < EFFECT_COUNT; i++) {
-					switch (spell.effect_id[i]) {
-					case SpellEffect::Illusion:
-						ApplySpellEffectIllusion(spell.id, entity_list.GetMobID(buffs[slot].casterid), slot, spell.base_value[i], spell.limit_value[i], spell.max_value[i]);
-						break;
-					case SpellEffect::Silence:
-						Silence(true);
-						break;
-					case SpellEffect::Amnesia:
-						Amnesia(true);
-						break;
-					case SpellEffect::AddMeleeProc:
-					case SpellEffect::WeaponProc:
-						AddProcToWeapon(GetProcID(buffs[slot].spellid, i), false, 100 + spell.limit_value[i], buffs[slot].spellid, buffs[slot].casterlevel, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::MELEE_PROC));
-						break;
-					case SpellEffect::DefensiveProc:
-						AddDefensiveProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::DEFENSIVE_PROC));
-						break;
-					case SpellEffect::RangedProc:
-						AddRangedProc(GetProcID(buffs[slot].spellid, i), 100 + spell.limit_value[i], buffs[slot].spellid, GetSpellProcLimitTimer(buffs[slot].spellid, ProcType::RANGED_PROC));
-						break;
-					case SpellEffect::Levitate:
-					{
-						// Restore levitate visual effects after suppression expires
-						if (!zone->CanLevitate()) {
-							SendAppearancePacket(AppearanceType::FlyMode, 0);
-							BuffFadeByEffect(SpellEffect::Levitate);
-						} else {
-							if (spell.limit_value[i] == 1) {
-								SendAppearancePacket(AppearanceType::FlyMode, EQ::constants::GravityBehavior::LevitateWhileRunning);
-							} else {
-								SendAppearancePacket(AppearanceType::FlyMode, EQ::constants::GravityBehavior::Levitating);
-							}
-						}
-						break;
-					}
-					default:
-						break;
-					}
-				}
+				ReapplyBuffEffects(slot, true);
 			}
 		}
 	} else {
