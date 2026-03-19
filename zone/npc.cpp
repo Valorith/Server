@@ -4630,7 +4630,7 @@ NPC::Handin NPC::ReturnHandinItems(Client *c)
 		}
 	}
 
-	auto returned = m_hand_in;
+	auto returned = Handin{};
 
 	// check if any money was handed in
 	if (m_hand_in.original_money.platinum > 0 ||
@@ -4669,26 +4669,61 @@ NPC::Handin NPC::ReturnHandinItems(Client *c)
 			m_hand_in.items.end(),
 			[&](HandinEntry &i) {
 				if (i.item && i.item->GetItem() && !i.is_multiquest_item && !returned_items_already) {
+					const uint32 task_delivered_count = std::min<uint32>(
+						i.count,
+						std::max(i.item->GetTaskDeliveredCount(), 0)
+					);
+					const uint32 return_count = i.count - task_delivered_count;
+
+					if (task_delivered_count > 0) {
+						LogNpcHandin(
+							"Task delivery consumed item [{}] ({}) count [{}], remaining return count [{}]",
+							i.item->GetItem()->Name,
+							i.item_id,
+							task_delivered_count,
+							return_count
+						);
+					}
+
+					if (return_count == 0) {
+						return true; // Task delivery already consumed this hand-in item
+					}
+
+					const uint16 charges_to_return = i.item->IsStackable() ?
+						static_cast<uint16>(return_count) :
+						std::max(static_cast<uint16>(i.item->GetCharges()), static_cast<uint16>(1));
+
 					return_items.emplace_back(
 						PlayerEvent::HandinEntry{
 							.item_id = i.item->GetID(),
 							.item_name = i.item->GetItem()->Name,
 							.augment_ids = i.item->GetAugmentIDs(),
 							.augment_names = i.item->GetAugmentNames(),
-							.charges = std::max(static_cast<uint16>(i.item->GetCharges()), static_cast<uint16>(1))
+							.charges = charges_to_return
 						}
 					);
 
-					// If the item is stackable and the new charges don't match the original count
-					// set the charges to the original count
-					if (i.item->IsStackable() && i.item->GetCharges() != i.count) {
-						i.item->SetCharges(i.count);
+					returned.items.emplace_back(
+						HandinEntry{
+							.item_id = i.item_id,
+							.count = return_count,
+							.item = i.item,
+							.is_multiquest_item = i.is_multiquest_item
+						}
+					);
+
+					// Return only the remaining portion that was not consumed by either
+					// quest hand-ins or task delivery updates.
+					if (i.item->IsStackable() && i.item->GetCharges() != charges_to_return) {
+						i.item->SetCharges(charges_to_return);
 					}
+					i.item->SetTaskDeliveredCount(0);
 
 					c->PushItemOnCursor(*i.item, true);
 					LogNpcHandin(
-						"Hand-in failed, returning item [{}] i.is_multiquest_item [{}]",
+						"Hand-in failed, returning item [{}] count [{}] i.is_multiquest_item [{}]",
 						i.item->GetItem()->Name,
+						return_count,
 						i.is_multiquest_item
 					);
 
@@ -4737,6 +4772,7 @@ NPC::Handin NPC::ReturnHandinItems(Client *c)
 		return_money.silver   = m_hand_in.money.silver;
 		return_money.gold     = m_hand_in.money.gold;
 		return_money.platinum = m_hand_in.money.platinum;
+		returned.money        = m_hand_in.money;
 
 		// if multi-quest and we returned money, reset the hand-in bucket
 		if (IsMultiQuestEnabled()) {

@@ -148,6 +148,7 @@ EQ::ItemInstance::ItemInstance(const ItemInstance& copy)
 
 	m_exp       = copy.m_exp;
 	m_evolveLvl = copy.m_evolveLvl;
+	m_task_delivered_count = copy.m_task_delivered_count;
 
 	if (copy.m_scaledItem) {
 		m_scaledItem = new ItemData(*copy.m_scaledItem);

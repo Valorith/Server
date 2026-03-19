@@ -20,6 +20,7 @@ void RunTest(const std::string& test_name, int expected, int actual);
 struct HandinEntry {
 	std::string            item_id            = "0";
 	uint32                 count              = 0;
+	int                    task_delivered_count = 0;
 	const EQ::ItemInstance *item              = nullptr;
 	bool                   is_multiquest_item = false; // state
 };
@@ -408,6 +409,32 @@ void ZoneCLI::TestNpcHandins(int argc, char **argv, argh::parser &cmd, std::stri
 				.handin_check_result = true,
 			},
 			TestCase{
+				.description = "Test task-delivered non-stack item is not returned",
+				.hand_in = {
+					.items = {
+						HandinEntry{.item_id = "1001", .count = 1, .task_delivered_count = 1},
+					},
+				},
+				.required = {},
+				.returned = {},
+				.handin_check_result = false,
+			},
+			TestCase{
+				.description = "Test task-delivered stack only returns undelivered charges",
+				.hand_in = {
+					.items = {
+						HandinEntry{.item_id = "13005", .count = 20, .task_delivered_count = 10},
+					},
+				},
+				.required = {},
+				.returned = {
+					.items = {
+						HandinEntry{.item_id = "13005", .count = 10},
+					},
+				},
+				.handin_check_result = false,
+			},
+			TestCase{
 				.description = "Test handing in Soulfire that has 5 charges and have it count as 1 item",
 				.hand_in = {
 					.items = {
@@ -454,6 +481,8 @@ void ZoneCLI::TestNpcHandins(int argc, char **argv, argh::parser &cmd, std::stri
 				if (inst->GetItem()->MaxCharges > 0) {
 					inst->SetCharges(inst->GetItem()->MaxCharges);
 				}
+
+				inst->SetTaskDeliveredCount(hand_in.task_delivered_count);
 
 				hand_ins[hand_in.item_id] = inst->GetCharges();
 				items.push_back(inst);
