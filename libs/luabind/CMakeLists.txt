@@ -23,7 +23,7 @@ set(lb_sources
 add_library(luabind ${lb_sources})
 
 target_include_directories(luabind PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${LUAJIT_INCLUDE_DIR})
-target_link_libraries(luabind PUBLIC Boost::dynamic_bitset Boost::tuple Boost::foreach ${LUAJIT_LIBRARY})
+target_link_libraries(luabind PUBLIC ${EQEMU_BOOST_HEADER_TARGET} ${LUAJIT_LIBRARY})
 target_include_directories(luabind PRIVATE ..)
 
 if(UNIX)

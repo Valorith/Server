@@ -354,6 +354,16 @@ bool Zone::LoadGroundSpawns() {
 			const uint32 max_allowed = g.spawn[slot_id].max_allowed;
 
 			if (inst) {
+				const auto* item = inst->GetItem();
+				if (
+					item &&
+					!inst->IsStackable() &&
+					inst->GetCharges() == 0 &&
+					item->MaxCharges > 0
+				) {
+					inst->SetCharges(item->MaxCharges);
+				}
+
 				for (uint32 i = 0; i < max_allowed; i++) {
 					auto object = new Object(
 						inst,

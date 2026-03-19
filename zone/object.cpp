@@ -679,9 +679,8 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 				}
 			}
 
-			// Transfer item to client
-			sender->PutItemInInventory(EQ::invslot::slotCursor, *m_inst, false);
-			sender->SendItemPacket(EQ::invslot::slotCursor, m_inst, ItemPacketTrade);
+			// Transfer item to client using the normal cursor update path.
+			sender->PutItemInInventory(EQ::invslot::slotCursor, *m_inst, true);
 
 			sender->CheckItemDiscoverability(m_inst->GetID());
 

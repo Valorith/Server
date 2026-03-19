@@ -685,7 +685,7 @@ add_definitions(-DZONE)
 
 if(EQEMU_BUILD_LUA)
     target_compile_definitions(lua_zone PUBLIC LUA_EQEMU)
-    target_link_libraries(lua_zone PUBLIC luabind Boost::dynamic_bitset Boost::tuple Boost::foreach common)
+    target_link_libraries(lua_zone PUBLIC luabind ${EQEMU_BOOST_HEADER_TARGET} common)
     if (EQEMU_BUILD_STATIC AND LUA_LIBRARY)
         target_link_libraries(zone PRIVATE ${LUA_LIBRARY})
     endif()
