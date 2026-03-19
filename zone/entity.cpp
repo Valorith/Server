@@ -4652,7 +4652,9 @@ uint16 EntityList::CreateGroundObject(uint32 item_id, const glm::vec4& position,
 		return 0;
 	}
 
-	auto inst = new EQ::ItemInstance(is, is->MaxCharges);
+	// Route through the shared item factory so stackables and unlimited-use items
+	// get the same charge normalization as other item creation paths.
+	auto inst = database.CreateItem(item_id, is->MaxCharges);
 	if (!inst) {
 		return 0;
 	}
