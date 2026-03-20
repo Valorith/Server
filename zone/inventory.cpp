@@ -4705,6 +4705,10 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	auto               quantity = inst->GetCharges();
 
 	for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		if (quantity == 0) {
+			break;
+		}
+
 		auto inv_inst = GetInv().GetItem(i);
 		if (!inv_inst) {
 			continue;
