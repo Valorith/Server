@@ -4749,7 +4749,8 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	}
 
 	if (!queue.empty()) {
-		bool success = true;
+		bool                                   success = true;
+		std::vector<std::pair<int16, int16>>   charges_backup; // (slot_id, original_charges)
 		database.TransactionBegin();
 		for (auto const &i: queue) {
 			auto bag_inst = GetInv().GetItem(i.slot_id);
@@ -4758,19 +4759,28 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 				success = false;
 				break;
 			}
-			bag_inst->SetCharges(i.quantity + bag_inst->GetCharges());
+			int16 original_charges = bag_inst->GetCharges();
+			bag_inst->SetCharges(i.quantity + original_charges);
 			if (!PutItemInInventory(i.slot_id, *bag_inst, true)) {
 				LogError(
 					"Failed to save stacked item to inventory. Character ID {} Slot_ID {}",
 					CharacterID(),
 					i.slot_id
 				);
+				bag_inst->SetCharges(original_charges);
 				success = false;
 				break;
 			}
+			charges_backup.emplace_back(i.slot_id, original_charges);
 		}
 
 		if (!success) {
+			for (auto const &[slot_id, orig_charges]: charges_backup) {
+				auto slot_inst = GetInv().GetItem(slot_id);
+				if (slot_inst) {
+					slot_inst->SetCharges(orig_charges);
+				}
+			}
 			database.TransactionRollback();
 			return false;
 		}
