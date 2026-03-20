@@ -5017,9 +5017,6 @@ void EntityList::ZoneWho(Client *c, Who_All_Struct *Who)
 			if (ClientEntry->Admin() >= AccountStatus::Steward && ClientEntry->GetGM()) {
 				WAPP2->RankMSGID = 12312;
 			}
-			else {
-				WAPP2->RankMSGID = 0xFFFFFFFF;
-			}
 
 			strcpy(WAPP2->Guild, GuildName.c_str());
 			Buffer += sizeof(WhoAllPlayerPart2) + strlen(WAPP2->Guild);
