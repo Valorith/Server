@@ -4700,16 +4700,14 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 		int32 quantity;
 	};
 
-	std::vector<temp> queue;
-	auto              quantity = inst->GetCharges();
+	std::vector<temp>  queue;
+	std::vector<int16> empty_bag_slots;
+	auto               quantity = inst->GetCharges();
 
 	for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
 		auto inv_inst = GetInv().GetItem(i);
 		if (!inv_inst) {
-			LogError("Found a slot {} in general inventory", i);
-			inst->SetCharges(quantity);
-			PutItemInInventory(i, *inst, true);
-			return true;
+			continue;
 		}
 
 		int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(i, EQ::invbag::SLOT_BEGIN);
@@ -4722,10 +4720,8 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 
 			auto bag_inst = GetInv().GetItem(base_slot_id + bag_slot);
 			if (!bag_inst && inv_inst->GetItem()->BagSize >= inst->GetItem()->Size) {
-				LogError("Found a parent {} base_slot_id {} bag_slot {} in bag", i, base_slot_id, bag_slot);
-				inst->SetCharges(quantity);
-				PutItemInInventory(base_slot_id + bag_slot, *inst, true);
-				return true;
+				empty_bag_slots.push_back(base_slot_id + bag_slot);
+				continue;
 			}
 
 			if (bag_inst && bag_inst->IsStackable() && bag_inst->GetID() == inst->GetID()) {
@@ -4736,12 +4732,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 					temp tmp = {temp_slot, quantity};
 					queue.push_back(tmp);
 					quantity = 0;
-					LogError(
-						"Found an item parent {} base_slot_id {} bag_slot {} in bag with ENOUGH space",
-						i,
-						base_slot_id,
-						bag_slot
-					);
 					break;
 				}
 
@@ -4749,12 +4739,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 					temp tmp = {temp_slot, stack_size - bag_inst_quantity};
 					queue.push_back(tmp);
 					quantity -= stack_size - bag_inst_quantity;
-					LogError(
-						"Found an item parent {} base_slot_id {} bag_slot {} in bag with SOME space",
-						i,
-						base_slot_id,
-						bag_slot
-					);
 				}
 			}
 		}
@@ -4780,7 +4764,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 				success = false;
 				break;
 			}
-			LogError("Write out data.  Item {} quantity {} slot {}", bag_inst->GetItem()->Name, i.quantity, i.slot_id);
 		}
 
 		if (!success) {
@@ -4792,18 +4775,23 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	}
 
 	if (quantity == 0) {
-		LogError("Quantity was zero.  All items placed in inventory.");
 		return true;
 	}
 
 	inst->SetCharges(quantity);
+	for (auto slot_id : empty_bag_slots) {
+		if (PutItemInInventory(slot_id, *inst, true)) {
+			return true;
+		}
+	}
+
 	if (free_id != INVALID_INDEX &&
 		!EQ::ValueWithin(free_id, EQ::invslot::EQUIPMENT_BEGIN, EQ::invslot::EQUIPMENT_END) &&
 		PutItemInInventory(free_id, *inst, true)) {
 		return true;
 	}
 
-	LogError("Could not find enough room");
+	LogError("Could not find enough room for item {} (quantity {}) for character {}", inst->GetItem()->Name, quantity, CharacterID());
 	return false;
 }
 
