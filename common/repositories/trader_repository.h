@@ -189,7 +189,7 @@ public:
 	{
 		const auto trader_item = GetWhere(
 			db,
-			fmt::format("`item_unique_id` = '{}' ", item_unique_id)
+			fmt::format("`item_unique_id` = '{}' ", Strings::Escape(item_unique_id))
 		);
 
 		if (trader_item.empty() || trader_item.size() > 1) {
@@ -208,7 +208,7 @@ public:
 		std::vector<Trader> all_entries{};
 		auto target_listing = GetWhere(
 			db,
-			fmt::format("`item_unique_id` = '{}' LIMIT 1", item_unique_id)
+			fmt::format("`item_unique_id` = '{}' LIMIT 1", Strings::Escape(item_unique_id))
 		);
 
 		if (target_listing.empty()) {
@@ -223,7 +223,7 @@ public:
 			price,
 			time(nullptr),
 			target.character_id,
-			item_unique_id
+			Strings::Escape(item_unique_id)
 		);
 
 		auto results = db.QueryDatabase(query);
@@ -236,7 +236,7 @@ public:
 			fmt::format(
 				"`character_id` = {} AND `item_unique_id` = '{}'",
 				target.character_id,
-				item_unique_id
+				Strings::Escape(item_unique_id)
 			)
 		);
 
@@ -270,7 +270,7 @@ public:
 		Trader     e{};
 		const auto trader_item = GetWhere(
 			db,
-			fmt::format("`item_unique_id` = '{}' LIMIT 1", item_unique_id)
+			fmt::format("`item_unique_id` = '{}' LIMIT 1", Strings::Escape(item_unique_id))
 		);
 
 		if (trader_item.empty()) {
@@ -285,7 +285,7 @@ public:
 		Trader     e{};
 		const auto trader_item = GetWhere(
 			db,
-			fmt::format("`item_unique_id` = '{}' LIMIT 1", item_unique_id)
+			fmt::format("`item_unique_id` = '{}' LIMIT 1", Strings::Escape(std::string(item_unique_id)))
 		);
 
 		if (trader_item.empty()) {
@@ -332,7 +332,7 @@ public:
 			"FROM trader AS t "
 			"JOIN character_data AS c ON c.id = t.character_id "
 			"WHERE t.item_unique_id = '{}' LIMIT 1",
-			item_unique_id
+			Strings::Escape(item_unique_id)
 		);
 
 		auto results = db.QueryDatabase(query);
