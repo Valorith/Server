@@ -4700,8 +4700,9 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 		int32 quantity;
 	};
 
-	std::vector<temp> queue;
-	auto              quantity = inst->GetCharges();
+	std::vector<temp>  queue;
+	std::vector<int16> empty_bag_slots;
+	auto               quantity = inst->GetCharges();
 
 	for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
 		if (quantity == 0) {
@@ -4710,7 +4711,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 
 		auto inv_inst = GetInv().GetItem(i);
 		if (!inv_inst) {
-			// Empty general slot — skip for now; will fall back to free_id after scanning for stacks
 			continue;
 		}
 
@@ -4723,12 +4723,12 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 			}
 
 			auto bag_inst = GetInv().GetItem(base_slot_id + bag_slot);
-			if (!bag_inst) {
-				// Empty bag slot — skip for now; will fall back to free_id after scanning for stacks
+			if (!bag_inst && inv_inst->GetItem()->BagSize >= inst->GetItem()->Size) {
+				empty_bag_slots.push_back(base_slot_id + bag_slot);
 				continue;
 			}
 
-			if (bag_inst->IsStackable() && bag_inst->GetID() == inst->GetID()) {
+			if (bag_inst && bag_inst->IsStackable() && bag_inst->GetID() == inst->GetID()) {
 				auto  stack_size        = bag_inst->GetItem()->StackSize;
 				auto  bag_inst_quantity = bag_inst->GetCharges();
 				int16 temp_slot         = base_slot_id + bag_slot;
@@ -4749,15 +4749,30 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	}
 
 	if (!queue.empty()) {
+		bool success = true;
 		database.TransactionBegin();
 		for (auto const &i: queue) {
 			auto bag_inst = GetInv().GetItem(i.slot_id);
 			if (!bag_inst) {
 				LogError("Client inventory error occurred. Character ID {} Slot_ID {}", CharacterID(), i.slot_id);
-				continue;
+				success = false;
+				break;
 			}
 			bag_inst->SetCharges(i.quantity + bag_inst->GetCharges());
-			PutItemInInventory(i.slot_id, *bag_inst, true);
+			if (!PutItemInInventory(i.slot_id, *bag_inst, true)) {
+				LogError(
+					"Failed to save stacked item to inventory. Character ID {} Slot_ID {}",
+					CharacterID(),
+					i.slot_id
+				);
+				success = false;
+				break;
+			}
+		}
+
+		if (!success) {
+			database.TransactionRollback();
+			return false;
 		}
 
 		database.TransactionCommit();
@@ -4768,13 +4783,19 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	}
 
 	inst->SetCharges(quantity);
+	for (auto slot_id : empty_bag_slots) {
+		if (PutItemInInventory(slot_id, *inst, true)) {
+			return true;
+		}
+	}
+
 	if (free_id != INVALID_INDEX &&
 		!EQ::ValueWithin(free_id, EQ::invslot::EQUIPMENT_BEGIN, EQ::invslot::EQUIPMENT_END) &&
 		PutItemInInventory(free_id, *inst, true)) {
 		return true;
 	}
 
-	LogError("Could not find enough room");
+	LogError("Could not find enough room for item {} (quantity {}) for character {}", inst->GetItem()->Name, quantity, CharacterID());
 	return false;
 }
 

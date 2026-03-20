@@ -1968,7 +1968,7 @@ private:
  		gender                      = in.gender;
  		race                        = in.race;
  		base_gender                 = in.base_gender;
- 		base_race                   = in.race;
+ 		base_race                   = in.base_race;
  		use_model                   = in.use_model;
  		class_                      = in.class_;
  		bodytype                    = in.bodytype;

@@ -961,14 +961,14 @@ bool Strings::IsValidJson(const std::string &json)
 	return result;
 }
 
-std::string Strings::Implode(const std::string& glue, std::unordered_set<std::string> src)
+std::string Strings::Implode(const std::string& glue, const std::unordered_set<std::string>& src)
 {
 	if (src.empty()) {
 		return {};
 	}
 
-	std::ostringstream                        output;
-	std::unordered_set<std::string>::iterator src_iter;
+	std::ostringstream                              output;
+	std::unordered_set<std::string>::const_iterator src_iter;
 
 	for (src_iter = src.begin(); src_iter != src.end(); src_iter++) {
 		output << *src_iter << glue;
