@@ -1956,9 +1956,7 @@ private:
 	void HandleDoorOpen();
 
 	public:
- 	Mob* GetMob() { return this; }
-
- 	void CloneMob(Mob& in) {
+ 	void CloneMob(const Mob& in) {
  		strn0cpy(name, in.name, 64);
  		strn0cpy(orig_name, in.orig_name, 64);
  		strn0cpy(lastname, in.lastname, 64);
