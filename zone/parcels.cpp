@@ -453,7 +453,6 @@ void Client::DoParcelSend(const Parcel_Struct *parcel_in)
 
 					cpc.quantity      = item->GetCharges() >= 0 ? item->GetCharges() : 1;
 					cpc.evolve_amount = item->GetEvolveCurrentAmount();
-					cpc.quantity   = item->GetCharges() >= 0 ? item->GetCharges() : 1;
 					all_entries.push_back(cpc);
 				}
 				CharacterParcelsContainersRepository::InsertMany(database, all_entries);
