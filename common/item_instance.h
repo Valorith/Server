@@ -199,6 +199,7 @@ namespace EQ
 
 		// Clone current item
 		ItemInstance* Clone() const;
+		bool ReplaceItemData(const ItemData *item);
 
 		bool IsSlotAllowed(int16 slot_id) const;
 

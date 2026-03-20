@@ -9,6 +9,49 @@ extern WorldServer worldserver;
 extern QueryServ*  QServ;
 const std::string  SUB_TYPE_DELIMITER = ".";
 
+namespace {
+
+std::unique_ptr<EQ::ItemInstance> RebuildTransferredEvolvingItem(
+	const EQ::ItemInstance &source_inst,
+	const uint32           new_item_id
+)
+{
+	if (!new_item_id) {
+		return nullptr;
+	}
+
+	const auto *new_item_data = database.GetItem(new_item_id);
+	if (!new_item_data) {
+		return nullptr;
+	}
+
+	std::unique_ptr<EQ::ItemInstance> rebuilt_inst(source_inst.Clone());
+	if (!rebuilt_inst || !rebuilt_inst->ReplaceItemData(new_item_data)) {
+		return nullptr;
+	}
+
+	rebuilt_inst->SetEvolveItemID(new_item_id);
+	rebuilt_inst->SetEvolveFinalItemID(EvolvingItemsManager::Instance()->GetFinalItemID(*rebuilt_inst));
+
+	return rebuilt_inst;
+}
+
+void PersistTransferredEvolvingItemState(EQ::ItemInstance &inst)
+{
+	inst.CalculateEvolveProgression();
+	CharacterEvolvingItemsRepository::UpdateTransferState(
+		database,
+		inst.GetEvolveUniqueID(),
+		inst.GetID(),
+		inst.GetUniqueID(),
+		inst.GetEvolveCurrentAmount(),
+		inst.GetEvolveProgression(),
+		EvolvingItemsManager::Instance()->GetFinalItemID(inst)
+	);
+}
+
+}
+
 void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 {
 	const auto in   = reinterpret_cast<EvolveItemToggle *>(app->pBuffer);
@@ -27,8 +70,36 @@ void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (item.character_id != CharacterID() || item.deleted_at > 0) {
+		LogEvolveItem(
+			"Character ID <green>[{}] attempted to toggle evolve item unique id <yellow>[{}] without ownership",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
 	item.activated  = in->activated;
-	const auto inst = GetInv().GetItem(GetInv().HasItem(item.item_id));
+	const auto slot_id = GetInv().HasEvolvingItem(item.id, 1, invWherePersonal | invWhereWorn | invWhereCursor);
+	if (slot_id == INVALID_INDEX) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] failed to locate inventory instance",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
+	const auto inst = GetInv().GetItem(slot_id);
+	if (!inst) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] had null inventory instance",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
 	inst->SetEvolveActivated(item.activated ? true : false);
 
 	CharacterEvolvingItemsRepository::ReplaceOne(database, item);
@@ -439,6 +510,11 @@ void Client::SendEvolveXPWindowDetails(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (in->item1_unique_id == in->item2_unique_id || item_1_slot == item_2_slot) {
+		SendEvolveTransferResults(*inst_from, *inst_to, *inst_from, *inst_to, 0, 0);
+		return;
+	}
+
 	const auto results = EvolvingItemsManager::Instance()->DetermineTransferResults(*inst_from, *inst_to);
 
 	if (!results.item_from_id || !results.item_to_id) {
@@ -446,8 +522,8 @@ void Client::SendEvolveXPWindowDetails(const EQApplicationPacket *app)
 		return;
 	}
 
-	std::unique_ptr<EQ::ItemInstance> const inst_from_new(database.CreateItem(results.item_from_id));
-	std::unique_ptr<EQ::ItemInstance> const inst_to_new(database.CreateItem(results.item_to_id));
+	auto inst_from_new = RebuildTransferredEvolvingItem(*inst_from, results.item_from_id);
+	auto inst_to_new   = RebuildTransferredEvolvingItem(*inst_to, results.item_to_id);
 	if (!inst_from_new || !inst_to_new) {
 		SendEvolveTransferResults(*inst_from, *inst_to, *inst_from, *inst_to, 0, 0);
 		return;
@@ -484,6 +560,15 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (in->item1_unique_id == in->item2_unique_id || item_1_slot == item_2_slot) {
+		Message(Chat::Red, "Transfer Failed.  Incompatible Items.");
+		LogEvolveItem(
+			"Transfer Failed for Character ID <green>[{}] because the same evolve item was used for both slots",
+			CharacterID()
+		);
+		return;
+	}
+
 	const auto results = EvolvingItemsManager::Instance()->DetermineTransferResults(*inst_from, *inst_to);
 
 	if (!results.item_from_id || !results.item_to_id) {
@@ -492,8 +577,8 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 		return;
 	}
 
-	std::unique_ptr<const EQ::ItemInstance> const inst_from_new(database.CreateItem(results.item_from_id));
-	std::unique_ptr<const EQ::ItemInstance> const inst_to_new(database.CreateItem(results.item_to_id));
+	auto inst_from_new = RebuildTransferredEvolvingItem(*inst_from, results.item_from_id);
+	auto inst_to_new   = RebuildTransferredEvolvingItem(*inst_to, results.item_to_id);
 
 	if (!inst_from_new || !inst_to_new) {
 		Message(Chat::Red, "Transfer Failed.  Incompatible Items.");
@@ -509,6 +594,7 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 	PlayerEvent::EvolveItem e{};
 
 	RemoveItemBySerialNumber(inst_from->GetSerialNumber());
+	PersistTransferredEvolvingItemState(*inst_from_new);
 	EvolvingItemsManager::Instance()->LoadPlayerEvent(*inst_from, e);
 	e.status = "Transfer XP - Original FROM Evolve Item removed from inventory.";
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);
@@ -519,6 +605,7 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);
 
 	RemoveItemBySerialNumber(inst_to->GetSerialNumber());
+	PersistTransferredEvolvingItemState(*inst_to_new);
 	EvolvingItemsManager::Instance()->LoadPlayerEvent(*inst_to, e);
 	e.status = "Transfer XP - Original TO Evolve Item removed from inventory.";
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);
