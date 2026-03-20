@@ -2443,10 +2443,6 @@ public:
 	void SyncWorldPositionsToClient(bool ignore_idle = false);
 
 
- 	Mob* GetMob() {
- 		return Mob::GetMob();
- 	}
-
  	void Clone(Client& in)
  	{
  		WID                      = in.WID;
@@ -2503,6 +2499,6 @@ public:
  			}
  		}
 
- 		CloneMob(*in.GetMob());
+ 		CloneMob(in);
  	}
 };
