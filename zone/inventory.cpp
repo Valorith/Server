@@ -4714,6 +4714,22 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 			continue;
 		}
 
+		if (inv_inst->IsStackable() && inv_inst->GetID() == inst->GetID()) {
+			auto  stack_size        = inv_inst->GetItem()->StackSize;
+			auto  inv_inst_quantity = inv_inst->GetCharges();
+			int16 temp_slot         = static_cast<int16>(i);
+			if (stack_size - inv_inst_quantity >= quantity) {
+				temp tmp = {temp_slot, quantity};
+				queue.push_back(tmp);
+				quantity = 0;
+			} else if (stack_size - inv_inst_quantity > 0) {
+				temp tmp = {temp_slot, stack_size - inv_inst_quantity};
+				queue.push_back(tmp);
+				quantity -= stack_size - inv_inst_quantity;
+			}
+			continue;
+		}
+
 		int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(i, EQ::invbag::SLOT_BEGIN);
 		uint8 bag_size     = inv_inst->GetItem()->BagSlots;
 
