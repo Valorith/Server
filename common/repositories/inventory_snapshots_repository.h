@@ -81,7 +81,7 @@ public:
 			return -1;
 		}
 
-		auto       &row   = results.begin();
+		auto        row   = results.begin();
 		const int64 count = Strings::ToBigInt(row[0]);
 
 		if (count > std::numeric_limits<int>::max()) {
