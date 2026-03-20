@@ -43,7 +43,6 @@ void PersistTransferredEvolvingItemState(EQ::ItemInstance &inst)
 		database,
 		inst.GetEvolveUniqueID(),
 		inst.GetID(),
-		inst.GetUniqueID(),
 		inst.GetEvolveCurrentAmount(),
 		inst.GetEvolveProgression(),
 		EvolvingItemsManager::Instance()->GetFinalItemID(inst)

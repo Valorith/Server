@@ -73,7 +73,6 @@ void EvolvingItemsManager::DoLootChecks(const uint32 char_id, const uint16 slot_
 
 		e.character_id  = char_id;
 		e.item_id       = inst.GetID();
-		e.item_unique_id = inst.GetUniqueID();
 		e.equipped      = inst.GetEvolveEquipped();
 		e.final_item_id = EvolvingItemsManager::Instance()->GetFinalItemID(inst);
 		if (inst.GetEvolveCurrentAmount() > 0) {
@@ -92,14 +91,7 @@ void EvolvingItemsManager::DoLootChecks(const uint32 char_id, const uint16 slot_
 		return;
 	}
 
-	CharacterEvolvingItemsRepository::SyncItemIdentity(
-		*m_db,
-		inst.GetEvolveUniqueID(),
-		inst.GetID(),
-		inst.GetUniqueID(),
-		EvolvingItemsManager::Instance()->GetFinalItemID(inst),
-		inst.GetEvolveEquipped()
-	);
+	CharacterEvolvingItemsRepository::SetEquipped(*m_db, inst.GetEvolveUniqueID(), inst.GetEvolveEquipped());
 }
 
 uint32 EvolvingItemsManager::GetFinalItemID(const EQ::ItemInstance &inst) const
