@@ -4761,16 +4761,31 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	}
 
 	if (!queue.empty()) {
+		bool success = true;
 		database.TransactionBegin();
 		for (auto const &i: queue) {
 			auto bag_inst = GetInv().GetItem(i.slot_id);
 			if (!bag_inst) {
 				LogError("Client inventory error occurred. Character ID {} Slot_ID {}", CharacterID(), i.slot_id);
-				continue;
+				success = false;
+				break;
 			}
 			bag_inst->SetCharges(i.quantity + bag_inst->GetCharges());
-			PutItemInInventory(i.slot_id, *bag_inst, true);
+			if (!PutItemInInventory(i.slot_id, *bag_inst, true)) {
+				LogError(
+					"Failed to save stacked item to inventory. Character ID {} Slot_ID {}",
+					CharacterID(),
+					i.slot_id
+				);
+				success = false;
+				break;
+			}
 			LogError("Write out data.  Item {} quantity {} slot {}", bag_inst->GetItem()->Name, i.quantity, i.slot_id);
+		}
+
+		if (!success) {
+			database.TransactionRollback();
+			return false;
 		}
 
 		database.TransactionCommit();
