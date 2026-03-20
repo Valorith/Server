@@ -161,7 +161,7 @@ public:
 		Trader item{};
 
 		auto query   = fmt::format(
-			"SELECT t.character_id, t.item_id, t.item_unique.id, t.charges, t.item_cost, t.slot_id, t.entity_id FROM trader AS t "
+			"SELECT t.character_id, t.item_id, t.item_unique_id, t.charges, t.item_cost, t.slot_id, t.entity_id FROM trader AS t "
 			"WHERE t.entity_id = {} AND t.item_id = {} AND t.item_cost = {} "
 			"LIMIT 1;",
 			trader_id,
