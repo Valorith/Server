@@ -23,6 +23,7 @@ void WorldserverCLI::CommandHandler(int argc, char **argv)
 	function_map["database:schema"]             = &WorldserverCLI::DatabaseGetSchema;
 	function_map["database:dump"]               = &WorldserverCLI::DatabaseDump;
 	function_map["database:updates"]            = &WorldserverCLI::DatabaseUpdates;
+	function_map["database:item-unique-ids"]    = &WorldserverCLI::DatabaseItemUniqueIds;
 	function_map["test:test"]                   = &WorldserverCLI::TestCommand;
 	function_map["test:colors"]                 = &WorldserverCLI::TestColors;
 	function_map["test:expansion"]              = &WorldserverCLI::ExpansionTestCommand;

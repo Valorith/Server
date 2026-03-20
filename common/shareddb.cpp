@@ -275,7 +275,12 @@ bool SharedDatabase::UpdateInventorySlot(uint32 char_id, const EQ::ItemInstance*
 	e.ornament_icon       = inst->GetOrnamentationIcon();
 	e.ornament_idfile     = inst->GetOrnamentationIDFile();
 	e.ornament_hero_model = inst->GetOrnamentHeroModel();
-	e.guid                = inst->GetSerialNumber();
+	e.item_unique_id      = inst->GetUniqueID();
+	if (!EnsureItemUniqueId(e.item_unique_id)) {
+		return false;
+	}
+
+	const_cast<EQ::ItemInstance *>(inst)->SetUniqueID(e.item_unique_id);
 
 	const int replaced = InventoryRepository::ReplaceOne(*this, e);
 
@@ -325,7 +330,12 @@ bool SharedDatabase::UpdateSharedBankSlot(uint32 char_id, const EQ::ItemInstance
 	e.ornament_icon       = inst->GetOrnamentationIcon();
 	e.ornament_idfile     = inst->GetOrnamentationIDFile();
 	e.ornament_hero_model = inst->GetOrnamentHeroModel();
-	e.guid                = inst->GetSerialNumber();
+	e.item_unique_id      = inst->GetUniqueID();
+	if (!EnsureItemUniqueId(e.item_unique_id)) {
+		return false;
+	}
+
+	const_cast<EQ::ItemInstance *>(inst)->SetUniqueID(e.item_unique_id);
 
 	const int replaced = SharedbankRepository::ReplaceOne(*this, e);
 
@@ -630,12 +640,6 @@ bool SharedDatabase::GetInventory(Client *c)
 		return false;
 	}
 
-	for (auto const& row: results) {
-		if (row.guid != 0) {
-			EQ::ItemInstance::AddGUIDToMap(row.guid);
-		}
-	}
-
 	const auto timestamps  = GetItemRecastTimestamps(char_id);
 	auto       cv_conflict = false;
 	const auto pmask       = inv.GetLookup()->PossessionsBitmask;
@@ -713,6 +717,21 @@ bool SharedDatabase::GetInventory(Client *c)
 		inst->SetOrnamentationIDFile(ornament_idfile);
 		inst->SetOrnamentHeroModel(item->HerosForgeModel);
 
+		//Mass conversion handled by world
+		//This remains as a backup.  Should not be required.
+		if (row.item_unique_id.empty()) {
+			if (!EnsureItemUniqueId(row.item_unique_id)) {
+				continue;
+			}
+
+			inst->SetUniqueID(row.item_unique_id);
+			queue.push_back(row);
+		}
+		else {
+			ReserveItemUniqueId(row.item_unique_id);
+			inst->SetUniqueID(row.item_unique_id);
+		}
+
 		if (
 			instnodrop ||
 			(
@@ -727,7 +746,7 @@ bool SharedDatabase::GetInventory(Client *c)
 			inst->SetColor(color);
 		}
 
-		if (charges == std::numeric_limits<int16>::max()) {
+		if (charges > std::numeric_limits<int16>::max()) {
 			inst->SetCharges(-1);
 		} else if (charges == 0 && inst->IsStackable()) {
 			// Stackable items need a minimum charge of 1 remain moveable.
@@ -808,8 +827,7 @@ bool SharedDatabase::GetInventory(Client *c)
 			put_slot_id = inv.PutItem(slot_id, *inst);
 		}
 
-		row.guid = inst->GetSerialNumber();
-		queue.push_back(row);
+		//queue.push_back(row);
 
 		safe_delete(inst);
 
@@ -838,8 +856,6 @@ bool SharedDatabase::GetInventory(Client *c)
 	if (!queue.empty()) {
 		InventoryRepository::ReplaceMany(*this, queue);
 	}
-
-	EQ::ItemInstance::ClearGUIDMap();
 
 	// Retrieve shared inventory
 	return GetSharedBank(char_id, &inv, true);
@@ -1401,7 +1417,7 @@ EQ::ItemInstance* SharedDatabase::CreateItem(
 	return inst;
 }
 
-EQ::ItemInstance* SharedDatabase::CreateBaseItem(const EQ::ItemData* item, int16 charges) {
+EQ::ItemInstance* SharedDatabase::CreateBaseItem(const EQ::ItemData* item, int16 charges, const std::string &item_unique_id) {
 	EQ::ItemInstance* inst = nullptr;
 	if (item) {
 		// if maxcharges is -1 that means it is an unlimited use item.
@@ -1415,7 +1431,7 @@ EQ::ItemInstance* SharedDatabase::CreateBaseItem(const EQ::ItemData* item, int16
 			charges = 1;
 		}
 
-		inst = new EQ::ItemInstance(item, charges);
+		inst = new EQ::ItemInstance(item, item_unique_id, charges);
 
 		if (!inst) {
 			LogError("Error: valid item data returned a null reference for EQ::ItemInstance creation in SharedDatabase::CreateBaseItem()");

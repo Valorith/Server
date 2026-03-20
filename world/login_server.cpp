@@ -4,6 +4,11 @@
 #include "common/eqemu_logsys.h"
 #include "common/misc_functions.h"
 #include "common/packet_dump.h"
+#include "common/repositories/account_repository.h"
+#include "common/repositories/buyer_repository.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/repositories/offline_character_sessions_repository.h"
+#include "common/repositories/trader_repository.h"
 #include "common/servertalk.h"
 #include "common/strings.h"
 #include "common/version.h"
@@ -43,9 +48,9 @@ void LoginServer::ProcessUsertoWorldReqLeg(uint16_t opcode, EQ::Net::Packet &p)
 	const WorldConfig *Config = WorldConfig::get();
 	LogNetcode("Received ServerPacket from LS OpCode {:#04x}", opcode);
 
-	UsertoWorldRequestLegacy *utwr = (UsertoWorldRequestLegacy *) p.Data();
-	uint32                   id    = database.GetAccountIDFromLSID("eqemu", utwr->lsaccountid);
-	int16                           status = database.GetAccountStatus(id);
+	UsertoWorldRequestLegacy *utwr   = (UsertoWorldRequestLegacy *) p.Data();
+	uint32                    id     = database.GetAccountIDFromLSID("eqemu", utwr->lsaccountid);
+	int16                     status = database.GetAccountStatus(id).status;
 
 	LogDebug(
 		"id [{}] status [{}] account_id [{}] world_id [{}] from_id [{}] to_id [{}] ip [{}]",
@@ -123,14 +128,19 @@ void LoginServer::ProcessUsertoWorldReq(uint16_t opcode, EQ::Net::Packet &p)
 	const WorldConfig *Config = WorldConfig::get();
 	LogNetcode("Received ServerPacket from LS OpCode {:#04x}", opcode);
 
-	UsertoWorldRequest *utwr = (UsertoWorldRequest *) p.Data();
-	uint32             id    = database.GetAccountIDFromLSID(utwr->login, utwr->lsaccountid);
-	int16                     status = database.GetAccountStatus(id);
+	UsertoWorldRequest *utwr          = (UsertoWorldRequest *) p.Data();
+	uint32              id            = database.GetAccountIDFromLSID(utwr->login, utwr->lsaccountid);
+	auto                status_record = database.GetAccountStatus(id);
+	auto                client        = ClientList::Instance()->FindCLEByAccountID(id);
+
+	if (client) {
+		client->SetOfflineMode(status_record.offline);
+	}
 
 	LogDebug(
 		"id [{}] status [{}] account_id [{}] world_id [{}] from_id [{}] to_id [{}] ip [{}]",
 		id,
-		status,
+		status_record.status,
 		utwr->lsaccountid,
 		utwr->worldid,
 		utwr->FromID,
@@ -152,7 +162,7 @@ void LoginServer::ProcessUsertoWorldReq(uint16_t opcode, EQ::Net::Packet &p)
 	utwrs->response = UserToWorldStatusSuccess;
 
 	if (Config->Locked == true) {
-		if (status < (RuleI(GM, MinStatusToBypassLockedServer))) {
+		if (status_record.status < (RuleI(GM, MinStatusToBypassLockedServer))) {
 			LogDebug(
 				"Server locked and status is not high enough for account_id [{0}]",
 				utwr->lsaccountid
@@ -164,23 +174,30 @@ void LoginServer::ProcessUsertoWorldReq(uint16_t opcode, EQ::Net::Packet &p)
 	}
 
 	int32 x = Config->MaxClients;
-	if ((int32) numplayers >= x && x != -1 && x != 255 && status < (RuleI(GM, MinStatusToBypassLockedServer))) {
+	if ((int32) numplayers >= x && x != -1 && x != 255 && status_record.status < (RuleI(GM, MinStatusToBypassLockedServer))) {
 		LogDebug("World at capacity account_id [{0}]", utwr->lsaccountid);
 		utwrs->response = UserToWorldStatusWorldAtCapacity;
 		SendPacket(&outpack);
 		return;
 	}
 
-	if (status == -1) {
+	if (status_record.status == -1) {
 		LogDebug("User suspended account_id [{0}]", utwr->lsaccountid);
 		utwrs->response = UserToWorldStatusSuspended;
 		SendPacket(&outpack);
 		return;
 	}
 
-	if (status == -2) {
+	if (status_record.status == -2) {
 		LogDebug("User banned account_id [{0}]", utwr->lsaccountid);
 		utwrs->response = UserToWorldStatusBanned;
+		SendPacket(&outpack);
+		return;
+	}
+
+	if (status_record.offline || OfflineCharacterSessionsRepository::ExistsByAccountId(database, id)) {
+		LogDebug("User has an offline character for account_id [{0}]", utwr->lsaccountid);
+		utwrs->response = UserToWorldStatusOffilineTraderBuyer;
 		SendPacket(&outpack);
 		return;
 	}
@@ -572,6 +589,14 @@ bool LoginServer::Connect()
 				std::placeholders::_2
 			)
 		);
+		m_client->OnMessage(
+			ServerOP_UsertoWorldCancelOfflineRequest,
+			std::bind(
+				&LoginServer::ProcessUserToWorldCancelOfflineRequest,
+				this,
+				std::placeholders::_1,
+				std::placeholders::_2)
+		);
 	}
 
 	return true;
@@ -687,3 +712,108 @@ void LoginServer::SendAccountUpdate(ServerPacket *pack)
 	}
 }
 
+void LoginServer::ProcessUserToWorldCancelOfflineRequest(uint16_t opcode, EQ::Net::Packet &p)
+{
+	auto const Config = WorldConfig::get();
+	LogNetcode("Received ServerPacket from LS OpCode {:#04x}", opcode);
+
+	auto   utwr          = static_cast<UsertoWorldRequest *>(p.Data());
+	uint32 id            = database.GetAccountIDFromLSID(utwr->login, utwr->lsaccountid);
+	auto   status_record = database.GetAccountStatus(id);
+
+	LogLoginserverDetail(
+		"Step 4 - World received CancelOfflineRequest for client login server account id {} offline mode {}",
+		id,
+		status_record.offline
+	);
+	LogDebug(
+		"id [{}] status [{}] account_id [{}] world_id [{}] ip [{}]",
+		id,
+		status_record.status,
+		utwr->lsaccountid,
+		utwr->worldid,
+		utwr->IPAddr
+	);
+
+	ServerPacket server_packet;
+	server_packet.size    = sizeof(UsertoWorldResponse);
+	server_packet.pBuffer = new uchar[server_packet.size];
+	memset(server_packet.pBuffer, 0, server_packet.size);
+
+	auto utwrs         = reinterpret_cast<UsertoWorldResponse *>(server_packet.pBuffer);
+	utwrs->lsaccountid = utwr->lsaccountid;
+	utwrs->ToID        = utwr->FromID;
+	utwrs->worldid     = utwr->worldid;
+	utwrs->response    = UserToWorldStatusSuccess;
+	strn0cpy(utwrs->login, utwr->login, 64);
+
+	if (Config->Locked == true) {
+		if (status_record.status < RuleI(GM, MinStatusToBypassLockedServer)) {
+			LogDebug("Server locked and status is not high enough for account_id [{0}]", utwr->lsaccountid);
+			server_packet.opcode = ServerOP_UsertoWorldCancelOfflineResponse;
+			utwrs->response      = UserToWorldStatusWorldUnavail;
+			SendPacket(&server_packet);
+			return;
+		}
+	}
+
+	int32 x = Config->MaxClients;
+	if (static_cast<int32>(numplayers) >= x &&
+			x != -1 &&
+			x != 255 &&
+			status_record.status < RuleI(GM, MinStatusToBypassLockedServer)
+	) {
+		LogDebug("World at capacity account_id [{0}]", utwr->lsaccountid);
+		server_packet.opcode = ServerOP_UsertoWorldCancelOfflineResponse;
+		utwrs->response      = UserToWorldStatusWorldAtCapacity;
+		SendPacket(&server_packet);
+		return;
+	}
+
+	auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, id);
+	auto trader  = TraderRepository::GetAccountZoneIdAndInstanceIdByAccountId(database, id);
+	uint32 zone_id = session.id ? session.zone_id : trader.char_zone_id;
+	int32 instance_id = session.id ? session.instance_id : trader.char_zone_instance_id;
+	uint32 character_id = session.id ? session.character_id : trader.character_id;
+
+	if ((session.id || trader.id) &&
+		ZSList::Instance()->IsZoneBootedByZoneIdAndInstanceId(zone_id, instance_id)) {
+		LogLoginserverDetail(
+			"Step 5a(1) - World Checked offline users zone/instance is booted.  "
+			"Sending packet to zone id {} instance id {}",
+			zone_id,
+			instance_id);
+
+		server_packet.opcode = ServerOP_UsertoWorldCancelOfflineRequest;
+		ZSList::Instance()->SendPacketToBootedZones(&server_packet);
+		return;
+	}
+
+	LogLoginserverDetail("Step 5b(1) - World determined offline users zone/instance is not booted.  Ignoring zone.");
+
+	LogLoginserverDetail("Step 5b(2) - World clearing users offline status from account table.");
+	database.TransactionBegin();
+	AccountRepository::SetOfflineStatus(database, id, false);
+	OfflineCharacterSessionsRepository::DeleteByAccountId(database, id);
+
+	LogLoginserverDetail("Step 5b(3) - World clearing trader and buyer tables.");
+	if (character_id) {
+		TraderRepository::DeleteWhere(database, fmt::format("`character_id` = '{}'", character_id));
+		BuyerRepository::DeleteBuyer(database, character_id);
+	}
+
+	auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed clearing offline session state for account [{}]: ({}) {}",
+			id,
+			commit_result.ErrorNumber(),
+			commit_result.ErrorMessage()
+		);
+		utwrs->response = UserToWorldStatusWorldUnavail;
+	}
+
+	server_packet.opcode = ServerOP_UsertoWorldCancelOfflineResponse;
+	SendPacket(&server_packet);
+}
