@@ -4704,12 +4704,14 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 	auto              quantity = inst->GetCharges();
 
 	for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		if (quantity == 0) {
+			break;
+		}
+
 		auto inv_inst = GetInv().GetItem(i);
 		if (!inv_inst) {
-			LogError("Found a slot {} in general inventory", i);
-			inst->SetCharges(quantity);
-			PutItemInInventory(i, *inst, true);
-			return true;
+			// Empty general slot — skip for now; will fall back to free_id after scanning for stacks
+			continue;
 		}
 
 		int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(i, EQ::invbag::SLOT_BEGIN);
@@ -4721,14 +4723,12 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 			}
 
 			auto bag_inst = GetInv().GetItem(base_slot_id + bag_slot);
-			if (!bag_inst && inv_inst->GetItem()->BagSize >= inst->GetItem()->Size) {
-				LogError("Found a parent {} base_slot_id {} bag_slot {} in bag", i, base_slot_id, bag_slot);
-				inst->SetCharges(quantity);
-				PutItemInInventory(base_slot_id + bag_slot, *inst, true);
-				return true;
+			if (!bag_inst) {
+				// Empty bag slot — skip for now; will fall back to free_id after scanning for stacks
+				continue;
 			}
 
-			if (bag_inst && bag_inst->IsStackable() && bag_inst->GetID() == inst->GetID()) {
+			if (bag_inst->IsStackable() && bag_inst->GetID() == inst->GetID()) {
 				auto  stack_size        = bag_inst->GetItem()->StackSize;
 				auto  bag_inst_quantity = bag_inst->GetCharges();
 				int16 temp_slot         = base_slot_id + bag_slot;
@@ -4736,12 +4736,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 					temp tmp = {temp_slot, quantity};
 					queue.push_back(tmp);
 					quantity = 0;
-					LogError(
-						"Found an item parent {} base_slot_id {} bag_slot {} in bag with ENOUGH space",
-						i,
-						base_slot_id,
-						bag_slot
-					);
 					break;
 				}
 
@@ -4749,12 +4743,6 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 					temp tmp = {temp_slot, stack_size - bag_inst_quantity};
 					queue.push_back(tmp);
 					quantity -= stack_size - bag_inst_quantity;
-					LogError(
-						"Found an item parent {} base_slot_id {} bag_slot {} in bag with SOME space",
-						i,
-						base_slot_id,
-						bag_slot
-					);
 				}
 			}
 		}
@@ -4770,14 +4758,12 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 			}
 			bag_inst->SetCharges(i.quantity + bag_inst->GetCharges());
 			PutItemInInventory(i.slot_id, *bag_inst, true);
-			LogError("Write out data.  Item {} quantity {} slot {}", bag_inst->GetItem()->Name, i.quantity, i.slot_id);
 		}
 
 		database.TransactionCommit();
 	}
 
 	if (quantity == 0) {
-		LogError("Quantity was zero.  All items placed in inventory.");
 		return true;
 	}
 
