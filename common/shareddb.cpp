@@ -632,7 +632,7 @@ bool SharedDatabase::GetInventory(Client *c)
 	// Retrieve character inventory
 	auto results   = InventoryRepository::GetWhere(*this, fmt::format("`character_id` = '{}' ORDER BY `slot_id`", char_id));
 	auto e_results = CharacterEvolvingItemsRepository::GetWhere(
-		*this, fmt::format("`character_id` = '{}' AND `deleted_at` IS NULL", char_id)
+		*this, fmt::format("`character_id` = '{}' AND `deleted_at` IS NULL ORDER BY `id`", char_id)
 	);
 
 	if (results.empty()) {
@@ -779,10 +779,11 @@ bool SharedDatabase::GetInventory(Client *c)
 			}
 
 			auto t = std::ranges::find_if(
-				e_results.cbegin(),
-				e_results.cend(),
+				e_results.begin(),
+				e_results.end(),
 				[&](const CharacterEvolvingItemsRepository::CharacterEvolvingItems &x) {
-					return x.item_id == item_id;
+					return x.item_unique_id == inst->GetUniqueID() ||
+						(x.item_unique_id.empty() && x.item_id == item_id);
 				}
 			);
 
@@ -791,6 +792,7 @@ bool SharedDatabase::GetInventory(Client *c)
 
 				e.character_id  = char_id;
 				e.item_id       = item_id;
+				e.item_unique_id = inst->GetUniqueID();
 				e.equipped      = inst->GetEvolveEquipped();
 				e.final_item_id = EvolvingItemsManager::Instance()->GetFinalItemID(*inst);
 
@@ -808,6 +810,19 @@ bool SharedDatabase::GetInventory(Client *c)
 				inst->SetEvolveFinalItemID(e.final_item_id);
 			}
 			else {
+				const auto final_item_id = EvolvingItemsManager::Instance()->GetFinalItemID(*inst);
+				if (t->item_unique_id != inst->GetUniqueID() ||
+					t->item_id != item_id ||
+					t->final_item_id != final_item_id ||
+					t->equipped != inst->GetEvolveEquipped()) {
+					t->item_unique_id = inst->GetUniqueID();
+					t->item_id        = item_id;
+					t->final_item_id  = final_item_id;
+					t->equipped       = inst->GetEvolveEquipped();
+					t->deleted_at     = 0;
+					CharacterEvolvingItemsRepository::UpdateOne(*this, *t);
+				}
+
 				inst->SetEvolveUniqueID(t->id);
 				inst->SetEvolveCharID(t->character_id);
 				inst->SetEvolveItemID(t->item_id);

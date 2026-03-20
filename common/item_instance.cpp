@@ -919,6 +919,27 @@ EQ::ItemInstance* EQ::ItemInstance::Clone() const
 	return new ItemInstance(*this);
 }
 
+bool EQ::ItemInstance::ReplaceItemData(const ItemData *item)
+{
+	if (!item) {
+		return false;
+	}
+
+	auto *new_item = new ItemData(*item);
+
+	safe_delete(m_item);
+	m_item = new_item;
+
+	safe_delete(m_scaledItem);
+	if (m_scaling && m_item->CharmFileID != 0) {
+		ScaleItem();
+	} else {
+		m_scaling = false;
+	}
+
+	return true;
+}
+
 bool EQ::ItemInstance::IsSlotAllowed(int16 slot_id) const {
 	if (!m_item) { return false; }
 	else if (InventoryProfile::SupportsContainers(slot_id)) { return true; }

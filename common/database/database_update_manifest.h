@@ -5826,6 +5826,7 @@ CREATE TABLE `character_evolving_items` (
 	`current_amount` BIGINT(20) NULL DEFAULT '0',
 	`progression` DOUBLE(22,0) NULL DEFAULT '0',
 	`final_item_id` INT(10) UNSIGNED NULL DEFAULT '0',
+	`item_unique_id` VARCHAR(16) NULL DEFAULT NULL,
 	`deleted_at` DATETIME NULL DEFAULT NULL,
 	PRIMARY KEY (`id`) USING BTREE
 )
@@ -7388,6 +7389,18 @@ CREATE TABLE IF NOT EXISTS `item_unique_id_reservations` (
 	`reserved_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (`item_unique_id`)
 ) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9341,
+		.description = "2026_03_19_character_evolving_items_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `character_evolving_items` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_evolving_items`
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `final_item_id`;
 )",
 		.content_schema_update = false
 	},

@@ -3984,6 +3984,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					parcel_out.aug_slot_4     = in->item_aug_4;
 					parcel_out.aug_slot_5     = in->item_aug_5;
 					parcel_out.aug_slot_6     = in->item_aug_6;
+					parcel_out.evolve_amount  = item->GetEvolveCurrentAmount();
 					parcel_out.char_id        = buyer->CharacterID();
 					parcel_out.slot_id        = buyer->FindNextFreeParcelSlot(buyer->CharacterID());
 					parcel_out.id             = 0;
