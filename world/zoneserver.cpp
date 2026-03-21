@@ -779,6 +779,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			if (client) {
 				client->Clearance(wtz->response);
 			}
+			break;
 		}
 		case ServerOP_ZoneToZoneRequest: {
 			// ZoneChange is received by the zone the player is in, then the
@@ -1733,27 +1734,23 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			}
 			break;
 		}
-		case ServerOP_UsertoWorldCancelOfflineResponse: {
-			auto utwr  = reinterpret_cast<UsertoWorldResponse *>(pack->pBuffer);
+		case ServerOP_ReclaimOfflineSessionResp: {
+			if (pack->size != sizeof(OfflineSessionReclaim_Struct)) {
+				break;
+			}
 
-			ServerPacket server_packet;
-			server_packet.opcode  = ServerOP_UsertoWorldCancelOfflineResponse;
-			server_packet.size    = sizeof(UsertoWorldResponse);
-			server_packet.pBuffer = new uchar[server_packet.size];
-			memset(server_packet.pBuffer, 0, server_packet.size);
+			auto reclaim = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
+			auto client  = ClientList::Instance()->FindByAccountID(reclaim->account_id);
+			if (!client) {
+				LogInfo(
+					"Ignoring offline reclaim response [{}] for account [{}]; world client not found",
+					reclaim->request_id,
+					reclaim->account_id
+				);
+				break;
+			}
 
-			auto utwrs         = reinterpret_cast<UsertoWorldResponse *>(server_packet.pBuffer);
-			utwrs->lsaccountid = utwr->lsaccountid;
-			utwrs->ToID        = utwr->FromID;
-			utwrs->worldid     = utwr->worldid;
-			utwrs->response    = UserToWorldStatusSuccess;
-			strn0cpy(utwrs->login, utwr->login, 64);
-
-			LogLoginserverDetail(
-				"Step 7a - World received ServerOP_UsertoWorldCancelOfflineResponse back to login with success."
-			);
-
-			LoginServerList::Instance()->SendPacket(&server_packet);
+			client->HandleOfflineSessionReclaimResponse(*reclaim);
 			break;
 		}
 		default: {

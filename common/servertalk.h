@@ -229,12 +229,12 @@
 #define ServerOP_LSPlayerJoinWorld	0x3007
 #define ServerOP_LSPlayerZoneChange	0x3008
 
-#define ServerOP_UsertoWorldReqLeg                0xAB00
-#define ServerOP_UsertoWorldRespLeg               0xAB01
-#define ServerOP_UsertoWorldReq                   0xAB02
-#define ServerOP_UsertoWorldResp                  0xAB03
-#define ServerOP_UsertoWorldCancelOfflineRequest  0xAB04
-#define ServerOP_UsertoWorldCancelOfflineResponse 0xAB05
+#define ServerOP_UsertoWorldReqLeg         0xAB00
+#define ServerOP_UsertoWorldRespLeg        0xAB01
+#define ServerOP_UsertoWorldReq            0xAB02
+#define ServerOP_UsertoWorldResp           0xAB03
+#define ServerOP_ReclaimOfflineSessionReq  0xAB04
+#define ServerOP_ReclaimOfflineSessionResp 0xAB05
 
 #define ServerOP_LauncherConnectInfo	0x3000
 #define ServerOP_LauncherZoneRequest	0x3001
@@ -367,8 +367,7 @@ enum {
 	UserToWorldStatusSuspended           = -1,
 	UserToWorldStatusBanned              = -2,
 	UserToWorldStatusWorldAtCapacity     = -3,
-	UserToWorldStatusAlreadyOnline       = -4,
-	UserToWorldStatusOffilineTraderBuyer = -5
+	UserToWorldStatusAlreadyOnline       = -4
 };
 
 enum {
@@ -379,6 +378,19 @@ enum {
 	BazaarPurchaseBuyerFailed               = 4,
 	BazaarPurchaseBuyerSuccess              = 5,
 	BazaarPurchaseTraderFailed = 6
+};
+
+enum : uint8 {
+	OfflineSessionModeNone   = 0,
+	OfflineSessionModeTrader = 1,
+	OfflineSessionModeBuyer  = 2
+};
+
+enum : int8 {
+	OfflineSessionReclaimFailed = 0,
+	OfflineSessionReclaimSuccess = 1,
+	OfflineSessionReclaimStale = 2,
+	OfflineSessionReclaimBusy = 3
 };
 /************ PACKET RELATED STRUCT ************/
 class ServerPacket
@@ -847,6 +859,18 @@ struct WorldToZone_Struct {
 	uint32	account_id;
 	int8	response;
 };
+
+struct OfflineSessionReclaim_Struct {
+	uint32 request_id;
+	uint32 account_id;
+	uint32 character_id;
+	uint32 zone_id;
+	int32  instance_id;
+	uint32 entity_id;
+	uint8  mode;
+	int8   response;
+};
+
 struct WorldShutDown_Struct {
 	uint32	time;
 	uint32	interval;

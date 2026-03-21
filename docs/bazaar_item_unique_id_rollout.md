@@ -1,8 +1,10 @@
-# Bazaar Item Unique ID And Offline Trading Rollout
+# Bazaar Item Unique ID And World-Only Offline Trading Rollout
 
 ## Purpose
 
 This rollout converts persisted item identity and offline trader or buyer session state to the new production-safe model. The migration is designed for a maintenance window and explicitly clears any in-flight trader, buyer, and offline sessions during cutover.
+
+Offline trader and buyer reconnect now use the normal world and zone flow. No custom loginserver support is required. World checks for an indexed `offline_character_sessions` row during character entry and only pauses login when it must reclaim an active offline trader or buyer session.
 
 Do not reopen the server until every verification step passes.
 
@@ -11,6 +13,8 @@ Do not reopen the server until every verification step passes.
 - Schedule a maintenance window.
 - Stop new logins before beginning the migration.
 - Ensure the `world` binary you are deploying includes this branch.
+- Ensure the deployed `world` and `zone` binaries are from the same build.
+- A stock or public loginserver is supported; no custom loginserver rollout is required.
 - Ensure operators have credentials to run schema updates and database dump commands.
 
 ## Mandatory Backup
@@ -40,6 +44,9 @@ Validate these gameplay scenarios after the migration:
 - One trader changing a price without affecting another trader.
 - Offline trader purchase.
 - Offline buyer purchase.
+- Relog to the same account while an offline trader is active and verify entry resumes after reclaim.
+- Log into a different character on the same account while an offline buyer is active and verify the offline session is ended before entry continues.
+- Confirm an unresponsive reclaim path fails the character-entry attempt within 10 seconds.
 - Parcel retrieval for rows that previously had missing `item_unique_id` values.
 - Alternate bazaar shard search.
 
@@ -75,6 +82,13 @@ world database:item-unique-ids --verify --verbose
 ```
 
 8. Reopen the server only after verification passes.
+
+## Login Performance Expectation
+
+- Character entry with no offline session should take the normal fast path and only add one indexed lookup by `account_id`.
+- Character entry with an offline trader or buyer session should target exactly one owning zone or instance.
+- If the owning zone is down, world clears the stale session locally and continues immediately.
+- If the owning zone does not answer a reclaim request, world fails the character-entry attempt after 10 seconds instead of hanging indefinitely.
 
 ## What Preflight And Verify Must Show
 

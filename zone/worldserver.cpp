@@ -24,9 +24,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "common/patches/patches.h"
 #include "common/profanity_manager.h"
 #include "common/repositories/account_repository.h"
+#include "common/repositories/buyer_repository.h"
 #include "common/repositories/guild_tributes_repository.h"
 #include "common/repositories/character_offline_transactions_repository.h"
 #include "common/repositories/offline_character_sessions_repository.h"
+#include "common/repositories/trader_repository.h"
 #include "common/rulesys.h"
 #include "common/say_link.h"
 #include "common/server_reload_types.h"
@@ -57,9 +59,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <cstring>
 #include <iostream>
 
-#include "common/repositories/account_repository.h"
-#include "common/repositories/character_offline_transactions_repository.h"
-
 extern EntityList             entity_list;
 extern Zone                  *zone;
 extern volatile bool          is_zone_loaded;
@@ -72,6 +71,46 @@ extern QueryServ             *QServ;
 void Shutdown();
 
 // QuestParserCollection *parse = 0;
+
+namespace {
+void SendOfflineSessionReclaimResponse(const OfflineSessionReclaim_Struct &request, int8 response)
+{
+	auto packet = new ServerPacket(ServerOP_ReclaimOfflineSessionResp, sizeof(OfflineSessionReclaim_Struct));
+	auto out = reinterpret_cast<OfflineSessionReclaim_Struct *>(packet->pBuffer);
+	*out = request;
+	out->response = response;
+	worldserver.SendPacket(packet);
+	safe_delete(packet);
+}
+
+bool HasActiveTraderTransaction(uint32 character_id)
+{
+	if (!character_id) {
+		return false;
+	}
+
+	const auto active_entries = TraderRepository::GetWhere(
+		database,
+		fmt::format("`character_id` = {} AND `active_transaction` = 1 LIMIT 1", character_id)
+	);
+
+	return !active_entries.empty();
+}
+
+Client *FindOfflineReclaimClient(const OfflineSessionReclaim_Struct &request)
+{
+	Client *client = nullptr;
+	if (request.entity_id) {
+		client = entity_list.GetClientByID(request.entity_id);
+	}
+
+	if (!client && request.character_id) {
+		client = entity_list.GetClientByCharID(request.character_id);
+	}
+
+	return client;
+}
+}
 
 WorldServer::WorldServer()
 {
@@ -4361,122 +4400,116 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			}
 			break;
 		}
-		case ServerOP_UsertoWorldCancelOfflineRequest: {
- 			auto in     = reinterpret_cast<UsertoWorldResponse *>(pack->pBuffer);
- 			auto client = entity_list.GetClientByLSID(in->lsaccountid);
- 			if (!client) {
-				LogLoginserverDetail("Step 6a(1) - Zone received ServerOP_UsertoWorldCancelOfflineRequest though could "
-									 "not find client."
+		case ServerOP_ReclaimOfflineSessionReq: {
+			if (pack->size != sizeof(OfflineSessionReclaim_Struct)) {
+				break;
+			}
+
+			auto in = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
+			auto client = FindOfflineReclaimClient(*in);
+			if (!client) {
+				LogInfo(
+					"Offline reclaim request [{}] for account [{}] character [{}] found no matching zone entity; reporting stale",
+					in->request_id,
+					in->account_id,
+					in->character_id
 				);
+				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimStale);
+				break;
+			}
 
- 				auto e = AccountRepository::GetWhere(database, fmt::format("`lsaccount_id` = '{}'", in->lsaccountid));
- 				if (!e.empty()) {
- 					auto r = e.front();
-					auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, r.id);
-					auto trader = TraderRepository::GetAccountZoneIdAndInstanceIdByAccountId(database, r.id);
-					const uint32 character_id = session.id ? session.character_id : trader.character_id;
+			const bool account_matches = client->AccountID() == in->account_id;
+			const bool character_matches = client->CharacterID() == in->character_id;
+			const bool mode_matches =
+				(in->mode == OfflineSessionModeTrader && client->IsTrader()) ||
+				(in->mode == OfflineSessionModeBuyer && client->IsBuyer()) ||
+				(in->mode == OfflineSessionModeNone && (client->IsTrader() || client->IsBuyer()));
 
-					database.TransactionBegin();
- 					r.offline = 0;
- 					AccountRepository::UpdateOne(database, r);
-					OfflineCharacterSessionsRepository::DeleteByAccountId(database, r.id);
-					if (character_id) {
-						TraderRepository::DeleteWhere(database, fmt::format("`character_id` = '{}'", character_id));
-						BuyerRepository::DeleteBuyer(database, character_id);
-					}
+			if (in->mode == OfflineSessionModeNone) {
+				LogWarning(
+					"Offline reclaim request [{}] for account [{}] character [{}] had no mode; inferring active offline trade mode from zone entity [{}]",
+					in->request_id,
+					in->account_id,
+					in->character_id,
+					client->GetCleanName()
+				);
+			}
 
-					auto commit_result = database.TransactionCommit();
-					if (!commit_result.Success()) {
-						database.TransactionRollback();
-						LogError(
-							"Failed clearing orphaned offline session state for account [{}]: ({}) {}",
-							r.id,
-							commit_result.ErrorNumber(),
-							commit_result.ErrorMessage()
-						);
-					}
+			if (!client->IsOffline() || !account_matches || !character_matches || !mode_matches) {
+				LogWarning(
+					"Offline reclaim request [{}] matched client [{}] but state did not validate. offline [{}] account_match [{}] character_match [{}] mode_match [{}]",
+					in->request_id,
+					client->GetCleanName(),
+					client->IsOffline(),
+					account_matches,
+					character_matches,
+					mode_matches
+				);
+				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimFailed);
+				break;
+			}
 
-					LogLoginserverDetail(
-						"Step 6a(2) - Zone cleared offline status in account table for user id {} / {}",
-						r.lsaccount_id,
-						r.charname
-					);
- 				}
+			const bool has_customer = client->IsThereACustomer();
+			const bool has_active_trader_transaction = client->IsTrader() && HasActiveTraderTransaction(client->CharacterID());
+			if (has_customer || has_active_trader_transaction) {
+				LogInfo(
+					"Offline reclaim request [{}] for client [{}] is busy; customer [{}] trader_transaction [{}]",
+					in->request_id,
+					client->GetCleanName(),
+					has_customer,
+					has_active_trader_transaction
+				);
+				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimBusy);
+				break;
+			}
 
-
- 				auto sp          = new ServerPacket(ServerOP_UsertoWorldCancelOfflineResponse, pack->size);
- 				auto out         = reinterpret_cast<UsertoWorldResponse *>(sp->pBuffer);
- 				sp->opcode       = ServerOP_UsertoWorldCancelOfflineResponse;
- 				out->FromID      = in->FromID;
- 				out->lsaccountid = in->lsaccountid;
- 				out->response    = in->response;
- 				out->ToID        = in->ToID;
- 				out->worldid     = in->worldid;
- 				strn0cpy(out->login, in->login, 64);
-
-				LogLoginserverDetail("Step 6a(3) - Zone sending ServerOP_UsertoWorldCancelOfflineResponse back to world");
- 				worldserver.SendPacket(sp);
- 				safe_delete(sp);
- 				break;
- 			}
-
-			LogLoginserverDetail(
-				"Step 6b(1) - Zone received ServerOP_UsertoWorldCancelOfflineRequest and found client {}",
-				client->GetCleanName()
+			LogInfo(
+				"Reclaiming offline {} [{}] for account [{}] character [{}]",
+				client->IsBuyer() ? "buyer" : "trader",
+				client->GetCleanName(),
+				client->AccountID(),
+				client->CharacterID()
 			);
-			LogLoginserverDetail(
-				"Step 6b(2) - Zone cleared offline status in account table for user id {} / {}",
-				client->CharacterID(),
-				client->GetCleanName()
-			);
+
+			database.TransactionBegin();
 			AccountRepository::SetOfflineStatus(database, client->AccountID(), false);
 			OfflineCharacterSessionsRepository::DeleteByAccountId(database, client->AccountID());
+			auto commit_result = database.TransactionCommit();
+			if (!commit_result.Success()) {
+				database.TransactionRollback();
+				LogError(
+					"Failed clearing offline session state for account [{}] character [{}] during reclaim request [{}]: ({}) {}",
+					client->AccountID(),
+					client->CharacterID(),
+					in->request_id,
+					commit_result.ErrorNumber(),
+					commit_result.ErrorMessage()
+				);
+				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimFailed);
+				break;
+			}
 
- 			if (client->IsThereACustomer()) {
- 				auto customer = entity_list.GetClientByID(client->GetCustomerID());
- 				if (customer) {
- 					auto end_session = new EQApplicationPacket(OP_ShopEnd);
- 					customer->FastQueuePacket(&end_session);
- 				}
- 			}
+			if (client->IsTrader()) {
+				client->TraderEndTrader();
+			}
 
- 			if (client->IsTrader()) {
-				LogLoginserverDetail("Step 6b(3) - Zone ending trader mode for client {}", client->GetCleanName());
- 				client->TraderEndTrader();
- 			}
+			if (client->IsBuyer()) {
+				client->ToggleBuyerMode(false);
+			}
 
- 			if (client->IsBuyer()) {
-				LogLoginserverDetail("Step 6b(4) - Zone ending buyer mode for client {}", client->GetCleanName());
- 				client->ToggleBuyerMode(false);
- 			}
-
-			LogLoginserverDetail("Step 6b(5) - Zone updating UpdateWho(2) for client {}", client->GetCleanName());
 			client->UpdateWho(2);
 
- 			auto outapp = new EQApplicationPacket();
-			LogLoginserverDetail("Step 6b(6) - Zone sending despawn packet for client {}", client->GetCleanName());
- 			client->CreateDespawnPacket(outapp, false);
- 			entity_list.QueueClients(nullptr, outapp, false);
- 			safe_delete(outapp);
+			auto outapp = new EQApplicationPacket();
+			client->CreateDespawnPacket(outapp, false);
+			entity_list.QueueClients(nullptr, outapp, false);
+			safe_delete(outapp);
 
-			LogLoginserverDetail("Step 6b(7) - Zone removing client from entity_list");
- 			entity_list.RemoveMob(client->CastToMob()->GetID());
+			auto delete_id = client->CastToMob()->GetID();
+			entity_list.RemoveMob(delete_id);
 
- 			auto sp          = new ServerPacket(ServerOP_UsertoWorldCancelOfflineResponse, pack->size);
- 			auto out         = reinterpret_cast<UsertoWorldResponse *>(sp->pBuffer);
- 			sp->opcode       = ServerOP_UsertoWorldCancelOfflineResponse;
- 			out->FromID      = in->FromID;
- 			out->lsaccountid = in->lsaccountid;
- 			out->response    = in->response;
- 			out->ToID        = in->ToID;
- 			out->worldid     = in->worldid;
- 			strn0cpy(out->login, in->login, 64);
-
-			LogLoginserverDetail("Step 6b(8) - Zone sending ServerOP_UsertoWorldCancelOfflineResponse back to world");
- 			worldserver.SendPacket(sp);
- 			safe_delete(sp);
- 			break;
- 		}
+			SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimSuccess);
+			break;
+		}
 		default: {
 			LogInfo("Unknown ZS Opcode [{}] size [{}]", (int) pack->opcode, pack->size);
 			break;
