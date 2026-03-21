@@ -902,10 +902,9 @@ bool EQ::ItemInstance::ReplaceItemData(const ItemData *item)
 	m_item = new_item;
 
 	safe_delete(m_scaledItem);
-	if (m_scaling && m_item->CharmFileID != 0) {
+	m_scaling = (m_item && m_item->CharmFileID != 0);
+	if (m_scaling) {
 		ScaleItem();
-	} else {
-		m_scaling = false;
 	}
 
 	return true;
