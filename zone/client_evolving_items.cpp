@@ -321,7 +321,7 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						SendEvolvingPacket(EvolvingItems::Actions::UPDATE_ITEMS, e);
 
 						LogEvolveItem(
-							"Processing Complete for item id <green>[{1}] Type 5 Number of Kills - SubType "
+							"Processing Complete for item id <green>[{1}] Type 2 Number of Kills - SubType "
 							"<yellow>[{0}] "
 							"- Increased count by 1 for <green>[{1}]",
 							sub_type,
