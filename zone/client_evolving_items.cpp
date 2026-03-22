@@ -59,7 +59,7 @@ void AnnounceEvolvingExperienceGain(Client &client, const EQ::ItemInstance &inst
 		const auto evolve_percent = EvolvingItemsManager::Instance()->CalculateProgression(evolve_amount, inst.GetID());
 		client.Message(
 			Chat::Experience,
-			"Your %s has gained evolving experience! (%s) (%.3f%%)",
+			"Your %s has gained experience! (%s) (%.3f%%)",
 			inst.GetItem()->Name,
 			Strings::Commify(evolve_amount).c_str(),
 			evolve_percent
@@ -70,14 +70,14 @@ void AnnounceEvolvingExperienceGain(Client &client, const EQ::ItemInstance &inst
 	if (RuleI(Character, ShowExpValues) >= 1) {
 		client.Message(
 			Chat::Experience,
-			"Your %s has gained evolving experience! (%s)",
+			"Your %s has gained experience! (%s)",
 			inst.GetItem()->Name,
 			Strings::Commify(evolve_amount).c_str()
 		);
 		return;
 	}
 
-	client.Message(Chat::Experience, "Your %s has gained evolving experience!", inst.GetItem()->Name);
+	client.Message(Chat::Experience, "Your %s has gained experience!", inst.GetItem()->Name);
 }
 
 }
