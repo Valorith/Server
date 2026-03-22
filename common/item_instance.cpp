@@ -2008,6 +2008,10 @@ void EQ::ItemInstance::SetEvolveEquipped(const bool in) const
 		return;
 	}
 
+	if (!GetTimers().contains("evolve")) {
+		return;
+	}
+
 	if (in) {
 		GetTimers().at("evolve").SetTimer(RuleI(EvolvingItems, DelayUponEquipping));
 		return;
