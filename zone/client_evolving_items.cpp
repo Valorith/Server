@@ -192,17 +192,15 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 
 				// Determine the evolve amount based on sub_type conditions
 				int evolve_amount = 0;
+				const bool all_exp = has_sub_type(EvolvingItems::SubTypes::ALL_EXP);
 
-				if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-					(has_sub_type(EvolvingItems::SubTypes::GROUP_EXP) && IsGrouped())) {
-					evolve_amount = exp * RuleR(EvolvingItems, PercentOfGroupExperience) / 100;
-				}
-				else if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-						 (has_sub_type(EvolvingItems::SubTypes::RAID_EXP) && IsRaidGrouped())) {
+				if ((all_exp || has_sub_type(EvolvingItems::SubTypes::RAID_EXP)) && IsRaidGrouped()) {
 					evolve_amount = exp * RuleR(EvolvingItems, PercentOfRaidExperience) / 100;
 				}
-				else if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-						 has_sub_type(EvolvingItems::SubTypes::SOLO_EXP)) {
+				else if ((all_exp || has_sub_type(EvolvingItems::SubTypes::GROUP_EXP)) && IsGrouped()) {
+					evolve_amount = exp * RuleR(EvolvingItems, PercentOfGroupExperience) / 100;
+				}
+				else if (all_exp || has_sub_type(EvolvingItems::SubTypes::SOLO_EXP)) {
 					evolve_amount = exp * RuleR(EvolvingItems, PercentOfSoloExperience) / 100;
 				}
 
@@ -258,10 +256,10 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						sub_type,
 						inst->GetID()
 					);
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+					if (inst->GetEvolveProgression() >= 100) {
+						queue.push_back(inst);
+					}
 				}
 
 				break;
@@ -292,10 +290,10 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						sub_type,
 						inst->GetID()
 					);
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+					if (inst->GetEvolveProgression() >= 100) {
+						queue.push_back(inst);
+					}
 				}
 
 				break;
@@ -323,17 +321,17 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						SendEvolvingPacket(EvolvingItems::Actions::UPDATE_ITEMS, e);
 
 						LogEvolveItem(
-							"Processing Complete for item id <green>[{1}] Type 4 Specific Zone ID - SubType "
+							"Processing Complete for item id <green>[{1}] Type 5 Number of Kills - SubType "
 							"<yellow>[{0}] "
 							"- Increased count by 1 for <green>[{1}]",
 							sub_type,
 							inst->GetID()
 						);
-					}
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+						if (inst->GetEvolveProgression() >= 100) {
+							queue.push_back(inst);
+						}
+					}
 				}
 
 				break;
