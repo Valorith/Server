@@ -89,6 +89,16 @@ void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (slot_id == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] is an augment-based evolving item; "
+			"augment-based evolving items are not supported for toggling",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
 	const auto inst = GetInv().GetItem(slot_id);
 	if (!inst) {
 		LogEvolveItem(
@@ -500,6 +510,11 @@ void Client::SendEvolveXPWindowDetails(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (item_1_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN ||
+	    item_2_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		return;
+	}
+
 	const auto inst_from = GetInv().GetItem(item_1_slot);
 	const auto inst_to   = GetInv().GetItem(item_2_slot);
 
@@ -545,6 +560,16 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 		GetInv().HasEvolvingItem(in->item2_unique_id, 1, invWherePersonal | invWhereWorn | invWhereCursor);
 
 	if (item_1_slot == INVALID_INDEX || item_2_slot == INVALID_INDEX) {
+		return;
+	}
+
+	if (item_1_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN ||
+	    item_2_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		Message(Chat::Red, "Transfer Failed.  Augment-based evolving items are not supported for transfer.");
+		LogEvolveItem(
+			"Transfer Failed for Character ID <green>[{}]: augment-based evolving item used in transfer",
+			CharacterID()
+		);
 		return;
 	}
 
