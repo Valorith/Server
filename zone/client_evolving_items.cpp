@@ -49,6 +49,37 @@ void PersistTransferredEvolvingItemState(EQ::ItemInstance &inst)
 	);
 }
 
+void AnnounceEvolvingExperienceGain(Client &client, const EQ::ItemInstance &inst, const uint64 evolve_amount)
+{
+	if (!RuleB(EvolvingItems, ShowExperienceMessages) || !evolve_amount || !inst.GetItem()) {
+		return;
+	}
+
+	if (RuleI(Character, ShowExpValues) >= 2) {
+		const auto evolve_percent = EvolvingItemsManager::Instance()->CalculateProgression(evolve_amount, inst.GetID());
+		client.Message(
+			Chat::Experience,
+			"Your %s has gained evolving experience! (%s) (%.3f%%)",
+			inst.GetItem()->Name,
+			Strings::Commify(evolve_amount).c_str(),
+			evolve_percent
+		);
+		return;
+	}
+
+	if (RuleI(Character, ShowExpValues) >= 1) {
+		client.Message(
+			Chat::Experience,
+			"Your %s has gained evolving experience! (%s)",
+			inst.GetItem()->Name,
+			Strings::Commify(evolve_amount).c_str()
+		);
+		return;
+	}
+
+	client.Message(Chat::Experience, "Your %s has gained evolving experience!", inst.GetItem()->Name);
+}
+
 }
 
 void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
@@ -224,8 +255,8 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 					break;
 				}
 
+				AnnounceEvolvingExperienceGain(*this, *inst, evolve_amount);
 				SendEvolvingPacket(EvolvingItems::Actions::UPDATE_ITEMS, e);
-
 				LogEvolveItem(
 					"Processing Complete for item id <green>[{1}] Type 1 Amount of EXP - SubType <yellow>[{0}] - "
 					"Assigned <yellow>[{2}] of exp to <green>[{1}]",
