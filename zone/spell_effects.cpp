@@ -4155,7 +4155,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 
 		case SpellEffect::Duration_HP_Pct: {
 			effect_value = spells[buff.spellid].base_value[i];
-			int64 amt = std::abs(GetMaxHP() * effect_value / 100);
+			int64 amt = std::abs(GetMaxHP() * effect_value / 10000);
 			if (spells[buff.spellid].max_value[i] && amt > spells[buff.spellid].max_value[i])
 				amt = spells[buff.spellid].max_value[i];
 
@@ -4170,7 +4170,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 
 		case SpellEffect::Duration_Mana_Pct: {
 			effect_value = spells[buff.spellid].base_value[i];
-			int32 amt = std::abs(GetMaxMana() * effect_value / 100);
+			int32 amt = std::abs(GetMaxMana() * effect_value / 10000);
 			if (spells[buff.spellid].max_value[i] && amt > spells[buff.spellid].max_value[i])
 				amt = spells[buff.spellid].max_value[i];
 
@@ -4188,7 +4188,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 			effect_value = spells[buff.spellid].base_value[i];
 
 			if (IsClient())	{
-				int32 amt = std::abs(CastToClient()->GetMaxEndurance() * effect_value / 100);
+				int32 amt = std::abs(CastToClient()->GetMaxEndurance() * effect_value / 10000);
 				if (spells[buff.spellid].max_value[i] && amt > spells[buff.spellid].max_value[i])
 					amt = spells[buff.spellid].max_value[i];
 
