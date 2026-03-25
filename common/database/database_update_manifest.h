@@ -5205,6 +5205,18 @@ ADD COLUMN `seconds_before_idle` int(11) UNSIGNED NOT NULL DEFAULT 60 AFTER `idl
 	},
 	ManifestEntry{
 		.version = 9253,
+		.description = "2026_03_25_tasks_allowed_classes.sql",
+		.check = "SHOW COLUMNS FROM `tasks` LIKE 'allowed_classes'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `tasks`
+ADD COLUMN `allowed_classes` int(10) unsigned NOT NULL DEFAULT '0' AFTER `faction_amount`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9253,
 		.description = "2024_01_13_merchantlist_slot.sql",
 		.check = "SHOW COLUMNS FROM `merchantlist` LIKE 'slot'",
 		.condition = "missing",

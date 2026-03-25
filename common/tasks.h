@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/classes.h"
 #include "common/emu_versions.h"
 #include "common/eqemu_logsys.h"
 #include "common/serialize_buffer.h"
@@ -190,6 +191,11 @@ enum class DurationCode {
 	Long   = 3
 };
 
+inline bool TaskClassMaskAllowsPlayerClass(uint32_t allowed_classes, uint8 player_class)
+{
+	return allowed_classes == 0 || (allowed_classes & GetPlayerClassBit(player_class)) != 0;
+}
+
 struct TaskInformation {
 	TaskType            type;
 	uint32_t            duration{};
@@ -213,6 +219,7 @@ struct TaskInformation {
 	uint32_t            level_spread;
 	uint32_t            min_players;
 	uint32_t            max_players;
+	uint32_t            allowed_classes{};
 	bool                repeatable{};
 	uint32_t            replay_timer_group;
 	uint32_t            replay_timer_seconds;

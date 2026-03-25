@@ -47,6 +47,7 @@ public:
 		uint32_t    dz_template_id;
 		int32_t     lock_activity_id;
 		int32_t     faction_amount;
+		uint32_t    allowed_classes;
 		int16_t     enabled;
 	};
 
@@ -86,6 +87,7 @@ public:
 			"dz_template_id",
 			"lock_activity_id",
 			"faction_amount",
+			"allowed_classes",
 			"enabled",
 		};
 	}
@@ -121,6 +123,7 @@ public:
 			"dz_template_id",
 			"lock_activity_id",
 			"faction_amount",
+			"allowed_classes",
 			"enabled",
 		};
 	}
@@ -190,6 +193,7 @@ public:
 		e.dz_template_id        = 0;
 		e.lock_activity_id      = -1;
 		e.faction_amount        = 0;
+		e.allowed_classes       = 0;
 		e.enabled               = 1;
 
 		return e;
@@ -255,7 +259,8 @@ public:
 			e.dz_template_id        = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
 			e.lock_activity_id      = row[26] ? static_cast<int32_t>(atoi(row[26])) : -1;
 			e.faction_amount        = row[27] ? static_cast<int32_t>(atoi(row[27])) : 0;
-			e.enabled               = row[28] ? static_cast<int16_t>(atoi(row[28])) : 1;
+			e.allowed_classes       = row[28] ? static_cast<uint32_t>(strtoul(row[28], nullptr, 10)) : 0;
+			e.enabled               = row[29] ? static_cast<int16_t>(atoi(row[29])) : 1;
 
 			return e;
 		}
@@ -317,7 +322,8 @@ public:
 		v.push_back(columns[25] + " = " + std::to_string(e.dz_template_id));
 		v.push_back(columns[26] + " = " + std::to_string(e.lock_activity_id));
 		v.push_back(columns[27] + " = " + std::to_string(e.faction_amount));
-		v.push_back(columns[28] + " = " + std::to_string(e.enabled));
+		v.push_back(columns[28] + " = " + std::to_string(e.allowed_classes));
+		v.push_back(columns[29] + " = " + std::to_string(e.enabled));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -367,6 +373,7 @@ public:
 		v.push_back(std::to_string(e.dz_template_id));
 		v.push_back(std::to_string(e.lock_activity_id));
 		v.push_back(std::to_string(e.faction_amount));
+		v.push_back(std::to_string(e.allowed_classes));
 		v.push_back(std::to_string(e.enabled));
 
 		auto results = db.QueryDatabase(
@@ -425,6 +432,7 @@ public:
 			v.push_back(std::to_string(e.dz_template_id));
 			v.push_back(std::to_string(e.lock_activity_id));
 			v.push_back(std::to_string(e.faction_amount));
+			v.push_back(std::to_string(e.allowed_classes));
 			v.push_back(std::to_string(e.enabled));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
@@ -487,7 +495,8 @@ public:
 			e.dz_template_id        = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
 			e.lock_activity_id      = row[26] ? static_cast<int32_t>(atoi(row[26])) : -1;
 			e.faction_amount        = row[27] ? static_cast<int32_t>(atoi(row[27])) : 0;
-			e.enabled               = row[28] ? static_cast<int16_t>(atoi(row[28])) : 1;
+			e.allowed_classes       = row[28] ? static_cast<uint32_t>(strtoul(row[28], nullptr, 10)) : 0;
+			e.enabled               = row[29] ? static_cast<int16_t>(atoi(row[29])) : 1;
 
 			all_entries.push_back(e);
 		}
@@ -540,7 +549,8 @@ public:
 			e.dz_template_id        = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
 			e.lock_activity_id      = row[26] ? static_cast<int32_t>(atoi(row[26])) : -1;
 			e.faction_amount        = row[27] ? static_cast<int32_t>(atoi(row[27])) : 0;
-			e.enabled               = row[28] ? static_cast<int16_t>(atoi(row[28])) : 1;
+			e.allowed_classes       = row[28] ? static_cast<uint32_t>(strtoul(row[28], nullptr, 10)) : 0;
+			e.enabled               = row[29] ? static_cast<int16_t>(atoi(row[29])) : 1;
 
 			all_entries.push_back(e);
 		}
@@ -643,6 +653,7 @@ public:
 		v.push_back(std::to_string(e.dz_template_id));
 		v.push_back(std::to_string(e.lock_activity_id));
 		v.push_back(std::to_string(e.faction_amount));
+		v.push_back(std::to_string(e.allowed_classes));
 		v.push_back(std::to_string(e.enabled));
 
 		auto results = db.QueryDatabase(
@@ -694,6 +705,7 @@ public:
 			v.push_back(std::to_string(e.dz_template_id));
 			v.push_back(std::to_string(e.lock_activity_id));
 			v.push_back(std::to_string(e.faction_amount));
+			v.push_back(std::to_string(e.allowed_classes));
 			v.push_back(std::to_string(e.enabled));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");

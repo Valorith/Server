@@ -1,5 +1,6 @@
 #include "task_manager.h"
 
+#include "common/classes.h"
 #include "common/misc_functions.h"
 #include "common/repositories/character_activities_repository.h"
 #include "common/repositories/character_tasks_repository.h"
@@ -90,6 +91,7 @@ bool TaskManager::LoadTasks(int single_task)
 		ti.level_spread          = task.level_spread;
 		ti.min_players           = task.min_players;
 		ti.max_players           = task.max_players;
+		ti.allowed_classes       = task.allowed_classes;
 		ti.repeatable            = task.repeatable;
 		ti.completion_emote      = task.completion_emote;
 		ti.replay_timer_group    = task.replay_timer_group;
@@ -103,7 +105,7 @@ bool TaskManager::LoadTasks(int single_task)
 		LogTasksDetail(
 			"(Task) task_id [{}] type [{}] () duration [{}] duration_code [{}] title [{}] description [{}] "
 			" reward_text [{}] reward_id_list [{}] cash_reward [{}] exp_reward [{}] reward_method [{}] faction_reward [{}] min_level [{}] "
-			" max_level [{}] level_spread [{}] min_players [{}] max_players [{}] repeatable [{}] completion_emote [{}]"
+			" max_level [{}] level_spread [{}] min_players [{}] max_players [{}] allowed_classes [{}] repeatable [{}] completion_emote [{}]"
 			" replay_group [{}] replay_timer_seconds [{}] request_group [{}] request_timer_seconds [{}]",
 			task.id,
 			task.type,
@@ -122,6 +124,7 @@ bool TaskManager::LoadTasks(int single_task)
 			task.level_spread,
 			task.min_players,
 			task.max_players,
+			task.allowed_classes,
 			task.repeatable,
 			task.completion_emote,
 			task.replay_timer_group,
@@ -540,6 +543,21 @@ bool TaskManager::ValidateLevel(int task_id, int player_level)
 	return true;
 }
 
+bool TaskManager::ValidateClass(int task_id, uint8 player_class)
+{
+	const auto task_data = GetTaskData(task_id);
+	if (!task_data) {
+		return false;
+	}
+
+	return TaskClassMaskAllowsPlayerClass(task_data->allowed_classes, player_class);
+}
+
+bool TaskManager::CanClientSeeTaskOffer(int task_id, int player_level, uint8 player_class)
+{
+	return ValidateLevel(task_id, player_level) && ValidateClass(task_id, player_class);
+}
+
 std::string TaskManager::GetTaskName(uint32 task_id)
 {
 	if (task_id > 0) {
@@ -566,6 +584,7 @@ TaskType TaskManager::GetTaskType(uint32 task_id)
 void TaskManager::TaskSetSelector(Client* client, Mob* mob, int task_set_id, bool ignore_cooldown)
 {
 	int player_level    = client->GetLevel();
+	uint8 player_class  = client->GetClass();
 	ClientTaskState* client_task_state = client->GetTaskState();
 
 	LogTasks(
@@ -618,7 +637,7 @@ void TaskManager::TaskSetSelector(Client* client, Mob* mob, int task_set_id, boo
 
 		// verify level, we're not currently on it, repeatable status, if it's a (shared) task
 		// we aren't currently on another, and if it's enabled if not all_enabled
-		if ((all_enabled || client_task_state->IsTaskEnabled(task)) && ValidateLevel(task, player_level) &&
+		if ((all_enabled || client_task_state->IsTaskEnabled(task)) && CanClientSeeTaskOffer(task, player_level, player_class) &&
 			!client_task_state->IsTaskActive(task) && client_task_state->HasSlotForTask(task_data) &&
 			// this slot checking is a bit silly, but we allow mixing of task types ...
 			(IsTaskRepeatable(task) || !client_task_state->IsTaskCompleted(task))) {
@@ -642,6 +661,7 @@ void TaskManager::TaskQuestSetSelector(Client* client, Mob* mob, const std::vect
 {
 	std::vector<int> task_list;
 	int player_level    = client->GetLevel();
+	uint8 player_class  = client->GetClass();
 	ClientTaskState* client_task_state = client->GetTaskState();
 
 	LogTasks("TaskQuestSetSelector called with size [{}]", tasks.size());
@@ -672,7 +692,7 @@ void TaskManager::TaskQuestSetSelector(Client* client, Mob* mob, const std::vect
 		const auto task_data = GetTaskData(task);
 		// verify level, we're not currently on it, repeatable status, if it's a (shared) task
 		// we aren't currently on another, and if it's enabled if not all_enabled
-		if (ValidateLevel(task, player_level) && !client_task_state->IsTaskActive(task) &&
+		if (CanClientSeeTaskOffer(task, player_level, player_class) && !client_task_state->IsTaskActive(task) &&
 			client_task_state->HasSlotForTask(task_data) &&
 			// this slot checking is a bit silly, but we allow mixing of task types ...
 			(IsTaskRepeatable(task) || !client_task_state->IsTaskCompleted(task))) {
@@ -750,10 +770,20 @@ void TaskManager::SharedTaskSelector(Client* client, Mob* mob, const std::vector
 
 		// check if any tasks are left to offer after filtering
 		if (!task_list.empty()) {
-			SendSharedTaskSelector(client, mob, task_list);
+			SendSharedTaskSelector(client, mob, task_list, request);
 		}
 		else {
-			client->MessageString(Chat::Red, TaskStr::NOT_MEET_REQ);
+			switch (request.group_type) {
+				case SharedTaskRequestGroupType::Group:
+					client->MessageString(Chat::Red, TaskStr::YOUR_GROUP_DOES_NOT_MEET_REQ);
+					break;
+				case SharedTaskRequestGroupType::Raid:
+					client->MessageString(Chat::Red, TaskStr::YOUR_RAID_DOES_NOT_MEET_REQ);
+					break;
+				default:
+					client->MessageString(Chat::Red, TaskStr::NOT_MEET_REQ);
+					break;
+			}
 		}
 	}
 }
@@ -788,6 +818,21 @@ bool TaskManager::CanOfferSharedTask(int task_id, const SharedTaskRequest& reque
 		return false;
 	}
 
+	for (const auto& member : request.members)
+	{
+		if (!TaskClassMaskAllowsPlayerClass(task->allowed_classes, member.class_id))
+		{
+			LogTasksDetail(
+				"member [{}] class [{}] is not allowed for task [{}] class mask [{}]",
+				member.character_name,
+				member.class_id,
+				task_id,
+				task->allowed_classes
+			);
+			return false;
+		}
+	}
+
 	return true;
 }
 
@@ -796,11 +841,12 @@ void TaskManager::SendTaskSelector(Client* client, Mob* mob, const std::vector<i
 {
 	LogTasks("TaskSelector for [{}] Tasks", task_list.size());
 	int player_level = client->GetLevel();
+	uint8 player_class = client->GetClass();
 	client->GetTaskState()->ClearLastOffers();
 
 	int      valid_tasks_count = 0;
 	for (int task_index : task_list) {
-		if (!ValidateLevel(task_index, player_level)) {
+		if (!CanClientSeeTaskOffer(task_index, player_level, player_class)) {
 			continue;
 		}
 		if (client->IsTaskActive(task_index)) {
@@ -826,7 +872,7 @@ void TaskManager::SendTaskSelector(Client* client, Mob* mob, const std::vector<i
 	buf.WriteUInt32(mob->GetID());    // TaskGiver
 
 	for (int i = 0; i < task_list.size(); i++) { // max 40
-		if (!ValidateLevel(task_list[i], player_level)) {
+		if (!CanClientSeeTaskOffer(task_list[i], player_level, player_class)) {
 			continue;
 		}
 		if (client->IsTaskActive(task_list[i])) {
@@ -845,9 +891,33 @@ void TaskManager::SendTaskSelector(Client* client, Mob* mob, const std::vector<i
 	client->QueuePacket(outapp.get());
 }
 
-void TaskManager::SendSharedTaskSelector(Client* client, Mob* mob, const std::vector<int>& task_list)
+void TaskManager::SendSharedTaskSelector(Client* client, Mob* mob, const std::vector<int>& task_list, const SharedTaskRequest& request)
 {
 	LogTasks("[{}] Tasks", task_list.size());
+
+	std::vector<int> valid_task_list;
+	valid_task_list.reserve(task_list.size());
+
+	for (int task_id : task_list) {
+		if (CanOfferSharedTask(task_id, request)) {
+			valid_task_list.push_back(task_id);
+		}
+	}
+
+	if (valid_task_list.empty()) {
+		switch (request.group_type) {
+			case SharedTaskRequestGroupType::Group:
+				client->MessageString(Chat::Red, TaskStr::YOUR_GROUP_DOES_NOT_MEET_REQ);
+				break;
+			case SharedTaskRequestGroupType::Raid:
+				client->MessageString(Chat::Red, TaskStr::YOUR_RAID_DOES_NOT_MEET_REQ);
+				break;
+			default:
+				client->MessageString(Chat::Red, TaskStr::NOT_MEET_REQ);
+				break;
+		}
+		return;
+	}
 
 	// request timer is only set when shared task selection shown (not for failed validations)
 	client->StartTaskRequestCooldownTimer();
@@ -855,12 +925,12 @@ void TaskManager::SendSharedTaskSelector(Client* client, Mob* mob, const std::ve
 
 	SerializeBuffer buf;
 
-	buf.WriteUInt32(static_cast<uint32_t>(task_list.size())); // number of tasks
+	buf.WriteUInt32(static_cast<uint32_t>(valid_task_list.size())); // number of tasks
 	// shared task selection (live doesn't mix types) makes client send shared task specific opcode for accepts
 	buf.WriteUInt32(static_cast<uint32_t>(TaskType::Shared));
 	buf.WriteUInt32(mob->GetID()); // task giver entity id
 
-	for (int task_id: task_list) {
+	for (int task_id: valid_task_list) {
 		buf.WriteUInt32(task_id);
 		m_task_data[task_id].SerializeSelector(buf, client->ClientVersion());
 		client->GetTaskState()->AddOffer(task_id, mob->GetID());

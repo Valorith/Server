@@ -3080,7 +3080,8 @@ bool QuestManager::istaskappropriate(int task) {
 	QuestManagerCurrentQuestVars();
 
 	if(RuleB(TaskSystem, EnableTaskSystem) && initiator)
-		return TaskManager::Instance()->ValidateLevel(task, initiator->GetLevel());
+		return TaskManager::Instance()->ValidateLevel(task, initiator->GetLevel()) &&
+			TaskManager::Instance()->ValidateClass(task, initiator->GetClass());
 
 	return false;
 }
