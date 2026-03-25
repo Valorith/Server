@@ -1343,6 +1343,14 @@ bool SharedTaskManager::CanRequestSharedTask(uint32_t task_id, const SharedTaskR
 		return false;
 	}
 
+	// check if any party member's class is restricted by the task
+	for (const auto& member : request.members) {
+		if (!TaskClassMaskAllowsPlayerClass(task.allowed_classes, member.class_id)) {
+			ClientList::Instance()->SendCharacterMessageID(request.leader_id, Chat::Red, TaskStr::YOUR_GROUP__RAID_DOES_NOT_MEET_REQ);
+			return false;
+		}
+	}
+
 	// allow gm/dev bypass for minimum player count requirements
 	auto requester = ClientList::Instance()->FindCLEByCharacterID(request.leader_id);
 	bool is_gm     = (requester && requester->GetGM());
