@@ -5204,7 +5204,7 @@ ADD COLUMN `seconds_before_idle` int(11) UNSIGNED NOT NULL DEFAULT 60 AFTER `idl
 		.content_schema_update = true
 	},
 	ManifestEntry{
-		.version = 9253,
+		.version = 9331,
 		.description = "2026_03_25_tasks_allowed_classes.sql",
 		.check = "SHOW COLUMNS FROM `tasks` LIKE 'allowed_classes'",
 		.condition = "empty",
