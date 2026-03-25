@@ -2061,6 +2061,11 @@ void ClientTaskState::AcceptNewTask(
 		return;
 	}
 
+	if (!TaskManager::Instance()->ValidateClass(task_id, client->GetClass())) {
+		client->Message(Chat::Yellow, "You are not the right class for this task.");
+		return;
+	}
+
 	if (!TaskManager::Instance()->IsTaskRepeatable(task_id) && IsTaskCompleted(task_id)) {
 		return;
 	}
