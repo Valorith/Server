@@ -9,6 +9,79 @@ extern WorldServer worldserver;
 extern QueryServ*  QServ;
 const std::string  SUB_TYPE_DELIMITER = ".";
 
+namespace {
+
+std::unique_ptr<EQ::ItemInstance> RebuildTransferredEvolvingItem(
+	const EQ::ItemInstance &source_inst,
+	const uint32           new_item_id
+)
+{
+	if (!new_item_id) {
+		return nullptr;
+	}
+
+	const auto *new_item_data = database.GetItem(new_item_id);
+	if (!new_item_data) {
+		return nullptr;
+	}
+
+	std::unique_ptr<EQ::ItemInstance> rebuilt_inst(source_inst.Clone());
+	if (!rebuilt_inst || !rebuilt_inst->ReplaceItemData(new_item_data)) {
+		return nullptr;
+	}
+
+	rebuilt_inst->SetEvolveItemID(new_item_id);
+	rebuilt_inst->SetEvolveFinalItemID(EvolvingItemsManager::Instance()->GetFinalItemID(*rebuilt_inst));
+
+	return rebuilt_inst;
+}
+
+void PersistTransferredEvolvingItemState(EQ::ItemInstance &inst)
+{
+	inst.CalculateEvolveProgression();
+	CharacterEvolvingItemsRepository::UpdateTransferState(
+		database,
+		inst.GetEvolveUniqueID(),
+		inst.GetID(),
+		inst.GetEvolveCurrentAmount(),
+		inst.GetEvolveProgression(),
+		EvolvingItemsManager::Instance()->GetFinalItemID(inst)
+	);
+}
+
+void AnnounceEvolvingExperienceGain(Client &client, const EQ::ItemInstance &inst, const uint64 evolve_amount)
+{
+	if (!RuleB(EvolvingItems, ShowExperienceMessages) || !evolve_amount || !inst.GetItem()) {
+		return;
+	}
+
+	if (RuleI(Character, ShowExpValues) >= 2) {
+		const auto evolve_percent = EvolvingItemsManager::Instance()->CalculateProgression(evolve_amount, inst.GetID());
+		client.Message(
+			Chat::Experience,
+			"Your %s has gained experience! (%s) (%.3f%%)",
+			inst.GetItem()->Name,
+			Strings::Commify(evolve_amount).c_str(),
+			evolve_percent
+		);
+		return;
+	}
+
+	if (RuleI(Character, ShowExpValues) >= 1) {
+		client.Message(
+			Chat::Experience,
+			"Your %s has gained experience! (%s)",
+			inst.GetItem()->Name,
+			Strings::Commify(evolve_amount).c_str()
+		);
+		return;
+	}
+
+	client.Message(Chat::Experience, "Your %s has gained experience!", inst.GetItem()->Name);
+}
+
+}
+
 void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 {
 	const auto in   = reinterpret_cast<EvolveItemToggle *>(app->pBuffer);
@@ -27,8 +100,46 @@ void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (item.character_id != CharacterID() || item.deleted_at > 0) {
+		LogEvolveItem(
+			"Character ID <green>[{}] attempted to toggle evolve item unique id <yellow>[{}] without ownership",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
 	item.activated  = in->activated;
-	const auto inst = GetInv().GetItem(GetInv().HasItem(item.item_id));
+	const auto slot_id = GetInv().HasEvolvingItem(item.id, 1, invWherePersonal | invWhereWorn | invWhereCursor);
+	if (slot_id == INVALID_INDEX) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] failed to locate inventory instance",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
+	if (slot_id == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] is an augment-based evolving item; "
+			"augment-based evolving items are not supported for toggling",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
+	const auto inst = GetInv().GetItem(slot_id);
+	if (!inst) {
+		LogEvolveItem(
+			"Character ID <green>[{}] toggle evolve item unique id <yellow>[{}] had null inventory instance",
+			CharacterID(),
+			in->unique_id
+		);
+		return;
+	}
+
 	inst->SetEvolveActivated(item.activated ? true : false);
 
 	CharacterEvolvingItemsRepository::ReplaceOne(database, item);
@@ -122,17 +233,15 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 
 				// Determine the evolve amount based on sub_type conditions
 				int evolve_amount = 0;
+				const bool all_exp = has_sub_type(EvolvingItems::SubTypes::ALL_EXP);
 
-				if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-					(has_sub_type(EvolvingItems::SubTypes::GROUP_EXP) && IsGrouped())) {
-					evolve_amount = exp * RuleR(EvolvingItems, PercentOfGroupExperience) / 100;
-				}
-				else if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-						 (has_sub_type(EvolvingItems::SubTypes::RAID_EXP) && IsRaidGrouped())) {
+				if ((all_exp || has_sub_type(EvolvingItems::SubTypes::RAID_EXP)) && IsRaidGrouped()) {
 					evolve_amount = exp * RuleR(EvolvingItems, PercentOfRaidExperience) / 100;
 				}
-				else if (has_sub_type(EvolvingItems::SubTypes::ALL_EXP) ||
-						 has_sub_type(EvolvingItems::SubTypes::SOLO_EXP)) {
+				else if ((all_exp || has_sub_type(EvolvingItems::SubTypes::GROUP_EXP)) && IsGrouped()) {
+					evolve_amount = exp * RuleR(EvolvingItems, PercentOfGroupExperience) / 100;
+				}
+				else if (all_exp || has_sub_type(EvolvingItems::SubTypes::SOLO_EXP)) {
 					evolve_amount = exp * RuleR(EvolvingItems, PercentOfSoloExperience) / 100;
 				}
 
@@ -146,8 +255,8 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 					break;
 				}
 
+				AnnounceEvolvingExperienceGain(*this, *inst, evolve_amount);
 				SendEvolvingPacket(EvolvingItems::Actions::UPDATE_ITEMS, e);
-
 				LogEvolveItem(
 					"Processing Complete for item id <green>[{1}] Type 1 Amount of EXP - SubType <yellow>[{0}] - "
 					"Assigned <yellow>[{2}] of exp to <green>[{1}]",
@@ -188,10 +297,10 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						sub_type,
 						inst->GetID()
 					);
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+					if (inst->GetEvolveProgression() >= 100) {
+						queue.push_back(inst);
+					}
 				}
 
 				break;
@@ -222,10 +331,10 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						sub_type,
 						inst->GetID()
 					);
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+					if (inst->GetEvolveProgression() >= 100) {
+						queue.push_back(inst);
+					}
 				}
 
 				break;
@@ -253,17 +362,17 @@ void Client::ProcessEvolvingItem(const uint64 exp, const Mob *mob)
 						SendEvolvingPacket(EvolvingItems::Actions::UPDATE_ITEMS, e);
 
 						LogEvolveItem(
-							"Processing Complete for item id <green>[{1}] Type 4 Specific Zone ID - SubType "
+							"Processing Complete for item id <green>[{1}] Type 2 Number of Kills - SubType "
 							"<yellow>[{0}] "
 							"- Increased count by 1 for <green>[{1}]",
 							sub_type,
 							inst->GetID()
 						);
-					}
-				}
 
-				if (inst->GetEvolveProgression() >= 100) {
-					queue.push_back(inst);
+						if (inst->GetEvolveProgression() >= 100) {
+							queue.push_back(inst);
+						}
+					}
 				}
 
 				break;
@@ -432,10 +541,20 @@ void Client::SendEvolveXPWindowDetails(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (item_1_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN ||
+	    item_2_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		return;
+	}
+
 	const auto inst_from = GetInv().GetItem(item_1_slot);
 	const auto inst_to   = GetInv().GetItem(item_2_slot);
 
 	if (!inst_from || !inst_to) {
+		return;
+	}
+
+	if (in->item1_unique_id == in->item2_unique_id || item_1_slot == item_2_slot) {
+		SendEvolveTransferResults(*inst_from, *inst_to, *inst_from, *inst_to, 0, 0);
 		return;
 	}
 
@@ -446,8 +565,8 @@ void Client::SendEvolveXPWindowDetails(const EQApplicationPacket *app)
 		return;
 	}
 
-	std::unique_ptr<EQ::ItemInstance> const inst_from_new(database.CreateItem(results.item_from_id));
-	std::unique_ptr<EQ::ItemInstance> const inst_to_new(database.CreateItem(results.item_to_id));
+	auto inst_from_new = RebuildTransferredEvolvingItem(*inst_from, results.item_from_id);
+	auto inst_to_new   = RebuildTransferredEvolvingItem(*inst_to, results.item_to_id);
 	if (!inst_from_new || !inst_to_new) {
 		SendEvolveTransferResults(*inst_from, *inst_to, *inst_from, *inst_to, 0, 0);
 		return;
@@ -475,12 +594,31 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 		return;
 	}
 
+	if (item_1_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN ||
+	    item_2_slot == EQ::invslot::SLOT_AUGMENT_GENERIC_RETURN) {
+		Message(Chat::Red, "Transfer Failed.  Augment-based evolving items are not supported for transfer.");
+		LogEvolveItem(
+			"Transfer Failed for Character ID <green>[{}]: augment-based evolving item used in transfer",
+			CharacterID()
+		);
+		return;
+	}
+
 	const auto inst_from = GetInv().GetItem(item_1_slot);
 	const auto inst_to   = GetInv().GetItem(item_2_slot);
 
 	if (!inst_from || !inst_to) {
 		Message(Chat::Red, "Transfer Failed.  Incompatible Items.");
 		LogEvolveItem("Transfer Failed for Character ID <green>[{}]", CharacterID());
+		return;
+	}
+
+	if (in->item1_unique_id == in->item2_unique_id || item_1_slot == item_2_slot) {
+		Message(Chat::Red, "Transfer Failed.  Incompatible Items.");
+		LogEvolveItem(
+			"Transfer Failed for Character ID <green>[{}] because the same evolve item was used for both slots",
+			CharacterID()
+		);
 		return;
 	}
 
@@ -492,8 +630,8 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 		return;
 	}
 
-	std::unique_ptr<const EQ::ItemInstance> const inst_from_new(database.CreateItem(results.item_from_id));
-	std::unique_ptr<const EQ::ItemInstance> const inst_to_new(database.CreateItem(results.item_to_id));
+	auto inst_from_new = RebuildTransferredEvolvingItem(*inst_from, results.item_from_id);
+	auto inst_to_new   = RebuildTransferredEvolvingItem(*inst_to, results.item_to_id);
 
 	if (!inst_from_new || !inst_to_new) {
 		Message(Chat::Red, "Transfer Failed.  Incompatible Items.");
@@ -509,6 +647,7 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 	PlayerEvent::EvolveItem e{};
 
 	RemoveItemBySerialNumber(inst_from->GetSerialNumber());
+	PersistTransferredEvolvingItemState(*inst_from_new);
 	EvolvingItemsManager::Instance()->LoadPlayerEvent(*inst_from, e);
 	e.status = "Transfer XP - Original FROM Evolve Item removed from inventory.";
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);
@@ -519,6 +658,7 @@ void Client::DoEvolveTransferXP(const EQApplicationPacket *app)
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);
 
 	RemoveItemBySerialNumber(inst_to->GetSerialNumber());
+	PersistTransferredEvolvingItemState(*inst_to_new);
 	EvolvingItemsManager::Instance()->LoadPlayerEvent(*inst_to, e);
 	e.status = "Transfer XP - Original TO Evolve Item removed from inventory.";
 	RecordPlayerEventLog(PlayerEvent::EVOLVE_ITEM, e);

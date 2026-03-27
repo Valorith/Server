@@ -59,4 +59,27 @@ public:
 		e.deleted_at   = 0;
 		return UpdateOne(db, e);
 	}
+
+	static CharacterEvolvingItems UpdateTransferState(
+		Database &db,
+		const uint64 id,
+		const uint32 item_id,
+		const uint64 amount,
+		const double progression,
+		const uint32 final_item_id
+	)
+	{
+		auto e = FindOne(db, id);
+		if (e.id == 0) {
+			return NewEntity();
+		}
+
+		e.item_id        = item_id;
+		e.current_amount = amount;
+		e.progression    = progression;
+		e.final_item_id  = final_item_id;
+		e.deleted_at     = 0;
+		UpdateOne(db, e);
+		return e;
+	}
 };
