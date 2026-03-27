@@ -17,6 +17,7 @@ set(tests_headers
 	string_util_test.h
 	skills_util_test.h
 	task_state_test.h
+	task_class_restriction_test.h
 )
 
 add_executable(tests ${tests_sources} ${tests_headers})

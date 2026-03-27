@@ -101,6 +101,7 @@ SharedTaskRequest SharedTask::GetRequestCharacters(Database &db, uint32_t reques
 		SharedTaskMember member = {};
 		member.character_id   = character.id;
 		member.character_name = character.name;
+		member.class_id       = character.class_;
 		if (character.id == requested_character_id)
 		{
 			member.is_leader = true;

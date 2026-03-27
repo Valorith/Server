@@ -1,5 +1,6 @@
 #include "shared_task_manager.h"
 
+#include "common/classes.h"
 #include "common/repositories/character_data_repository.h"
 #include "common/repositories/character_task_timers_repository.h"
 #include "common/repositories/completed_shared_task_activity_state_repository.h"
@@ -1342,6 +1343,14 @@ bool SharedTaskManager::CanRequestSharedTask(uint32_t task_id, const SharedTaskR
 		return false;
 	}
 
+	// check if any party member's class is restricted by the task
+	for (const auto& member : request.members) {
+		if (!TaskClassMaskAllowsPlayerClass(task.allowed_classes, member.class_id)) {
+			ClientList::Instance()->SendCharacterMessageID(request.leader_id, Chat::Red, TaskStr::YOUR_GROUP__RAID_DOES_NOT_MEET_REQ);
+			return false;
+		}
+	}
+
 	// allow gm/dev bypass for minimum player count requirements
 	auto requester = ClientList::Instance()->FindCLEByCharacterID(request.leader_id);
 	bool is_gm     = (requester && requester->GetGM());
@@ -1528,6 +1537,11 @@ bool SharedTaskManager::CanAddPlayer(SharedTask *s, uint32_t character_id, std::
 	// check if player is above maximum level of task (pre-2014 this was average level)
 	if (s->GetTaskData().max_level > 0 && cle->level() > s->GetTaskData().max_level) {
 		SendLeaderMessage(s, Chat::Red, TaskStr::Get(TaskStr::CANT_ADD_MAX_LEVEL));
+		allow_invite = false;
+	}
+
+	if (!TaskClassMaskAllowsPlayerClass(s->GetTaskData().allowed_classes, cle->class_())) {
+		SendLeaderMessageID(s, Chat::Red, TaskStr::CANT_ADD_FILTER_REQS);
 		allow_invite = false;
 	}
 
