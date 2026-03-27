@@ -24,6 +24,7 @@ public:
 	bool SaveClientState(Client *client, ClientTaskState *cts);
 	void SendTaskSelector(Client* client, Mob* mob, const std::vector<int>& tasks);
 	bool ValidateLevel(int task_id, int player_level);
+	bool ValidateClass(int task_id, uint8 player_class);
 	std::string GetTaskName(uint32 task_id);
 	TaskType GetTaskType(uint32 task_id);
 	void TaskSetSelector(Client* client, Mob* mob, int task_set_id, bool ignore_cooldown);
@@ -91,9 +92,10 @@ private:
 	void SendActiveTaskToClient(ClientTaskInformation *task, Client *client, int task_index, bool task_complete);
 
 	// shared tasks
+	bool CanClientSeeTaskOffer(int task_id, int player_level, uint8 player_class);
 	bool CanOfferSharedTask(int task_id, const SharedTaskRequest& request);
 	void SyncClientSharedTaskWithPersistedState(Client *c, ClientTaskState *cts);
 	void SyncClientSharedTaskRemoveLocalIfNotExists(Client *c, ClientTaskState *cts);
-	void SendSharedTaskSelector(Client* client, Mob* mob, const std::vector<int>& tasks);
+	void SendSharedTaskSelector(Client* client, Mob* mob, const std::vector<int>& tasks, const SharedTaskRequest& request);
 	void SyncClientSharedTaskStateToLocal(Client *c);
 };

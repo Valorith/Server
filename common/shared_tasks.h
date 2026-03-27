@@ -71,12 +71,13 @@ struct ServerSharedTaskQuit_Struct {
 struct SharedTaskMember {
 	uint32      character_id = 0;
 	std::string character_name;
+	uint8       class_id     = 0;
 	bool        is_leader    = false;
 
 	template<class Archive>
 	void serialize(Archive& archive)
 	{
-		archive(character_id, character_name, is_leader);
+		archive(character_id, character_name, class_id, is_leader);
 	}
 };
 

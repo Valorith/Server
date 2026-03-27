@@ -919,6 +919,26 @@ EQ::ItemInstance* EQ::ItemInstance::Clone() const
 	return new ItemInstance(*this);
 }
 
+bool EQ::ItemInstance::ReplaceItemData(const ItemData *item)
+{
+	if (!item) {
+		return false;
+	}
+
+	auto *new_item = new ItemData(*item);
+
+	safe_delete(m_item);
+	m_item = new_item;
+
+	safe_delete(m_scaledItem);
+	m_scaling = (m_item && m_item->CharmFileID != 0);
+	if (m_scaling) {
+		ScaleItem();
+	}
+
+	return true;
+}
+
 bool EQ::ItemInstance::IsSlotAllowed(int16 slot_id) const {
 	if (!m_item) { return false; }
 	else if (InventoryProfile::SupportsContainers(slot_id)) { return true; }
@@ -2014,6 +2034,10 @@ void EQ::ItemInstance::SetEvolveEquipped(const bool in) const
 	m_evolving_details.equipped = in;
 	if (in && !GetTimers().contains("evolve")) {
 		SetTimer("evolve", RuleI(EvolvingItems, DelayUponEquipping));
+		return;
+	}
+
+	if (!GetTimers().contains("evolve")) {
 		return;
 	}
 
