@@ -13244,9 +13244,10 @@ void Client::CheckItemDiscoverability(uint32 item_id)
 	}
 
 	if (GetGM()) {
-		const std::string& item_link = database.CreateItemLink(item_id);
+		const std::string item_link = database.CreateItemLink(item_id);
 		Message(
 			Chat::White,
+			"%s",
 			fmt::format(
 				"Your GM flag prevents {} from being added to discovered items.",
 				item_link
@@ -13256,9 +13257,10 @@ void Client::CheckItemDiscoverability(uint32 item_id)
 	}
 
 	if (Admin() > RuleI(Character, MaxDiscoverItemStatus)) {
-		const std::string& item_link = database.CreateItemLink(item_id);
+		const std::string item_link = database.CreateItemLink(item_id);
 		Message(
 			Chat::White,
+			"%s",
 			fmt::format(
 				"Your account status prevents {} from being added to discovered items.",
 				item_link
