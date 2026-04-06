@@ -134,6 +134,7 @@ RULE_INT(Character, StatCap, 0, "If StatCap > 0 then this value is used. If it i
 RULE_BOOL(Character, CheckCursorEmptyWhenLooting, true, "If true, a player cannot loot a corpse (player or NPC) with an item on their cursor")
 RULE_BOOL(Character, MaintainIntoxicationAcrossZones, true, "If true, alcohol effects are maintained across zoning and logging out/in")
 RULE_BOOL(Character, EnableDiscoveredItems, true, "If enabled, it enables EVENT_DISCOVER_ITEM and also saves character names and timestamps for the first time an item is discovered")
+RULE_INT(Character, MaxDiscoverItemStatus, 0, "Characters with an account status above this value do not add entries to discovered items")
 RULE_BOOL(Character, EnableXTargetting, true, "Enable Extended Targeting Window, for users with UF and later clients")
 RULE_BOOL(Character, EnableAggroMeter, true, "Enable Aggro Meter, for users with RoF and later clients")
 RULE_BOOL(Character, KeepLevelOverMax, false, "Don't de-level a character that has somehow gone over the level cap")
