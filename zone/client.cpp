@@ -13255,6 +13255,18 @@ void Client::CheckItemDiscoverability(uint32 item_id)
 		return;
 	}
 
+	if (Admin() > RuleI(Character, MaxDiscoverItemStatus)) {
+		const std::string& item_link = database.CreateItemLink(item_id);
+		Message(
+			Chat::White,
+			fmt::format(
+				"Your account status prevents {} from being added to discovered items.",
+				item_link
+			).c_str()
+		);
+		return;
+	}
+
 	DiscoverItem(item_id);
 }
 
