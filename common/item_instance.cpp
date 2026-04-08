@@ -171,9 +171,11 @@ EQ::ItemInstance::ItemInstance(const ItemInstance& copy)
 
 	if (copy.GetUniqueID().empty()) {
 		LogInfo("Creating unique item ID as part of clone process for item id {}", copy.GetID());
-		copy.CreateUniqueID();
+		CreateUniqueID();
 	}
-	m_unique_id = copy.m_unique_id;
+	else {
+		m_unique_id = copy.m_unique_id;
+	}
 
 	m_exp       = copy.m_exp;
 	m_evolveLvl = copy.m_evolveLvl;
