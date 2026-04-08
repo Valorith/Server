@@ -814,6 +814,8 @@ public:
 	inline const int32 GetInstanceID() const { return zone->GetInstanceID(); }
 	void SetZoning(bool in) { bZoning = in; }
 	bool IsZoning() { return bZoning; }
+	// "Pending" here means a server-initiated MovePC/zone request represented by a
+	// non-ZoneUnsolicited zone_mode; it is not a general indicator for all zoning states.
 	bool HasPendingMovePC() const { return zone_mode != ZoneUnsolicited; }
 
 	void ShowSpells(Client* c, ShowSpellType show_spell_type);
