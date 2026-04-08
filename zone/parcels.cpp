@@ -758,6 +758,8 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 				}
 
 				if (AutoPutLootInInventory(*inst.get(), false, true)) {
+					CheckItemDiscoverability(inst.get());
+
 					MessageString(
 						Chat::Yellow,
 						PARCEL_DELIVERED_2,

@@ -5010,6 +5010,25 @@ void Client::DiscoverItem(uint32 item_id) {
 	}
 }
 
+void Client::CheckItemDiscoverability(EQ::ItemInstance* inst)
+{
+	if (!RuleB(Character, EnableDiscoveredItems) || !inst || !inst->GetItem()) {
+		return;
+	}
+
+	CheckItemDiscoverability(inst->GetID());
+
+	for (const auto item_id : inst->GetAugmentIDs()) {
+		if (item_id) {
+			CheckItemDiscoverability(item_id);
+		}
+	}
+
+	for (const auto& [_, content_inst] : *inst->GetContents()) {
+		CheckItemDiscoverability(content_inst);
+	}
+}
+
 void Client::UpdateLFP() {
 
 	Group *g = GetGroup();
@@ -6241,6 +6260,9 @@ bool Client::TryReward(uint32 claim_id)
 
 	PutItemInInventory(free_slot, *claim);
 	SendItemPacket(free_slot, claim, ItemPacketTrade);
+
+	CheckItemDiscoverability(claim);
+
 	safe_delete(claim);
 
 	Save();
@@ -11491,6 +11513,9 @@ void Client::SummonBaggedItems(uint32 bag_item_id, const std::vector<LootItem>& 
 
 	PushItemOnCursor(*summoned_bag);
 	SendItemPacket(EQ::invslot::slotCursor, summoned_bag, ItemPacketLimbo);
+
+	CheckItemDiscoverability(summoned_bag);
+
 	safe_delete(summoned_bag);
 }
 

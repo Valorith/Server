@@ -493,7 +493,7 @@ bool Client::DoEvolveCheckProgression(EQ::ItemInstance &inst)
 		SendParcelIconStatus();
 	}
 
-	CheckItemDiscoverability(new_inst->GetID());
+	CheckItemDiscoverability(new_inst.get());
 
 	PlayerEvent::EvolveItem e{};
 

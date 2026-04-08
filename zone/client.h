@@ -915,6 +915,7 @@ public:
 
 	bool IsDiscovered(uint32 itemid);
 	void DiscoverItem(uint32 itemid);
+	void CheckItemDiscoverability(EQ::ItemInstance* inst);
 
 	bool TGB() const { return tgb; }
 

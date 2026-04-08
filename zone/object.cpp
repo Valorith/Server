@@ -682,7 +682,7 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 			// Transfer item to client using the normal cursor update path.
 			sender->PutItemInInventory(EQ::invslot::slotCursor, *m_inst, true);
 
-			sender->CheckItemDiscoverability(m_inst->GetID());
+			sender->CheckItemDiscoverability(m_inst);
 
 			if (cursor_delete) {    // delete the item if it's a duplicate lore. We have to do this because the client expects the item packet
 				sender->DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
