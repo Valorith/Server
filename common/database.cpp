@@ -2500,7 +2500,6 @@ void Database::ClearOfflineTradingState()
 	LogInfo("Clearing offline trading state");
 	ClearTraderDetails();
 	ClearBuyerDetails();
-	AccountRepository::ClearAllOfflineStatus(*this);
 	OfflineCharacterSessionsRepository::Truncate(*this);
 }
 
