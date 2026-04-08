@@ -312,6 +312,7 @@ RULE_CATEGORY_END()
 
 RULE_CATEGORY(World)
 RULE_INT(World, ZoneAutobootTimeoutMS, 60000, "Time out for automatic booting of zones in milliseconds")
+RULE_INT(World, OfflineSessionReclaimTimeoutMS, 10000, "Timeout in milliseconds for world to wait for a zone to complete an offline session reclaim before aborting the login attempt and clearing the stale session")
 RULE_BOOL(World, UseBannedIPsTable, false, "Toggle whether or not to check incoming client connections against the banned_ips table. Set this value to false to disable this feature")
 RULE_BOOL(World, EnableTutorialButton, true, "Setting whether the Tutorial button should be active. At least in RoF2 you can always press the button, but it loses its effect")
 RULE_BOOL(World, EnableReturnHomeButton, true, "Setting whether the Return Home button should be active")

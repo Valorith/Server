@@ -93,7 +93,6 @@ extern volatile bool RunLoops;
 extern volatile bool UCSServerAvailable_;
 
 namespace {
-constexpr uint32 kOfflineSessionReclaimTimeoutMs = 10000;
 std::atomic<uint32> g_offline_reclaim_request_id{1};
 
 uint8 ToOfflineSessionMode(const std::string &mode)
@@ -160,7 +159,7 @@ enum class NameApprovalResponse : int {
 Client::Client(EQStreamInterface* ieqs)
 :	autobootup_timeout(RuleI(World, ZoneAutobootTimeoutMS)),
 	connect(1000),
-	offline_reclaim_timeout(kOfflineSessionReclaimTimeoutMs),
+	offline_reclaim_timeout(RuleI(World, OfflineSessionReclaimTimeoutMS)),
 	eqs(ieqs)
 {
 	// Live does not send datarate as of 3/11/2005
@@ -1218,7 +1217,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 	offline_reclaim_entity_id    = session.entity_id;
 	offline_reclaim_started_at   = Timer::GetCurrentTime();
 	offline_reclaim_mode         = mode;
-	offline_reclaim_timeout.Start(kOfflineSessionReclaimTimeoutMs);
+	offline_reclaim_timeout.Start(RuleI(World, OfflineSessionReclaimTimeoutMS));
 
 	reclaim->request_id   = offline_reclaim_request_id;
 	reclaim->account_id   = GetAccountID();
@@ -1496,12 +1495,13 @@ bool Client::Process() {
 	if (offline_reclaim_pending && offline_reclaim_timeout.Check()) {
 		auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
 		LogWarning(
-			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]",
+			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; clearing stale session",
 			OfflineSessionModeName(offline_reclaim_mode),
 			elapsed_ms,
 			GetAccountID(),
 			GetCharName()
 		);
+		ClearStaleOfflineSession(offline_reclaim_character_id, "reclaim timeout");
 		TellClientZoneUnavailable();
 	}
 
