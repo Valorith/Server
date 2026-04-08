@@ -4875,7 +4875,12 @@ bool Mob::HateSummon() {
 			new_pos = target->TryMoveAlong(new_pos, 5.0f, angle);
 
 			if (target->IsClient()) {
-				target->CastToClient()->MovePC(
+				auto* client = target->CastToClient();
+				if (client->IsZoning() || client->HasPendingMovePC()) {
+					return false;
+				}
+
+				client->MovePC(
 					zone->GetZoneID(),
 					zone->GetInstanceID(),
 					new_pos.x,
