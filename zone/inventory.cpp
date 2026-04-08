@@ -4602,8 +4602,8 @@ void Client::SummonItemIntoInventory(
 	}
 
 	// Try stacking first if the item is stackable, then fall back to finding a free slot
-	const bool stacked = PutItemInInventoryWithStacking(inst);
-	if (!stacked) {
+	const bool placed_in_inventory = PutItemInInventoryWithStacking(inst);
+	if (!placed_in_inventory) {
 		// PutItemInInventoryWithStacking failed, fall back to original behavior
 		const bool  is_arrow = inst->GetItem()->ItemType == EQ::item::ItemTypeArrow;
 		const int16 slot_id  = m_inv.FindFreeSlot(
