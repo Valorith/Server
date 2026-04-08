@@ -1457,7 +1457,10 @@ namespace PlayerEvent {
 		template <class Archive>
 		void save(Archive& ar) const
 		{
-			ar(CEREAL_NVP(item_id));
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_unique_id)
+			);
 
 			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
 			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
@@ -1521,7 +1524,10 @@ namespace PlayerEvent {
 		template <class Archive>
 		void save(Archive& ar) const
 		{
-			ar(CEREAL_NVP(item_id));
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_unique_id)
+			);
 
 			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
 			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
@@ -1589,7 +1595,10 @@ namespace PlayerEvent {
 		template <class Archive>
 		void save(Archive& ar) const
 		{
-			ar(CEREAL_NVP(item_id));
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_unique_id)
+			);
 
 			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
 			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
