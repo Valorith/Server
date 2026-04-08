@@ -658,7 +658,7 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 
 	m_external_handin_items_returned.emplace_back(inst->GetItem()->ID);
 
-	// discover item and any augments
+	// discover item, any augments, and container contents
 	CheckItemDiscoverability(inst);
 
 	safe_delete(inst);

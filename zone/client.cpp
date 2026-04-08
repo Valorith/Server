@@ -5024,8 +5024,7 @@ void Client::CheckItemDiscoverability(EQ::ItemInstance* inst)
 		}
 	}
 
-	for (const auto& [slot_id, content_inst] : *inst->GetContents()) {
-		(void)slot_id;
+	for (const auto& [_, content_inst] : *inst->GetContents()) {
 		CheckItemDiscoverability(content_inst);
 	}
 }
