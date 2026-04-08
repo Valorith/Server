@@ -4862,6 +4862,13 @@ bool Mob::HateSummon() {
 	if(target)
 	{
 		if(summon_level == 1) {
+			if (target->IsClient()) {
+				auto* client = target->CastToClient();
+				if (client->IsZoning() || client->HasPendingMovePC()) {
+					return false;
+				}
+			}
+
 			entity_list.MessageClose(this, true, 500, Chat::Say, "%s says 'You will not evade me, %s!' ", GetCleanName(), target->GetCleanName() );
 
 			float summoner_zoff = GetZOffset();
@@ -4875,12 +4882,7 @@ bool Mob::HateSummon() {
 			new_pos = target->TryMoveAlong(new_pos, 5.0f, angle);
 
 			if (target->IsClient()) {
-				auto* client = target->CastToClient();
-				if (client->IsZoning() || client->HasPendingMovePC()) {
-					return false;
-				}
-
-				client->MovePC(
+				target->CastToClient()->MovePC(
 					zone->GetZoneID(),
 					zone->GetInstanceID(),
 					new_pos.x,
