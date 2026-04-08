@@ -1023,7 +1023,7 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 						int16_t slot = c->GetInv().FindFreeSlot(inst->IsClassBag(), true, inst->GetItem()->Size);
 						c->SummonItem(item_id, charges, 0, 0, 0, 0, 0, 0, false, slot);
 					} else {
-						c->CheckItemDiscoverability(item_id);
+						c->CheckItemDiscoverability(inst.get());
 					}
 					c->MessageString(Chat::Yellow, YOU_HAVE_BEEN_GIVEN, inst->GetItem()->Name);
 				}

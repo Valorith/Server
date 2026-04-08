@@ -658,10 +658,10 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 
 	m_external_handin_items_returned.emplace_back(inst->GetItem()->ID);
 
-	safe_delete(inst);
-
 	// discover item and any augments
-	CheckItemDiscoverability(item_id);
+	CheckItemDiscoverability(inst);
+
+	safe_delete(inst);
 
 	return true;
 }
@@ -4602,7 +4602,8 @@ void Client::SummonItemIntoInventory(
 	}
 
 	// Try stacking first if the item is stackable, then fall back to finding a free slot
-	if (!PutItemInInventoryWithStacking(inst)) {
+	const bool stacked = PutItemInInventoryWithStacking(inst);
+	if (!stacked) {
 		// PutItemInInventoryWithStacking failed, fall back to original behavior
 		const bool  is_arrow = inst->GetItem()->ItemType == EQ::item::ItemTypeArrow;
 		const int16 slot_id  = m_inv.FindFreeSlot(
@@ -4624,6 +4625,8 @@ void Client::SummonItemIntoInventory(
 			is_attuned,
 			slot_id
 		);
+	} else {
+		CheckItemDiscoverability(inst);
 	}
 
 	safe_delete(inst);
