@@ -5012,7 +5012,7 @@ void Client::DiscoverItem(uint32 item_id) {
 
 void Client::CheckItemDiscoverability(EQ::ItemInstance* inst)
 {
-	if (!inst || !inst->GetItem()) {
+	if (!RuleB(Character, EnableDiscoveredItems) || !inst || !inst->GetItem()) {
 		return;
 	}
 
