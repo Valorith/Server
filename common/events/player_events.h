@@ -1133,7 +1133,8 @@ namespace PlayerEvent {
 				CEREAL_NVP(quantity),
 				CEREAL_NVP(charges),
 				CEREAL_NVP(total_cost),
-				CEREAL_NVP(player_money_balance)
+				CEREAL_NVP(player_money_balance),
+				CEREAL_NVP(offline_purchase)
 			);
 		}
 
@@ -1211,7 +1212,8 @@ namespace PlayerEvent {
 				CEREAL_NVP(quantity),
 				CEREAL_NVP(charges),
 				CEREAL_NVP(total_cost),
-				CEREAL_NVP(player_money_balance)
+				CEREAL_NVP(player_money_balance),
+				CEREAL_NVP(offline_purchase)
 			);
 		}
 
