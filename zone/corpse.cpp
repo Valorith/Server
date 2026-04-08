@@ -1644,7 +1644,7 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 		c->QueuePacket(app);
 
 		if (!IsPlayerCorpse() && c) {
-			c->CheckItemDiscoverability(inst->GetID());
+			c->CheckItemDiscoverability(inst);
 		}
 
 		if (zone->adv_data) {
