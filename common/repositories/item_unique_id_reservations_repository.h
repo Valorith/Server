@@ -19,7 +19,32 @@ public:
 			)
 		);
 
-		return results.Success();
+		return results.Success() && results.RowsAffected() == 1;
+	}
+
+	static bool Exists(Database &db, const std::string &item_unique_id)
+	{
+		if (item_unique_id.empty()) {
+			return false;
+		}
+
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"SELECT 1 FROM item_unique_id_reservations WHERE item_unique_id = '{}' LIMIT 1",
+				Strings::Escape(item_unique_id)
+			)
+		);
+
+		return results.Success() && results.RowCount() == 1;
+	}
+
+	static bool EnsureReserved(Database &db, const std::string &item_unique_id)
+	{
+		if (item_unique_id.empty()) {
+			return false;
+		}
+
+		return Reserve(db, item_unique_id) || Exists(db, item_unique_id);
 	}
 
 	static std::string ReserveNew(Database &db, uint32 max_attempts = 64)

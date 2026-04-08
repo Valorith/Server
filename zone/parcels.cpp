@@ -29,6 +29,33 @@
 extern WorldServer worldserver;
 extern QueryServ  *QServ;
 
+namespace {
+bool ClaimOrRegenerateParcelItemUniqueId(Database &db, std::string &item_unique_id)
+{
+	if (item_unique_id.empty()) {
+		item_unique_id = db.ReserveNewItemUniqueId();
+		return !item_unique_id.empty();
+	}
+
+	if (db.TryReserveItemUniqueId(item_unique_id)) {
+		return true;
+	}
+
+	const auto previous_item_unique_id = item_unique_id;
+	item_unique_id = db.ReserveNewItemUniqueId();
+	if (item_unique_id.empty()) {
+		return false;
+	}
+
+	LogWarning(
+		"Parcel restore regenerated colliding item_unique_id [{}] as [{}]",
+		previous_item_unique_id,
+		item_unique_id
+	);
+	return true;
+}
+}
+
 void Client::SendBulkParcels()
 {
 	SetEngagedWithParcelMerchant(true);
@@ -704,6 +731,16 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 				break;
 			}
 			default: {
+				if (!ClaimOrRegenerateParcelItemUniqueId(database, item_unique_id)) {
+					LogError(
+						"Failed to claim item_unique_id for retrieved parcel [{}] character [{}]",
+						p->second.id,
+						CharacterID()
+					);
+					SendParcelRetrieveAck();
+					return;
+				}
+
 				inst->SetUniqueID(item_unique_id);
 				std::vector<CharacterParcelsContainersRepository::CharacterParcelsContainers> results{};
 				if (inst->IsClassBag() && inst->GetItem()->BagSlots > 0) {
@@ -729,7 +766,19 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 						}
 
 						item->SetEvolveCurrentAmount(i.evolve_amount);
-						item->SetUniqueID(i.item_unique_id);
+						auto nested_item_unique_id = i.item_unique_id;
+						if (!ClaimOrRegenerateParcelItemUniqueId(database, nested_item_unique_id)) {
+							LogError(
+								"Failed to claim item_unique_id for retrieved parcel container item [{}] in parcel [{}] character [{}]",
+								i.item_id,
+								p->second.id,
+								CharacterID()
+							);
+							SendParcelRetrieveAck();
+							return;
+						}
+
+						item->SetUniqueID(nested_item_unique_id);
 						if (CheckLoreConflict(item->GetItem())) {
 							if (RuleB(Parcel, DeleteOnDuplicate)) {
 								MessageString(Chat::Yellow, PARCEL_DUPLICATE_DELETE, inst->GetItem()->Name);

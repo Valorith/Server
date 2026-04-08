@@ -1182,7 +1182,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		ZSList::Instance()->FindByInstanceID(session.instance_id) :
 		ZSList::Instance()->FindByZoneID(session.zone_id);
 
-	if (!zone_server || !zone_server->IsConnected()) {
+	if (!zone_server) {
 		auto clear_started_at = Timer::GetCurrentTime();
 		if (!ClearStaleOfflineSession(session.character_id, "zone not booted")) {
 			LogError(
@@ -1203,6 +1203,19 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 			Timer::GetCurrentTime() - clear_started_at
 		);
 		return true;
+	}
+
+	if (!zone_server->IsConnected()) {
+		LogWarning(
+			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; failing closed until the zone reconnects or the session is cleared",
+			GetCharName(),
+			GetAccountID(),
+			OfflineSessionModeName(mode),
+			session.zone_id,
+			session.instance_id
+		);
+		TellClientZoneUnavailable();
+		return false;
 	}
 
 	auto pack = new ServerPacket(ServerOP_ReclaimOfflineSessionReq, sizeof(OfflineSessionReclaim_Struct));

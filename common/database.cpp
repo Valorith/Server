@@ -2276,9 +2276,14 @@ uint64_t Database::GetNextTableId(const std::string &table_name)
 	return 1;
 }
 
-bool Database::ReserveItemUniqueId(const std::string &item_unique_id)
+bool Database::TryReserveItemUniqueId(const std::string &item_unique_id)
 {
 	return ItemUniqueIdReservationsRepository::Reserve(*this, item_unique_id);
+}
+
+bool Database::ReserveItemUniqueId(const std::string &item_unique_id)
+{
+	return ItemUniqueIdReservationsRepository::EnsureReserved(*this, item_unique_id);
 }
 
 std::string Database::ReserveNewItemUniqueId()
@@ -2290,10 +2295,7 @@ bool Database::EnsureItemUniqueId(std::string &item_unique_id)
 {
 	if (item_unique_id.empty()) {
 		item_unique_id = ReserveNewItemUniqueId();
-	}
-
-	if (item_unique_id.empty()) {
-		return false;
+		return !item_unique_id.empty();
 	}
 
 	return ReserveItemUniqueId(item_unique_id);
@@ -2652,7 +2654,7 @@ bool Database::PreflightItemUniqueIdMigration(bool verbose)
 			);
 		}
 
-		success = success && duplicates == 0;
+		success = success && missing == 0 && duplicates == 0;
 	}
 
 	uint64 live_cross_table_duplicates = 0;
@@ -2693,7 +2695,10 @@ bool Database::PreflightItemUniqueIdMigration(bool verbose)
 		);
 	}
 
-	return success && live_cross_table_duplicates == 0;
+	return success &&
+		live_cross_table_duplicates == 0 &&
+		offline_sessions == 0 &&
+		account_offline == 0;
 }
 
 bool Database::MigrateItemUniqueIdData(bool clear_trading_state, bool verbose)

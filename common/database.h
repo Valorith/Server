@@ -264,6 +264,7 @@ public:
 	void Decode(std::string &in);
 
 	uint64_t GetNextTableId(const std::string& table_name);
+	bool TryReserveItemUniqueId(const std::string &item_unique_id);
 	bool ReserveItemUniqueId(const std::string &item_unique_id);
 	std::string ReserveNewItemUniqueId();
 	bool EnsureItemUniqueId(std::string &item_unique_id);
