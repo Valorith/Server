@@ -168,9 +168,18 @@ namespace EQ
 		void SetCharges(int16 charges)			{ m_charges = charges; }
 		int16 GetQuantityFromCharges() const
 		{
+			const auto charges = GetCharges();
+			if (charges > 0) {
+				return charges;
+			}
+
+			if (IsStackable()) {
+				return 1;
+			}
+
 			const auto item = GetItem();
-			if (GetCharges() > 0 || IsStackable() || (item && item->MaxCharges > 0)) {
-				return GetCharges();
+			if (item && item->MaxCharges > 0) {
+				return charges;
 			}
 
 			return 1;
