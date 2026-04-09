@@ -36,7 +36,9 @@
 
 #include <set>
 
-// String IDs for ZoneWho rank display (duplicated from zone/string_ids.h to avoid world->zone header dependency)
+// String IDs for ZoneWho rank display — these values must stay in sync with
+// the definitions in zone/string_ids.h (BUYER=6056, TRADER=12315).
+// They are duplicated here to avoid a world->zone header dependency.
 static constexpr uint32 WORLD_BUYER_STRING_ID  = 6056;   // "BUYER"
 static constexpr uint32 WORLD_TRADER_STRING_ID = 12315;  // "TRADER"
 

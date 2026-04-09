@@ -15429,7 +15429,7 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 	auto in             = (TraderBuy_Struct *) app->pBuffer;
 	auto item_unique_id = std::string(in->item_unique_id);
 
-	if (item_unique_id.size() != 16 || !std::all_of(item_unique_id.begin(), item_unique_id.end(), ::isalnum)) {
+	if (item_unique_id.size() != 16 || !std::all_of(item_unique_id.begin(), item_unique_id.end(), [](unsigned char c) { return std::isalnum(c); })) {
 		LogTrading("Invalid item_unique_id format from client [{}]: [{}]", GetName(), item_unique_id);
 		return;
 	}
