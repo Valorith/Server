@@ -35,6 +35,7 @@
 #include "common/rulesys.h"
 #include "common/strings.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cinttypes>
 #include <iostream>
@@ -4491,7 +4492,7 @@ namespace RoF2
 			VARSTRUCT_ENCODE_TYPE(uint32, OutBuffer, x);
 
 			x = VARSTRUCT_DECODE_TYPE(uint32, InBuffer);
-			VARSTRUCT_ENCODE_TYPE(uint32, OutBuffer, std::ranges::find(p_ids.begin(), p_ids.end(), x) == p_ids.end() ? 0 : x);
+			VARSTRUCT_ENCODE_TYPE(uint32, OutBuffer, std::find(p_ids.begin(), p_ids.end(), x) == p_ids.end() ? 0 : x);
 
 			VARSTRUCT_ENCODE_TYPE(uint32, OutBuffer, 0xffffffff);
 

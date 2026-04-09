@@ -35,7 +35,10 @@
 #include "world/zoneserver.h"
 
 #include <set>
-#include "../zone/string_ids.h"
+
+// String IDs for ZoneWho rank display (duplicated from zone/string_ids.h to avoid world->zone header dependency)
+static constexpr uint32 WORLD_BUYER_STRING_ID  = 6056;   // "BUYER"
+static constexpr uint32 WORLD_TRADER_STRING_ID = 12315;  // "TRADER"
 
 uint32 numplayers = 0;	//this really wants to be a member variable of ClientList...
 
@@ -800,10 +803,10 @@ void ClientList::SendWhoAll(uint32 fromid,const char* to, int16 admin, Who_All_S
 					continue;
 				}
 				else if (cle->GetTrader()) {
-					rankstring = TRADER;
+					rankstring = WORLD_TRADER_STRING_ID;
 				}
 				else if (cle->GetBuyer()) {
-					rankstring = BUYER;
+					rankstring = WORLD_BUYER_STRING_ID;
 				}
 				else if (cle->GetGM()) {
 					if (cle->Admin() >= AccountStatus::GMImpossible) {

@@ -17,6 +17,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "client.h"
 
+#include <algorithm>
 #include "common/data_bucket.h"
 #include "common/data_verification.h"
 #include "common/eqemu_logsys.h"
@@ -15427,6 +15428,12 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 
 	auto in             = (TraderBuy_Struct *) app->pBuffer;
 	auto item_unique_id = std::string(in->item_unique_id);
+
+	if (item_unique_id.size() != 16 || !std::all_of(item_unique_id.begin(), item_unique_id.end(), ::isalnum)) {
+		LogTrading("Invalid item_unique_id format from client [{}]: [{}]", GetName(), item_unique_id);
+		return;
+	}
+
 	auto trader_details = TraderRepository::GetTraderByItemUniqueNumber(database, item_unique_id);
 	auto trader         = entity_list.GetClientByID(in->trader_id);
 	strn0cpy(in->seller_name, trader_details.trader_name.c_str(), sizeof(in->seller_name));

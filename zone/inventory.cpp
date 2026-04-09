@@ -4696,7 +4696,7 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 
 	std::vector<temp>  queue;
 	std::vector<int16> empty_bag_slots;
-	auto               quantity = inst->GetCharges();
+	auto               quantity = inst->GetQuantityFromCharges();
 
 	for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
 		if (quantity == 0) {
@@ -4752,13 +4752,15 @@ bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
 				success = false;
 				break;
 			}
-			bag_inst->SetCharges(i.quantity + bag_inst->GetCharges());
+			int16 original_charges = bag_inst->GetCharges();
+			bag_inst->SetCharges(i.quantity + original_charges);
 			if (!PutItemInInventory(i.slot_id, *bag_inst, true)) {
 				LogError(
 					"Failed to save stacked item to inventory. Character ID {} Slot_ID {}",
 					CharacterID(),
 					i.slot_id
 				);
+				bag_inst->SetCharges(original_charges);
 				success = false;
 				break;
 			}
