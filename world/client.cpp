@@ -1215,7 +1215,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	if (!zone_server->IsConnected()) {
 		LogWarning(
-			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; preserving session state and failing entry because zone ownership is uncertain",
+			"Character entry for [{}] account [{}] found offline {} session in disconnected zone [{}] instance [{}]; failing entry due to uncertain zone ownership",
 			GetCharName(),
 			GetAccountID(),
 			OfflineSessionModeName(mode),
