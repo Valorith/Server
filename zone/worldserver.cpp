@@ -4445,7 +4445,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					character_matches,
 					mode_matches
 				);
-				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimFailed);
+				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimInvalid);
 				break;
 			}
 

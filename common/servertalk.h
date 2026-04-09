@@ -390,7 +390,8 @@ enum : int8 {
 	OfflineSessionReclaimFailed = 0,
 	OfflineSessionReclaimSuccess = 1,
 	OfflineSessionReclaimStale = 2,
-	OfflineSessionReclaimBusy = 3
+	OfflineSessionReclaimBusy = 3,
+	OfflineSessionReclaimInvalid = 4
 };
 /************ PACKET RELATED STRUCT ************/
 class ServerPacket

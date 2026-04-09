@@ -66,6 +66,31 @@
 
 extern Client client;
 
+namespace {
+std::string ItemUniqueIdMigrationFailureReason(const std::string &item_unique_id)
+{
+	if (item_unique_id.empty()) {
+		return "failed reserving a new item_unique_id";
+	}
+
+	return fmt::format("failed ensuring existing item_unique_id [{}]", item_unique_id);
+}
+
+void LogItemUniqueIdMigrationSkipSummary(const char *table_name, uint32 skipped_count, uint32 total_count)
+{
+	if (!skipped_count) {
+		return;
+	}
+
+	LogWarning(
+		"Skipped {} of {} {} rows while assigning item_unique_id values; review prior errors for row details",
+		skipped_count,
+		total_count,
+		table_name
+	);
+}
+}
+
 Database::Database() { }
 
 Database::~Database() { }
@@ -2312,12 +2337,21 @@ void Database::ConvertInventoryToNewUniqueId()
 
 	TransactionBegin();
 	uint32                                      index      = 0;
+	uint32                                      skipped    = 0;
 	const uint32                                batch_size = 1000;
 	std::vector<InventoryRepository::Inventory> queue{};
 	queue.reserve(batch_size);
 
 	for (auto &r: results) {
+		auto existing_item_unique_id = r.item_unique_id;
 		if (!EnsureItemUniqueId(r.item_unique_id)) {
+			++skipped;
+			LogError(
+				"Skipping inventory row character_id [{}] slot_id [{}] during item_unique_id migration: {}",
+				r.character_id,
+				r.slot_id,
+				ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+			);
 			continue;
 		}
 		queue.push_back(r);
@@ -2335,6 +2369,7 @@ void Database::ConvertInventoryToNewUniqueId()
 
 	TransactionCommit();
 	LogInfo("Converted {} records", results.size());
+	LogItemUniqueIdMigrationSkipSummary("inventory", skipped, static_cast<uint32>(results.size()));
 }
 
 void Database::ConvertTraderToNewUniqueId()
@@ -2348,12 +2383,22 @@ void Database::ConvertTraderToNewUniqueId()
 
 	TransactionBegin();
 	uint32                           index      = 0;
+	uint32                           skipped    = 0;
 	const uint32                     batch_size = 1000;
 	std::vector<TraderRepository::Trader> queue{};
 	queue.reserve(batch_size);
 
 	for (auto &r: results) {
+		auto existing_item_unique_id = r.item_unique_id;
 		if (!EnsureItemUniqueId(r.item_unique_id)) {
+			++skipped;
+			LogError(
+				"Skipping trader row id [{}] character_id [{}] slot_id [{}] during item_unique_id migration: {}",
+				r.id,
+				r.character_id,
+				r.slot_id,
+				ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+			);
 			continue;
 		}
 
@@ -2372,6 +2417,7 @@ void Database::ConvertTraderToNewUniqueId()
 
 	TransactionCommit();
 	LogInfo("Converted {} trader records", results.size());
+	LogItemUniqueIdMigrationSkipSummary("trader", skipped, static_cast<uint32>(results.size()));
 }
 
 void Database::ConvertParcelsToNewUniqueId()
@@ -2379,6 +2425,8 @@ void Database::ConvertParcelsToNewUniqueId()
 	LogInfo("Converting parcel entries with missing item_unique_id");
 	auto parcels = CharacterParcelsRepository::GetWhere(*this, "`item_unique_id` IS NULL OR `item_unique_id` = ''");
 	auto parcel_contents = CharacterParcelsContainersRepository::GetWhere(*this, "`item_unique_id` IS NULL OR `item_unique_id` = ''");
+	uint32 skipped_parcels = 0;
+	uint32 skipped_parcel_contents = 0;
 
 	TransactionBegin();
 
@@ -2386,7 +2434,16 @@ void Database::ConvertParcelsToNewUniqueId()
 		std::vector<CharacterParcelsRepository::CharacterParcels> queue{};
 		queue.reserve(parcels.size());
 		for (auto &r : parcels) {
+			auto existing_item_unique_id = r.item_unique_id;
 			if (!EnsureItemUniqueId(r.item_unique_id)) {
+				++skipped_parcels;
+				LogError(
+					"Skipping character_parcels row id [{}] char_id [{}] slot_id [{}] during item_unique_id migration: {}",
+					r.id,
+					r.char_id,
+					r.slot_id,
+					ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+				);
 				continue;
 			}
 
@@ -2402,7 +2459,16 @@ void Database::ConvertParcelsToNewUniqueId()
 		std::vector<CharacterParcelsContainersRepository::CharacterParcelsContainers> queue{};
 		queue.reserve(parcel_contents.size());
 		for (auto &r : parcel_contents) {
+			auto existing_item_unique_id = r.item_unique_id;
 			if (!EnsureItemUniqueId(r.item_unique_id)) {
+				++skipped_parcel_contents;
+				LogError(
+					"Skipping character_parcels_containers row id [{}] parcels_id [{}] slot_id [{}] during item_unique_id migration: {}",
+					r.id,
+					r.parcels_id,
+					r.slot_id,
+					ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+				);
 				continue;
 			}
 
@@ -2420,6 +2486,12 @@ void Database::ConvertParcelsToNewUniqueId()
 		parcels.size(),
 		parcel_contents.size()
 	);
+	LogItemUniqueIdMigrationSkipSummary("character_parcels", skipped_parcels, static_cast<uint32>(parcels.size()));
+	LogItemUniqueIdMigrationSkipSummary(
+		"character_parcels_containers",
+		skipped_parcel_contents,
+		static_cast<uint32>(parcel_contents.size())
+	);
 }
 
 void Database::ConvertInventorySnapshotsToNewUniqueId()
@@ -2433,12 +2505,22 @@ void Database::ConvertInventorySnapshotsToNewUniqueId()
 
 	TransactionBegin();
 	uint32 index = 0;
+	uint32 skipped = 0;
 	const uint32 batch_size = 1000;
 	std::vector<InventorySnapshotsRepository::InventorySnapshots> queue{};
 	queue.reserve(batch_size);
 
 	for (auto &r : results) {
+		auto existing_item_unique_id = r.item_unique_id;
 		if (!EnsureItemUniqueId(r.item_unique_id)) {
+			++skipped;
+			LogError(
+				"Skipping inventory_snapshots row time_index [{}] character_id [{}] slot_id [{}] during item_unique_id migration: {}",
+				r.time_index,
+				r.character_id,
+				r.slot_id,
+				ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+			);
 			continue;
 		}
 
@@ -2457,6 +2539,7 @@ void Database::ConvertInventorySnapshotsToNewUniqueId()
 
 	TransactionCommit();
 	LogInfo("Converted {} inventory snapshot rows", results.size());
+	LogItemUniqueIdMigrationSkipSummary("inventory_snapshots", skipped, static_cast<uint32>(results.size()));
 }
 
 void Database::ConvertSharedbankToNewUniqueId()
@@ -2470,12 +2553,21 @@ void Database::ConvertSharedbankToNewUniqueId()
 
 	TransactionBegin();
 	uint32                                      index      = 0;
+	uint32                                      skipped    = 0;
 	const uint32                                batch_size = 1000;
 	std::vector<SharedbankRepository::Sharedbank> queue{};
 	queue.reserve(batch_size);
 
 	for (auto &r: results) {
+		auto existing_item_unique_id = r.item_unique_id;
 		if (!EnsureItemUniqueId(r.item_unique_id)) {
+			++skipped;
+			LogError(
+				"Skipping sharedbank row account_id [{}] slot_id [{}] during item_unique_id migration: {}",
+				r.account_id,
+				r.slot_id,
+				ItemUniqueIdMigrationFailureReason(existing_item_unique_id)
+			);
 			continue;
 		}
 		queue.push_back(r);
@@ -2493,6 +2585,7 @@ void Database::ConvertSharedbankToNewUniqueId()
 
 	TransactionCommit();
 	LogInfo("Converted {} records", results.size());
+	LogItemUniqueIdMigrationSkipSummary("sharedbank", skipped, static_cast<uint32>(results.size()));
 }
 
 void Database::ClearOfflineTradingState()

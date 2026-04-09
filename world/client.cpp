@@ -129,6 +129,8 @@ const char *OfflineSessionReclaimResponseName(int8 response)
 			return "stale";
 		case OfflineSessionReclaimBusy:
 			return "busy";
+		case OfflineSessionReclaimInvalid:
+			return "invalid";
 		default:
 			return "failed";
 	}
@@ -1334,13 +1336,20 @@ void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Str
 		return;
 	}
 
-	if (response.response == OfflineSessionReclaimStale) {
+	if (
+		response.response == OfflineSessionReclaimStale ||
+		response.response == OfflineSessionReclaimInvalid
+	) {
 		auto clear_started_at = Timer::GetCurrentTime();
-		if (ClearStaleOfflineSession(offline_reclaim_character_id, "zone confirmed stale session")) {
+		auto clear_reason = response.response == OfflineSessionReclaimStale ?
+			"zone confirmed stale session" :
+			"zone confirmed invalid session state";
+		if (ClearStaleOfflineSession(offline_reclaim_character_id, clear_reason)) {
 			LogInfo(
-				"Cleared stale offline {} session for account [{}] after zone confirmation in [{}] ms",
+				"Cleared offline {} session for account [{}] after zone {} confirmation in [{}] ms",
 				OfflineSessionModeName(offline_reclaim_mode),
 				GetAccountID(),
+				OfflineSessionReclaimResponseName(response.response),
 				Timer::GetCurrentTime() - clear_started_at
 			);
 			ResetOfflineSessionReclaimState();
@@ -1514,7 +1523,14 @@ bool Client::Process() {
 			GetAccountID(),
 			GetCharName()
 		);
-		ClearStaleOfflineSession(offline_reclaim_character_id, "reclaim timeout");
+		if (!ClearStaleOfflineSession(offline_reclaim_character_id, "reclaim timeout")) {
+			LogError(
+				"Offline {} reclaim timeout for account [{}] character [{}] could not clear stale session state; future logins may continue to hit reclaim timeout until cleanup succeeds",
+				OfflineSessionModeName(offline_reclaim_mode),
+				GetAccountID(),
+				offline_reclaim_character_id
+			);
+		}
 		TellClientZoneUnavailable();
 	}
 
