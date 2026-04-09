@@ -138,11 +138,11 @@ public:
 	{
 		std::vector<BuyerBuyLines> buylines{};
 		if (slot_id == 0xffffffff) {
-			auto buylines = GetWhere(db, fmt::format("`char_id` = '{}'", char_id));
+			buylines = GetWhere(db, fmt::format("`char_id` = '{}'", char_id));
 			DeleteWhere(db, fmt::format("`char_id` = '{}'", char_id));
 		}
 		else {
-			auto buylines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id));
+			buylines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id));
 			DeleteWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id));
 		}
 

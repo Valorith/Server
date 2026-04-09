@@ -2112,14 +2112,14 @@ void Client::SendBuyerPacket(Client* Buyer) {
 
 	// This is the Buyer Appearance packet. This method is called for each Buyer when a Client connects to the zone.
 	//
-	auto outapp = new EQApplicationPacket(OP_Barter, 13 + strlen(GetName()));
+	auto outapp = new EQApplicationPacket(OP_Barter, 13 + strlen(Buyer->GetName()));
 
 	char* Buf = (char*)outapp->pBuffer;
 
 	VARSTRUCT_ENCODE_TYPE(uint32, Buf, Barter_BuyerAppearance);
 	VARSTRUCT_ENCODE_TYPE(uint32, Buf, Buyer->GetID());
 	VARSTRUCT_ENCODE_TYPE(uint32, Buf, 0x01);
-	VARSTRUCT_ENCODE_STRING(Buf, GetName());
+	VARSTRUCT_ENCODE_STRING(Buf, Buyer->GetName());
 
 	QueuePacket(outapp);
 	safe_delete(outapp);

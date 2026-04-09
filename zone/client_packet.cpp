@@ -3763,6 +3763,7 @@ void Client::Handle_OP_Barter(const EQApplicationPacket *app)
 	{
 		auto data = (BuyerGreeting_Struct *)app->pBuffer;
 		SendBuyerGreeting(data->buyer_id);
+		break;
 	}
 	case Barter_OpenBarterWindow:
 	{
