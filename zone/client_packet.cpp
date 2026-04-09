@@ -15457,8 +15457,9 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 			}
 			else {
 				LogTrading(
-					"Unable to resolve in-zone trader for vendor purchase item_unique_id <red>[{}] requested trader_id <red>[{}] resolved zone <red>[{}] instance <red>[{}] entity <red>[{}] buyer zone <red>[{}] instance <red>[{}]",
+					"Unable to resolve in-zone trader for vendor purchase item_unique_id <red>[{}] requested trader_id <red>[{}] resolved character_id <red>[{}] zone <red>[{}] instance <red>[{}] entity <red>[{}] buyer zone <red>[{}] instance <red>[{}]",
 					in->item_unique_id,
+					in->trader_id,
 					trader_details.trader_id,
 					trader_details.zone_id,
 					trader_details.zone_instance_id,
