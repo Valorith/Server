@@ -841,33 +841,35 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 					e.sent_date        = p->second.sent_date;
 					RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 
-					for (size_t index = 0; index < results.size(); ++index) {
-						auto const &i = results[index];
-						auto effective_item_unique_id = i.item_unique_id;
-						if (index < nested_item_unique_ids.size()) {
-							effective_item_unique_id = nested_item_unique_ids[index];
+					if (inst->IsClassBag() && inst->GetItem()->BagSlots > 0) {
+						for (size_t index = 0; index < results.size(); ++index) {
+							auto const &i = results[index];
+							auto effective_item_unique_id = i.item_unique_id;
+							if (index < nested_item_unique_ids.size()) {
+								effective_item_unique_id = nested_item_unique_ids[index];
+							}
+							else {
+								LogWarning(
+									"Parcel retrieve missing regenerated nested item_unique_id for parcel [{}] item [{}] character [{}] at index [{}]; logging stored value instead",
+									p->second.id,
+									i.item_id,
+									CharacterID(),
+									index
+								);
+							}
+							e.from_player_name = p->second.from_name;
+							e.item_id          = i.item_id;
+							e.item_unique_id   = effective_item_unique_id;
+							e.augment_1_id     = i.aug_slot_1;
+							e.augment_2_id     = i.aug_slot_2;
+							e.augment_3_id     = i.aug_slot_3;
+							e.augment_4_id     = i.aug_slot_4;
+							e.augment_5_id     = i.aug_slot_5;
+							e.augment_6_id     = i.aug_slot_6;
+							e.quantity         = i.quantity;
+							e.sent_date        = p->second.sent_date;
+							RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 						}
-						else {
-							LogWarning(
-								"Parcel retrieve missing regenerated nested item_unique_id for parcel [{}] item [{}] character [{}] at index [{}]; logging stored value instead",
-								p->second.id,
-								i.item_id,
-								CharacterID(),
-								index
-							);
-						}
-						e.from_player_name = p->second.from_name;
-						e.item_id          = i.item_id;
-						e.item_unique_id   = effective_item_unique_id;
-						e.augment_1_id     = i.aug_slot_1;
-						e.augment_2_id     = i.aug_slot_2;
-						e.augment_3_id     = i.aug_slot_3;
-						e.augment_4_id     = i.aug_slot_4;
-						e.augment_5_id     = i.aug_slot_5;
-						e.augment_6_id     = i.aug_slot_6;
-						e.quantity         = i.quantity;
-						e.sent_date        = p->second.sent_date;
-						RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 					}
 				}
 			}
