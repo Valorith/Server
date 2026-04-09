@@ -12705,7 +12705,7 @@ bool Client::RemoveItemByItemUniqueId(const std::string &item_unique_id, uint32 
 	const auto       &slot_ids      = GetInventorySlots();
 
 	for (const int16& slot_id : slot_ids) {
-		if (removed_count == quantity) {
+		if (removed_count >= quantity) {
 			break;
 		}
 
@@ -12714,23 +12714,21 @@ bool Client::RemoveItemByItemUniqueId(const std::string &item_unique_id, uint32 
 			uint32 charges    = item->IsStackable() ? item->GetCharges() : 0;
 			uint32 stack_size = std::max(charges, static_cast<uint32>(1));
 			if (removed_count + stack_size <= quantity) {
-				removed_count += stack_size;
 				if (DeleteItemInInventory(slot_id, charges, true)) {
-					return true;
+					removed_count += stack_size;
 				}
 			} else {
 				uint32 amount_left = quantity - removed_count;
 				if (amount_left > 0 && stack_size >= amount_left) {
-					removed_count += amount_left;
 					if (DeleteItemInInventory(slot_id, amount_left, true)) {
-						return true;
+						removed_count += amount_left;
 					}
 				}
 			}
 		}
 	}
 
-	return false;
+	return removed_count >= quantity;
 }
 
 void Client::SendTopLevelInventory()
