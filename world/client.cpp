@@ -1184,40 +1184,45 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		ZSList::Instance()->FindByInstanceID(session.instance_id) :
 		ZSList::Instance()->FindByZoneID(session.zone_id);
 
-	if (!zone_server) {
+	auto clear_stale_session_locally = [&](const char *reason, const char *owner_state) {
 		auto clear_started_at = Timer::GetCurrentTime();
-		if (!ClearStaleOfflineSession(session.character_id, "zone not booted")) {
+		if (!ClearStaleOfflineSession(session.character_id, reason)) {
 			LogError(
-				"Failed clearing stale offline {} session locally for account [{}] character [{}]",
+				"Failed clearing stale offline {} session locally for account [{}] character [{}] after {}",
 				OfflineSessionModeName(mode),
 				GetAccountID(),
-				session.character_id
+				session.character_id,
+				owner_state
 			);
 			TellClientZoneUnavailable();
 			return false;
 		}
 
 		LogInfo(
-			"Cleared stale offline {} session locally for account [{}] character [{}] in [{}] ms",
+			"Cleared stale offline {} session locally for account [{}] character [{}] after {} in [{}] ms",
 			OfflineSessionModeName(mode),
 			GetAccountID(),
 			session.character_id,
+			owner_state,
 			Timer::GetCurrentTime() - clear_started_at
 		);
 		return true;
+	};
+
+	if (!zone_server) {
+		return clear_stale_session_locally("zone not booted", "zone not booted");
 	}
 
 	if (!zone_server->IsConnected()) {
 		LogWarning(
-			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; failing closed until the zone reconnects or the session is cleared",
+			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; clearing stale session locally",
 			GetCharName(),
 			GetAccountID(),
 			OfflineSessionModeName(mode),
 			session.zone_id,
 			session.instance_id
 		);
-		TellClientZoneUnavailable();
-		return false;
+		return clear_stale_session_locally("zone disconnected", "zone disconnected");
 	}
 
 	auto pack = new ServerPacket(ServerOP_ReclaimOfflineSessionReq, sizeof(OfflineSessionReclaim_Struct));

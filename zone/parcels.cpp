@@ -748,7 +748,7 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 					results       = CharacterParcelsContainersRepository::GetWhere(
 						database, fmt::format("`parcels_id` = {}", p->second.id)
 					);
-					for (auto i: results) {
+					for (auto &i: results) {
 						auto item = database.CreateItem(
 							i.item_id,
 							i.quantity,
@@ -778,6 +778,7 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 							return;
 						}
 
+						i.item_unique_id = nested_item_unique_id;
 						item->SetUniqueID(nested_item_unique_id);
 						if (CheckLoreConflict(item->GetItem())) {
 							if (RuleB(Parcel, DeleteOnDuplicate)) {

@@ -328,7 +328,7 @@ public:
 		DistinctTraders_Struct trader{};
 
 		auto query = fmt::format(
-			"SELECT t.id, t.character_id, c.name "
+			"SELECT t.id, t.character_id, t.char_zone_id, t.char_zone_instance_id, t.char_entity_id, c.name "
 			"FROM trader AS t "
 			"JOIN character_data AS c ON c.id = t.character_id "
 			"WHERE t.item_unique_id = '{}' LIMIT 1",
@@ -342,8 +342,11 @@ public:
 		}
 
 		auto        row    = results.begin();
-		trader.trader_id   = Strings::ToUnsignedInt(row[1]);
-		trader.trader_name = row[2] ? row[2] : "";
+		trader.trader_id        = Strings::ToUnsignedInt(row[1]);
+		trader.zone_id          = Strings::ToUnsignedInt(row[2]);
+		trader.zone_instance_id = Strings::ToUnsignedInt(row[3]);
+		trader.entity_id        = Strings::ToUnsignedInt(row[4]);
+		trader.trader_name      = row[5] ? row[5] : "";
 
 		return trader;
 	}

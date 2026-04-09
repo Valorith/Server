@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "client.h"
 
 #include <algorithm>
+#include <cctype>
 #include "common/data_bucket.h"
 #include "common/data_verification.h"
 #include "common/eqemu_logsys.h"
@@ -15435,12 +15436,16 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 	}
 
 	auto trader_details = TraderRepository::GetTraderByItemUniqueNumber(database, item_unique_id);
-	auto trader         = entity_list.GetClientByID(in->trader_id);
 	strn0cpy(in->seller_name, trader_details.trader_name.c_str(), sizeof(in->seller_name));
 
 	switch (in->method) {
 		case BazaarByVendor: {
-			if (trader) {
+			if (
+				trader_details.entity_id &&
+				trader_details.zone_id == GetZoneID() &&
+				trader_details.zone_instance_id == GetInstanceID()
+			) {
+				in->trader_id = trader_details.entity_id;
 				LogTrading("Buy item directly from vendor id <green>[{}] item_id <green>[{}] quantity <green>[{}] "
 						   "serial_number <green>[{}]",
 						   in->trader_id,
@@ -15449,6 +15454,20 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 						   in->item_unique_id
 				);
 				BuyTraderItem(app);
+			}
+			else {
+				LogTrading(
+					"Unable to resolve in-zone trader for vendor purchase item_unique_id <red>[{}] requested trader_id <red>[{}] resolved zone <red>[{}] instance <red>[{}] entity <red>[{}] buyer zone <red>[{}] instance <red>[{}]",
+					in->item_unique_id,
+					in->trader_id,
+					trader_details.zone_id,
+					trader_details.zone_instance_id,
+					trader_details.entity_id,
+					GetZoneID(),
+					GetInstanceID()
+				);
+				Message(Chat::Red, "The trader could not be found.");
+				TradeRequestFailed(app);
 			}
 			break;
 		}

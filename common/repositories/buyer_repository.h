@@ -106,12 +106,19 @@ public:
 				return false;
 			}
 
+			auto buyer_id = buyer.front().id;
 			auto buy_lines = BaseBuyerBuyLinesRepository::GetWhere(
 				db,
-				fmt::format("`buyer_id` = '{}'", buyer.front().id)
+				fmt::format("`buyer_id` = '{}'", buyer_id)
 			);
 			if (buy_lines.empty()) {
-				return false;
+				LogWarning(
+					"DeleteBuyer found buyer [{}] for character [{}] without buy lines; deleting buyer row only",
+					buyer_id,
+					char_id
+				);
+				DeleteWhere(db, fmt::format("`char_id` = '{}';", char_id));
+				return true;
 			}
 
 			std::vector<std::string> buy_line_ids{};
