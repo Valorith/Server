@@ -1184,7 +1184,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		ZSList::Instance()->FindByInstanceID(session.instance_id) :
 		ZSList::Instance()->FindByZoneID(session.zone_id);
 
-	auto clear_stale_session_locally = [&](const char *reason, const char *context) {
+	auto clear_stale_session_locally = [this, &session, mode](const char *reason, const char *context) {
 		auto clear_started_at = Timer::GetCurrentTime();
 		if (!ClearStaleOfflineSession(session.character_id, reason)) {
 			LogError(
