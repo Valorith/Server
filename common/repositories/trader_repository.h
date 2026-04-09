@@ -161,8 +161,8 @@ public:
 		Trader item{};
 
 		auto query   = fmt::format(
-			"SELECT t.character_id, t.item_id, t.item_unique.id, t.charges, t.item_cost, t.slot_id, t.entity_id FROM trader AS t "
-			"WHERE t.entity_id = {} AND t.item_id = {} AND t.item_cost = {} "
+			"SELECT t.character_id, t.item_id, t.item_unique_id, t.item_charges, t.item_cost, t.slot_id, t.char_entity_id FROM trader AS t "
+			"WHERE t.char_entity_id = {} AND t.item_id = {} AND t.item_cost = {} "
 			"LIMIT 1;",
 			trader_id,
 			item_id,
@@ -174,13 +174,14 @@ public:
 			return item;
 		}
 
-		auto row            = results.begin();
-		item.character_id   = Strings::ToInt(row[0]);
-		item.item_id        = Strings::ToInt(row[1]);
-		item.item_unique_id = row[2] ? row[2] : "";
-		item.item_charges   = Strings::ToInt(row[3]);
-		item.item_cost      = Strings::ToInt(row[4]);
-		item.slot_id        = Strings::ToInt(row[5]);
+		auto row               = results.begin();
+		item.character_id      = Strings::ToInt(row[0]);
+		item.item_id           = Strings::ToInt(row[1]);
+		item.item_unique_id    = row[2] ? row[2] : "";
+		item.item_charges      = Strings::ToInt(row[3]);
+		item.item_cost         = Strings::ToInt(row[4]);
+		item.slot_id           = Strings::ToInt(row[5]);
+		item.char_entity_id    = Strings::ToInt(row[6]);
 
 		return item;
 	}
