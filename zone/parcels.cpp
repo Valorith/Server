@@ -827,7 +827,7 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 					PlayerEvent::ParcelRetrieve e{};
 					e.from_player_name = p->second.from_name;
 					e.item_id          = p->second.item_id;
-					e.item_unique_id   = p->second.item_unique_id;
+					e.item_unique_id   = item_unique_id;
 					e.augment_1_id     = p->second.aug_slot_1;
 					e.augment_2_id     = p->second.aug_slot_2;
 					e.augment_3_id     = p->second.aug_slot_3;
