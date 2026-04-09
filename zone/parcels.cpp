@@ -743,12 +743,14 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 
 				inst->SetUniqueID(item_unique_id);
 				std::vector<CharacterParcelsContainersRepository::CharacterParcelsContainers> results{};
+				std::vector<std::string> nested_item_unique_ids{};
 				if (inst->IsClassBag() && inst->GetItem()->BagSlots > 0) {
 					auto contents = inst->GetContents();
 					results       = CharacterParcelsContainersRepository::GetWhere(
 						database, fmt::format("`parcels_id` = {}", p->second.id)
 					);
-					for (auto &i: results) {
+					nested_item_unique_ids.reserve(results.size());
+					for (auto const &i: results) {
 						auto item = database.CreateItem(
 							i.item_id,
 							i.quantity,
@@ -778,7 +780,7 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 							return;
 						}
 
-						i.item_unique_id = nested_item_unique_id;
+						nested_item_unique_ids.push_back(nested_item_unique_id);
 						item->SetUniqueID(nested_item_unique_id);
 						if (CheckLoreConflict(item->GetItem())) {
 							if (RuleB(Parcel, DeleteOnDuplicate)) {
@@ -839,19 +841,23 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 					e.sent_date        = p->second.sent_date;
 					RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 
-					for (auto const &i:results) {
-								e.from_player_name = p->second.from_name;
-								e.item_id          = i.item_id;
-								e.item_unique_id   = i.item_unique_id;
-								e.augment_1_id     = i.aug_slot_1;
-								e.augment_2_id     = i.aug_slot_2;
-								e.augment_3_id     = i.aug_slot_3;
-								e.augment_4_id     = i.aug_slot_4;
-								e.augment_5_id     = i.aug_slot_5;
-								e.augment_6_id     = i.aug_slot_6;
-								e.quantity         = i.quantity;
-								e.sent_date        = p->second.sent_date;
-								RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
+					for (size_t index = 0; index < results.size(); ++index) {
+						auto const &i = results[index];
+						auto const &effective_item_unique_id = index < nested_item_unique_ids.size() ?
+							nested_item_unique_ids[index] :
+							i.item_unique_id;
+						e.from_player_name = p->second.from_name;
+						e.item_id          = i.item_id;
+						e.item_unique_id   = effective_item_unique_id;
+						e.augment_1_id     = i.aug_slot_1;
+						e.augment_2_id     = i.aug_slot_2;
+						e.augment_3_id     = i.aug_slot_3;
+						e.augment_4_id     = i.aug_slot_4;
+						e.augment_5_id     = i.aug_slot_5;
+						e.augment_6_id     = i.aug_slot_6;
+						e.quantity         = i.quantity;
+						e.sent_date        = p->second.sent_date;
+						RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 					}
 				}
 			}
