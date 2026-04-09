@@ -27,6 +27,7 @@
 #include "tests/string_util_test.h"
 #include "tests/task_class_restriction_test.h"
 #include "tests/task_state_test.h"
+#include "tests/trader_repository_test.h"
 
 #include "common/path_manager.h"
 #include "common/platform.h"
@@ -59,6 +60,7 @@ int main()
 		tests.add(new SkillsUtilsTest());
 		tests.add(new TaskClassRestrictionTest());
 		tests.add(new TaskStateTest());
+		tests.add(new TraderRepositoryTest());
 		tests.run(*output, true);
 	}
 	catch (std::exception &ex) {

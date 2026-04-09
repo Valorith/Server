@@ -359,15 +359,12 @@ public:
 	{
 		std::vector<BazaarTraderSearch_Struct> all_entries{};
 
-		auto query = fmt::format(
-			"SELECT trader.id, trader.character_id, trader.item_id, trader.item_unique_id, trader.augment_one, "
-			"trader.augment_two, trader.augment_three, trader.augment_four, trader.augment_five, trader.augment_six, "
-			"trader.item_charges, trader.item_cost, trader.slot_id, trader.char_entity_id, trader.char_zone_id, "
-			"trader.char_zone_instance_id, trader.active_transaction, c.`name` FROM `trader` "
-			"INNER JOIN character_data AS c ON trader.character_id = c.id "
-			"WHERE {} "
-			"ORDER BY trader.character_id ASC",
-			search_criteria_trader
+		auto query = BuildBazaarTraderDetailsQuery(
+			search_criteria_trader,
+			name,
+			field_criteria_items,
+			where_criteria_items,
+			max_results
 		);
 
 		auto results = db.QueryDatabase(query);
@@ -398,11 +395,46 @@ public:
 			e.trader.char_zone_instance_id = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
 			e.trader.active_transaction    = row[16] ? static_cast<uint8_t>(strtoul(row[16], nullptr, 10)) : 0;
 			e.trader_name                  = row[17] ? row[17] : std::string("");
+			e.name                         = row[18] ? row[18] : std::string("");
+			e.stackable                    = row[19] ? atoi(row[19]) != 0 : false;
+			e.icon                         = row[20] ? static_cast<uint32_t>(strtoul(row[20], nullptr, 10)) : 0;
+			e.stats                        = row[21] ? static_cast<uint32_t>(strtoul(row[21], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
 
 		return all_entries;
+	}
+
+	static std::string BuildBazaarTraderDetailsQuery(
+		const std::string &search_criteria_trader,
+		const std::string &name,
+		const std::string &field_criteria_items,
+		const std::string &where_criteria_items,
+		uint32 max_results
+	)
+	{
+		auto query = fmt::format(
+			"SELECT trader.id, trader.character_id, trader.item_id, trader.item_unique_id, trader.augment_one, "
+			"trader.augment_two, trader.augment_three, trader.augment_four, trader.augment_five, trader.augment_six, "
+			"trader.item_charges, trader.item_cost, trader.slot_id, trader.char_entity_id, trader.char_zone_id, "
+			"trader.char_zone_instance_id, trader.active_transaction, c.`name`, items.`name`, items.stackable, items.icon, {} "
+			"FROM `trader` "
+			"INNER JOIN character_data AS c ON trader.character_id = c.id "
+			"INNER JOIN items ON trader.item_id = items.id "
+			"WHERE {} AND items.`name` LIKE '%{}%' AND {} "
+			"ORDER BY trader.character_id ASC",
+			field_criteria_items,
+			search_criteria_trader,
+			Strings::Escape(name),
+			where_criteria_items
+		);
+
+		if (max_results >= 1) {
+			query += fmt::format(" LIMIT {}", max_results);
+		}
+
+		return query;
 	}
 
 	static Trader GetAccountZoneIdAndInstanceIdByAccountId(Database &db, uint32 account_id)
