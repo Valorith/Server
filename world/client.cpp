@@ -1215,7 +1215,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	if (!zone_server->IsConnected()) {
 		LogWarning(
-			"Character entry for [{}] account [{}] found offline {} session in disconnected zone [{}] instance [{}]; failing entry because the zone is disconnected",
+			"Character entry for [{}] account [{}] found offline {} session in disconnected zone [{}] instance [{}]; failing entry and preserving session",
 			GetCharName(),
 			GetAccountID(),
 			OfflineSessionModeName(mode),
