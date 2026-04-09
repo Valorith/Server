@@ -18,6 +18,7 @@
 
 #include "client.h"
 
+#include <optional>
 #include "common/events/player_event_logs.h"
 #include "common/repositories/character_parcels_containers_repository.h"
 #include "common/repositories/character_parcels_repository.h"
@@ -743,13 +744,15 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 
 				inst->SetUniqueID(item_unique_id);
 				std::vector<CharacterParcelsContainersRepository::CharacterParcelsContainers> results{};
-				std::vector<std::string> nested_item_unique_ids{};
-				if (inst->IsClassBag() && inst->GetItem()->BagSlots > 0) {
+				std::optional<std::vector<std::string>> nested_item_unique_ids{};
+				const bool has_nested_contents = inst->IsClassBag() && inst->GetItem()->BagSlots > 0;
+				if (has_nested_contents) {
 					auto contents = inst->GetContents();
 					results       = CharacterParcelsContainersRepository::GetWhere(
 						database, fmt::format("`parcels_id` = {}", p->second.id)
 					);
-					nested_item_unique_ids.reserve(results.size());
+					nested_item_unique_ids.emplace();
+					nested_item_unique_ids->reserve(results.size());
 					for (auto const &i: results) {
 						auto item = database.CreateItem(
 							i.item_id,
@@ -780,7 +783,7 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 							return;
 						}
 
-						nested_item_unique_ids.push_back(nested_item_unique_id);
+						nested_item_unique_ids->push_back(nested_item_unique_id);
 						item->SetUniqueID(nested_item_unique_id);
 						if (CheckLoreConflict(item->GetItem())) {
 							if (RuleB(Parcel, DeleteOnDuplicate)) {
@@ -841,12 +844,12 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 					e.sent_date        = p->second.sent_date;
 					RecordPlayerEventLog(PlayerEvent::PARCEL_RETRIEVE, e);
 
-					if (inst->IsClassBag() && inst->GetItem()->BagSlots > 0) {
+					if (has_nested_contents) {
 						for (size_t index = 0; index < results.size(); ++index) {
 							auto const &i = results[index];
 							auto effective_item_unique_id = i.item_unique_id;
-							if (index < nested_item_unique_ids.size()) {
-								effective_item_unique_id = nested_item_unique_ids[index];
+							if (nested_item_unique_ids && index < nested_item_unique_ids->size()) {
+								effective_item_unique_id = (*nested_item_unique_ids)[index];
 							}
 							else {
 								LogWarning(

@@ -15440,11 +15440,12 @@ void Client::Handle_OP_TraderBuy(const EQApplicationPacket *app)
 
 	switch (in->method) {
 		case BazaarByVendor: {
-			if (
+			const bool is_trader_in_current_zone = (
 				trader_details.entity_id &&
 				trader_details.zone_id == GetZoneID() &&
 				trader_details.zone_instance_id == GetInstanceID()
-			) {
+			);
+			if (is_trader_in_current_zone) {
 				in->trader_id = trader_details.entity_id;
 				LogTrading("Buy item directly from vendor id <green>[{}] item_id <green>[{}] quantity <green>[{}] "
 						   "serial_number <green>[{}]",
