@@ -1215,7 +1215,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	if (!zone_server->IsConnected()) {
 		LogWarning(
-			"Character entry for [{}] account [{}] found offline {} session in disconnected zone [{}] instance [{}]; failing entry due to uncertain zone ownership",
+			"Character entry for [{}] account [{}] found offline {} session in disconnected zone [{}] instance [{}]; failing entry because the zone is disconnected",
 			GetCharName(),
 			GetAccountID(),
 			OfflineSessionModeName(mode),
@@ -1523,7 +1523,7 @@ bool Client::Process() {
 	if (offline_reclaim_pending && offline_reclaim_timeout.Check()) {
 		auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
 		LogWarning(
-			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; preserving session state because zone ownership is uncertain",
+			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; preserving session state because the zone did not answer before timeout",
 			OfflineSessionModeName(offline_reclaim_mode),
 			elapsed_ms,
 			GetAccountID(),
