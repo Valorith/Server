@@ -117,7 +117,7 @@ public:
 					buyer_id,
 					char_id
 				);
-				DeleteWhere(db, fmt::format("`char_id` = '{}';", char_id));
+				DeleteWhere(db, fmt::format("`char_id` = '{}'", char_id));
 				return true;
 			}
 
