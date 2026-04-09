@@ -87,8 +87,8 @@ world database:item-unique-ids --verify --verbose
 
 - Character entry with no offline session should take the normal fast path and only add one indexed lookup by `account_id`.
 - Character entry with an offline trader or buyer session should target exactly one owning zone or instance.
-- If the owning zone is down, world clears the stale session locally and continues immediately.
-- If the owning zone does not answer a reclaim request, world fails the character-entry attempt after 10 seconds instead of hanging indefinitely.
+- If no owning zone can be found for the stored zone or instance, world clears the stale session locally and continues immediately.
+- If the owning zone is disconnected or does not answer a reclaim request, world fails the character-entry attempt after 10 seconds instead of hanging indefinitely and preserves the session for a later retry or operator cleanup.
 
 ## What Preflight And Verify Must Show
 

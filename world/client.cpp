@@ -1215,14 +1215,15 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	if (!zone_server->IsConnected()) {
 		LogWarning(
-			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; clearing stale session locally",
+			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; preserving session state and failing entry because zone ownership is uncertain",
 			GetCharName(),
 			GetAccountID(),
 			OfflineSessionModeName(mode),
 			session.zone_id,
 			session.instance_id
 		);
-		return clear_stale_session_locally("zone disconnected", "zone disconnected");
+		TellClientZoneUnavailable();
+		return false;
 	}
 
 	auto pack = new ServerPacket(ServerOP_ReclaimOfflineSessionReq, sizeof(OfflineSessionReclaim_Struct));
@@ -1522,20 +1523,12 @@ bool Client::Process() {
 	if (offline_reclaim_pending && offline_reclaim_timeout.Check()) {
 		auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
 		LogWarning(
-			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; clearing stale session",
+			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; preserving session state because zone ownership is uncertain",
 			OfflineSessionModeName(offline_reclaim_mode),
 			elapsed_ms,
 			GetAccountID(),
 			GetCharName()
 		);
-		if (!ClearStaleOfflineSession(offline_reclaim_character_id, "reclaim timeout")) {
-			LogError(
-				"Offline {} reclaim timeout for account [{}] character [{}] could not clear stale session state; future logins may continue to hit reclaim timeout until cleanup succeeds",
-				OfflineSessionModeName(offline_reclaim_mode),
-				GetAccountID(),
-				offline_reclaim_character_id
-			);
-		}
 		TellClientZoneUnavailable();
 	}
 
