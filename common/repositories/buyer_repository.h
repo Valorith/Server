@@ -113,7 +113,7 @@ public:
 			);
 			if (buy_lines.empty()) {
 				LogWarning(
-					"DeleteBuyer found buyer [{}] for character [{}] without buy lines; deleting buyer row only",
+					"DeleteBuyer found buyer [{}] for character [{}] without buy lines; treating this as stale or inconsistent buyer data and deleting the buyer row only",
 					buyer_id,
 					char_id
 				);

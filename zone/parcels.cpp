@@ -843,9 +843,19 @@ void Client::DoParcelRetrieve(const ParcelRetrieve_Struct &parcel_in)
 
 					for (size_t index = 0; index < results.size(); ++index) {
 						auto const &i = results[index];
-						auto const &effective_item_unique_id = index < nested_item_unique_ids.size() ?
-							nested_item_unique_ids[index] :
-							i.item_unique_id;
+						auto effective_item_unique_id = i.item_unique_id;
+						if (index < nested_item_unique_ids.size()) {
+							effective_item_unique_id = nested_item_unique_ids[index];
+						}
+						else {
+							LogWarning(
+								"Parcel retrieve missing regenerated nested item_unique_id for parcel [{}] item [{}] character [{}] at index [{}]; logging stored value instead",
+								p->second.id,
+								i.item_id,
+								CharacterID(),
+								index
+							);
+						}
 						e.from_player_name = p->second.from_name;
 						e.item_id          = i.item_id;
 						e.item_unique_id   = effective_item_unique_id;
