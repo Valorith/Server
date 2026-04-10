@@ -895,6 +895,15 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 	// This refreshes the Trader window to display the End Trader button
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
+		LogInfo(
+			"Sending TraderAck2 to client [{}] account [{}] character [{}] zone [{}] instance [{}] entity [{}]",
+			GetCleanName(),
+			AccountID(),
+			CharacterID(),
+			GetZoneID(),
+			GetInstanceID(),
+			GetID()
+		);
 		auto outapp = new EQApplicationPacket(OP_Trader, sizeof(TraderStatus_Struct));
 		auto data   = (TraderStatus_Struct *) outapp->pBuffer;
 		data->Code  = TraderAck2;
@@ -1584,6 +1593,17 @@ void Client::SendBazaarWelcome()
 	data->action             = BazaarWelcome;
 	data->traders            = results.count_of_traders;
 	data->items              = results.count_of_items;
+
+	LogInfo(
+		"Sending BazaarWelcome to client [{}] account [{}] character [{}] traders [{}] items [{}] zone [{}] instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		data->traders,
+		data->items,
+		GetZoneID(),
+		GetInstanceID()
+	);
 
 	QueuePacket(&outapp);
 }
@@ -2478,6 +2498,18 @@ void Client::SendBecomeTrader(BazaarTraderBarterActions action, uint32 entity_id
 	data->zone_instance_id = trader->GetInstanceID();
 	strn0cpy(data->trader_name, trader->GetCleanName(), sizeof(data->trader_name));
 
+	LogInfo(
+		"Sending OP_BecomeTrader to client [{}] account [{}] character [{}] action [{}] trader_entity [{}] trader_character [{}] trader_zone [{}] trader_instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		static_cast<uint32>(action),
+		data->entity_id,
+		data->trader_id,
+		data->zone_id,
+		data->zone_instance_id
+	);
+
 	QueuePacket(outapp);
 	safe_delete(outapp);
 }
@@ -2489,6 +2521,17 @@ void Client::SendTraderMode(BazaarTraderBarterActions status)
 
 	data->action    = status;
 	data->entity_id = GetID();
+
+	LogInfo(
+		"Sending OP_Trader mode packet to client [{}] account [{}] character [{}] status [{}] entity [{}] zone [{}] instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		static_cast<uint32>(status),
+		data->entity_id,
+		GetZoneID(),
+		GetInstanceID()
+	);
 
 	QueuePacket(outapp);
 	safe_delete(outapp);
