@@ -6260,6 +6260,12 @@ namespace RoF2
 	{
 		uint32 action = *(uint32 *)__packet->pBuffer;
 
+		LogInfo(
+			"(RoF2) DECODE(OP_TraderShop) action [{}] size [{}]",
+			action,
+			__packet->size
+		);
+
 		switch (action) {
 			case structs::RoF2BazaarTraderBuyerActions::BazaarSearch: {
 				DECODE_LENGTH_EXACT(structs::BazaarSearch_Struct);
@@ -6361,6 +6367,11 @@ namespace RoF2
 				break;
 			}
 			default: {
+				LogWarning(
+					"(RoF2) Unhandled OP_TraderShop action [{}] size [{}]",
+					action,
+					__packet->size
+				);
 			}
 			return;
 		}

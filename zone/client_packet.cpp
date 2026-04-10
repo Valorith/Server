@@ -3909,6 +3909,19 @@ void Client::Handle_OP_BazaarSearch(const EQApplicationPacket *app)
 {
 	uint32 action = *(uint32 *) app->pBuffer;
 
+	LogInfo(
+		"Handle_OP_BazaarSearch client [{}] account [{}] character [{}] action [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		action,
+		app->size,
+		IsTrader(),
+		IsBuyer(),
+		GetZoneID(),
+		GetInstanceID()
+	);
+
 	switch (action) {
 		case BazaarSearch: {
 			BazaarSearchCriteria_Struct *bss = (BazaarSearchCriteria_Struct *) app->pBuffer;
@@ -15679,6 +15692,21 @@ void Client::Handle_OP_TradeRequestAck(const EQApplicationPacket *app)
 void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 {
 	auto in = (TraderClick_Struct *) app->pBuffer;
+	LogInfo(
+		"Handle_OP_TraderShop client [{}] account [{}] character [{}] code [{}] trader_id [{}] unknown008 [{}] approval [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		in->Code,
+		in->TraderID,
+		in->Unknown008,
+		in->Approval,
+		app->size,
+		IsTrader(),
+		IsBuyer(),
+		GetZoneID(),
+		GetInstanceID()
+	);
 	LogTrading("Handle_OP_TraderShop: TraderClick_Struct TraderID [{}], Code [{}], Unknown008 [{}], Approval [{}]",
 			   in->TraderID,
 			   in->Code,
@@ -15753,6 +15781,14 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 			break;
 		}
 		default: {
+			LogWarning(
+				"Unhandled OP_TraderShop code [{}] for client [{}] account [{}] character [{}] size [{}]",
+				in->Code,
+				GetCleanName(),
+				AccountID(),
+				CharacterID(),
+				app->size
+			);
 		}
 	}
 }
