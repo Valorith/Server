@@ -758,6 +758,54 @@ void Client::CompleteConnect()
 			LogError("Failed to update login time for character_id [{}]", CharacterID());
 		}
 
+		if (!IsOffline() && !IsTrader()) {
+			auto trader_items = TraderRepository::GetWhere(
+				database,
+				fmt::format(
+					"`character_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {}",
+					CharacterID(),
+					GetZoneID(),
+					GetInstanceID()
+				)
+			);
+
+			if (!trader_items.empty()) {
+				auto previous_entity_id = trader_items.front().char_entity_id;
+				for (auto &entry : trader_items) {
+					entry.char_entity_id = GetID();
+				}
+
+				const bool trader_rows_refreshed = TraderRepository::ReplaceMany(database, trader_items);
+				LogInfo(
+					"Restoring trader mode on zone entry for client [{}] account [{}] character [{}] zone [{}] instance [{}]. trader_rows [{}] previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
+					GetCleanName(),
+					AccountID(),
+					CharacterID(),
+					GetZoneID(),
+					GetInstanceID(),
+					trader_items.size(),
+					previous_entity_id,
+					GetID(),
+					trader_rows_refreshed
+				);
+
+				if (trader_rows_refreshed) {
+					if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
+						auto outapp = new EQApplicationPacket(OP_Trader, sizeof(TraderStatus_Struct));
+						auto data   = (TraderStatus_Struct *) outapp->pBuffer;
+						data->Code  = TraderAck2;
+						QueuePacket(outapp);
+						safe_delete(outapp);
+					}
+
+					SetTrader(true);
+					SendTraderMode(TraderOn);
+					SendBecomeTrader(TraderOn, GetID());
+					UpdateWho();
+				}
+			}
+		}
+
 		if (IsPetNameChangeAllowed() && !RuleB(Pets, AlwaysAllowPetRename)) {
 			InvokeChangePetName(false);
 		}
@@ -17347,9 +17395,31 @@ void Client::SyncWorldPositionsToClient(bool ignore_idle)
 
 void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 {
+	const auto mode = IsBuyer() ? std::string("buyer") : std::string("trader");
+
+	LogInfo(
+		"Handling OP_Offline for client [{}] account [{}] character [{}] mode [{}] zone [{}] instance [{}] entity [{}] customer [{}] trader [{}] buyer [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		mode,
+		GetZoneID(),
+		GetInstanceID(),
+		GetID(),
+		IsThereACustomer(),
+		IsTrader(),
+		IsBuyer()
+	);
+
 	if (IsThereACustomer()) {
 		auto customer = entity_list.GetClientByID(GetCustomerID());
 		if (customer) {
+			LogInfo(
+				"Ending active customer session for client [{}] before offline {} activation. customer_entity_id [{}]",
+				GetCleanName(),
+				mode,
+				customer->GetID()
+			);
 			auto end_session = new EQApplicationPacket(OP_ShopEnd);
 			customer->FastQueuePacket(&end_session);
 		}
@@ -17368,20 +17438,45 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	offline_client->SetOffline(true);
 	entity_list.AddClient(offline_client);
 
-	bool        session_ready     = true;
-	const auto  previous_entity_id = GetID();
-	const auto  next_entity_id     = offline_client->GetID();
-	const auto  mode               = IsBuyer() ? std::string("buyer") : std::string("trader");
+	bool       session_ready      = true;
+	const auto previous_entity_id = GetID();
+	const auto next_entity_id     = offline_client->GetID();
+
+	LogInfo(
+		"Prepared offline {} clone for client [{}] account [{}] character [{}]. previous_entity_id [{}] next_entity_id [{}]",
+		mode,
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		previous_entity_id,
+		next_entity_id
+	);
 
 	database.TransactionBegin();
 
 	if (IsBuyer()) {
 		offline_client->SetBuyerID(offline_client->CharacterID());
 		session_ready = BuyerRepository::UpdateBuyerEntityID(database, CharacterID(), previous_entity_id, next_entity_id);
+		LogInfo(
+			"Offline buyer entity handoff for client [{}] character [{}] previous_entity_id [{}] next_entity_id [{}] success [{}]",
+			GetCleanName(),
+			CharacterID(),
+			previous_entity_id,
+			next_entity_id,
+			session_ready
+		);
 	}
 	else {
 		offline_client->SetTrader(true);
 		session_ready = TraderRepository::UpdateEntityId(database, CharacterID(), previous_entity_id, next_entity_id);
+		LogInfo(
+			"Offline trader entity handoff for client [{}] character [{}] previous_entity_id [{}] next_entity_id [{}] success [{}]",
+			GetCleanName(),
+			CharacterID(),
+			previous_entity_id,
+			next_entity_id,
+			session_ready
+		);
 	}
 
 	if (session_ready) {
@@ -17394,10 +17489,27 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 			GetInstanceID(),
 			next_entity_id
 		);
+		LogInfo(
+			"Offline session upsert for client [{}] account [{}] character [{}] mode [{}] zone [{}] instance [{}] entity [{}] success [{}]",
+			GetCleanName(),
+			AccountID(),
+			CharacterID(),
+			mode,
+			GetZoneID(),
+			GetInstanceID(),
+			next_entity_id,
+			session_ready
+		);
 	}
 
 	if (session_ready) {
 		AccountRepository::SetOfflineStatus(database, AccountID(), true);
+		LogInfo(
+			"Marked account [{}] offline in transaction for client [{}] prior to offline {} commit",
+			AccountID(),
+			GetCleanName(),
+			mode
+		);
 		auto commit_result = database.TransactionCommit();
 		session_ready = commit_result.Success();
 		if (!session_ready) {
@@ -17413,10 +17525,28 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	}
 
 	if (!session_ready) {
+		LogError(
+			"Aborting offline {} activation for client [{}] account [{}] character [{}]; rolling back transaction and removing offline clone entity [{}]",
+			mode,
+			GetCleanName(),
+			AccountID(),
+			CharacterID(),
+			offline_client->GetID()
+		);
 		database.TransactionRollback();
 		entity_list.RemoveMob(offline_client->CastToMob()->GetID());
 		return;
 	}
+
+	LogInfo(
+		"Offline {} activation committed for client [{}] account [{}] character [{}]. live_entity_id [{}] offline_entity_id [{}]",
+		mode,
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		GetID(),
+		offline_client->GetID()
+	);
 
 	SetOffline(true);
 	OnDisconnect(true);
@@ -17427,4 +17557,11 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	safe_delete(outapp);
 
 	offline_client->UpdateWho(3);
+	LogInfo(
+		"Completed offline {} activation for client [{}] account [{}] character [{}]",
+		mode,
+		GetCleanName(),
+		AccountID(),
+		CharacterID()
+	);
 }
