@@ -6157,6 +6157,12 @@ namespace RoF2
 	{
 		auto action = *(uint32 *)__packet->pBuffer;
 
+		LogInfo(
+			"(RoF2) DECODE(OP_Trader) action [{}] size [{}]",
+			action,
+			__packet->size
+		);
+
 		switch (action) {
 			case structs::RoF2BazaarTraderBuyerActions::BeginTraderMode: {
 				DECODE_LENGTH_EXACT(structs::BeginTrader_Struct);
@@ -6219,6 +6225,11 @@ namespace RoF2
 				break;
 			}
 			default: {
+				LogWarning(
+					"(RoF2) Unhandled OP_Trader action [{}] size [{}]",
+					action,
+					__packet->size
+				);
 			}
 		}
 	}

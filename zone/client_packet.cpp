@@ -15426,6 +15426,19 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 	// I don't know what they are for (yet), but it doesn't seem to matter that we ignore them.
 	auto action = *(uint32 *)app->pBuffer;
 
+	LogInfo(
+		"Handle_OP_Trader client [{}] account [{}] character [{}] action [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		action,
+		app->size,
+		IsTrader(),
+		IsBuyer(),
+		GetZoneID(),
+		GetInstanceID()
+	);
+
 	switch (action) {
 		case TraderOff: {
 			TraderEndTrader();
@@ -15464,6 +15477,14 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 			break;
 		}
 		default: {
+			LogWarning(
+				"Unhandled OP_Trader action [{}] for client [{}] account [{}] character [{}] size [{}]",
+				action,
+				GetCleanName(),
+				AccountID(),
+				CharacterID(),
+				app->size
+			);
 		}
 	}
 }
