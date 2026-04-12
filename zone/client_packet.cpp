@@ -5059,10 +5059,6 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	int32 prevAnimation = ppu->animation;
 	animation = ppu->animation;
 
-	if (IsMoving() && m_see_close_mobs_timer.Check()) {
-		entity_list.ScanCloseMobs(this);
-	}
-
 	bool positionUpdated = m_Position != prevPosition || m_Delta != prevDelta || m_Delta != glm::vec4(0.0f) || prevAnimation != animation;
 
 	/* Visual Debugging */
