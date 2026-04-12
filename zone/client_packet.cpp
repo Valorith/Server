@@ -5058,6 +5058,11 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	m_Delta = glm::vec4(ppu->delta_x, ppu->delta_y, ppu->delta_z, EQ10toFloat(ppu->delta_heading));
 	int32 prevAnimation = ppu->animation;
 	animation = ppu->animation;
+
+	if (IsMoving() && m_see_close_mobs_timer.Check()) {
+		entity_list.ScanCloseMobs(this);
+	}
+
 	bool positionUpdated = m_Position != prevPosition || m_Delta != prevDelta || m_Delta != glm::vec4(0.0f) || prevAnimation != animation;
 
 	/* Visual Debugging */
