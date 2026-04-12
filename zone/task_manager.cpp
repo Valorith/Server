@@ -66,6 +66,10 @@ bool TaskManager::LoadTasks(int single_task)
 	auto repo_tasks = TasksRepository::GetWhere(content_db, task_query_filter);
 	if (single_task == 0) {
 		m_task_data.reserve(repo_tasks.size());
+	} else if (repo_tasks.empty()) {
+		LogInfo("Loaded [0] task(s)");
+		LogInfo("Loaded [0] task activities");
+		return true;
 	}
 
 	for (auto &task: repo_tasks) {
@@ -107,7 +111,11 @@ bool TaskManager::LoadTasks(int single_task)
 		ti.request_timer_seconds = task.request_timer_seconds;
 		ti.activity_count        = 0;
 
-		m_task_data.try_emplace(task_id, std::move(ti));
+		if (single_task == 0) {
+			m_task_data.try_emplace(task_id, std::move(ti));
+		} else {
+			m_task_data.insert_or_assign(task_id, std::move(ti));
+		}
 
 		LogTasksDetail(
 			"(Task) task_id [{}] type [{}] () duration [{}] duration_code [{}] title [{}] description [{}] "
