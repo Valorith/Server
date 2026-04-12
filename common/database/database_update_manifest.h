@@ -5204,7 +5204,7 @@ ADD COLUMN `seconds_before_idle` int(11) UNSIGNED NOT NULL DEFAULT 60 AFTER `idl
 		.content_schema_update = true
 	},
 	ManifestEntry{
-		.version = 9331,
+		.version = 9341,
 		.description = "2026_03_25_tasks_allowed_classes.sql",
 		.check = "SHOW COLUMNS FROM `tasks` LIKE 'allowed_classes'",
 		.condition = "empty",
@@ -7325,7 +7325,6 @@ ALTER TABLE `trader`
 	DROP COLUMN `item_sn`,
 	DROP INDEX `idx_trader_item_sn`,
 	DROP INDEX `idx_trader_char`,
-	ADD INDEX `charid_slotid` (`character_id`, `slot_id`) USING BTREE,
 	ADD INDEX `idx_trader_char` (`character_id`, `char_zone_id`, `char_zone_instance_id`) USING BTREE,
 	ADD UNIQUE INDEX `idx_item_unique_id` (`item_unique_id`);
 )",
