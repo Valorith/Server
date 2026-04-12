@@ -5058,6 +5058,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	m_Delta = glm::vec4(ppu->delta_x, ppu->delta_y, ppu->delta_z, EQ10toFloat(ppu->delta_heading));
 	int32 prevAnimation = ppu->animation;
 	animation = ppu->animation;
+
 	bool positionUpdated = m_Position != prevPosition || m_Delta != prevDelta || m_Delta != glm::vec4(0.0f) || prevAnimation != animation;
 
 	/* Visual Debugging */
