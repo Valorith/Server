@@ -3,6 +3,7 @@
   const API_SESSION_URL = "./api/session";
   const API_INTERFACES_URL = "./api/interfaces";
   const API_OPEN_CAPTURES_URL = "./api/open-captures-folder";
+  const API_RESCAN_OPCODES_URL = "./api/rescan-opcodes";
 const STORAGE_KEY = "occ-rof2-state-v1";
 const STATUS_OPTIONS = [
   "unreviewed",
@@ -78,7 +79,7 @@ const state = {
   filters: { search: "", status: "all", source: "all", sort: "tracked", sortDirection: "desc", trackedOnly: false },
   pagination: { page: 1, pageSize: 50 },
   bookmarkPagination: { page: 1, pageSize: 6 },
-  liveMonitorFilters: { tab: "feed", mode: "eqlike", search: "", unknownOnly: false, countLimit: "" },
+  liveMonitorFilters: { tab: "feed", mode: "all", search: "", unknownOnly: false, countLimit: "" },
   liveMonitorFeedBaseline: { sessionKey: "", frameNumber: 0, timeEpoch: 0 },
   liveSession: { status: "idle", markers: [], sessionName: "", markerCount: 0, activityCount: 0, activity: [], detectionCount: 0, detections: [] },
   seenDetectionIds: new Set(),
@@ -96,6 +97,7 @@ const state = {
   detectionBootstrapComplete: false,
   audioContext: null,
   sessionActionPending: false,
+  registryRescanPending: false,
   sessionFormInitialized: false,
   sessionNameSeed: "",
   interfaces: [],
@@ -120,6 +122,7 @@ const els = {
   trackedOnlyToggle: document.querySelector("#trackedOnlyToggle"),
   clearFiltersButton: document.querySelector("#clearFiltersButton"),
   resultsSummary: document.querySelector("#resultsSummary"),
+  registryActionMessage: document.querySelector("#registryActionMessage"),
   selectionSummary: document.querySelector("#selectionSummary"),
   sessionStatusBadge: document.querySelector("#sessionStatusBadge"),
   refreshSessionButton: document.querySelector("#refreshSessionButton"),
@@ -174,6 +177,7 @@ const els = {
   exportStateButton: document.querySelector("#exportStateButton"),
   importStateInput: document.querySelector("#importStateInput"),
   resetStateButton: document.querySelector("#resetStateButton"),
+  rescanOpcodesButton: document.querySelector("#rescanOpcodesButton"),
   inspectorModal: document.querySelector("#inspectorModal"),
   closeInspectorButton: document.querySelector("#closeInspectorButton"),
   inspectorContent: document.querySelector("#inspectorContent"),
@@ -289,6 +293,7 @@ const runtimeCache = {
   activityById: new Map(),
   sessionEntryCountVersionKey: "",
   sessionEntryCountActivityRef: null,
+  sessionEntryCountDetectionsRef: null,
   sessionEntryCountEntryVersion: -1,
   sessionEntryCountPreferenceVersion: -1,
   sessionEntryCounts: new Map(),
@@ -823,6 +828,11 @@ function setSessionActionMessage(message, tone = "muted") {
   els.sessionActionMessage.dataset.tone = tone;
 }
 
+function setRegistryActionMessage(message, tone = "muted") {
+  els.registryActionMessage.textContent = message;
+  els.registryActionMessage.dataset.tone = tone;
+}
+
 function getActivityById(id) {
   getActivityEntries();
   return runtimeCache.activityById.get(id) || null;
@@ -1329,6 +1339,87 @@ function decorateEntry(entry) {
   };
 }
 
+function buildRegistryEntryFingerprints(entry) {
+  if (!entry || entry.source_type === "custom") return [];
+  const source = String(entry.source_type || "");
+  const opcode = normalizeOpcode(entry.rof2_opcode);
+  const rof2Name = normalizeLabelKey(entry.rof2_name);
+  const eqemuName = normalizeLabelKey(entry.eqemu_name);
+  const signature = normalizePacketSignature(entry.packet_signature);
+  const familyKey = normalizePacketFamilyKey(entry.packet_family_key);
+  const combinedNames = [rof2Name, eqemuName].filter(Boolean).join("|");
+  const fingerprints = [];
+  const pushFingerprint = (value) => {
+    if (value && !fingerprints.includes(value)) fingerprints.push(value);
+  };
+
+  if (opcode && combinedNames) pushFingerprint(`${source}|opcode+names|${opcode}|${combinedNames}`);
+  if (opcode) pushFingerprint(`${source}|opcode|${opcode}`);
+  if (signature && familyKey) pushFingerprint(`${source}|signature+family|${signature}|${familyKey}`);
+  if (signature) pushFingerprint(`${source}|signature|${signature}`);
+  if (familyKey) pushFingerprint(`${source}|family|${familyKey}`);
+  if (combinedNames) pushFingerprint(`${source}|names|${combinedNames}`);
+  if (rof2Name) pushFingerprint(`${source}|rof2|${rof2Name}`);
+  if (eqemuName) pushFingerprint(`${source}|eqemu|${eqemuName}`);
+  pushFingerprint(`${source}|id|${entry.id || ""}`);
+  return fingerprints;
+}
+
+function buildRescanIdMap(previousEntries, nextEntries) {
+  const buckets = new Map();
+  for (const entry of nextEntries || []) {
+    for (const fingerprint of buildRegistryEntryFingerprints(entry)) {
+      if (!buckets.has(fingerprint)) buckets.set(fingerprint, []);
+      buckets.get(fingerprint).push(entry.id);
+    }
+  }
+
+  const usedIds = new Set();
+  const idMap = new Map();
+  for (const entry of previousEntries || []) {
+    if (!entry?.id || entry.source_type === "custom") continue;
+    for (const fingerprint of buildRegistryEntryFingerprints(entry)) {
+      const candidates = buckets.get(fingerprint) || [];
+      const nextId = candidates.find((candidateId) => !usedIds.has(candidateId));
+      if (!nextId) continue;
+      idMap.set(entry.id, nextId);
+      usedIds.add(nextId);
+      break;
+    }
+  }
+  return idMap;
+}
+
+function remapBookmarkStateIds(bookmarkState, idMap) {
+  const nextBookmarkState = {};
+  for (const [bookmarkId, bookmark] of Object.entries(bookmarkState || {})) {
+    nextBookmarkState[bookmarkId] = {
+      ...bookmark,
+      linkedEntryId: bookmark?.linkedEntryId ? (idMap.get(bookmark.linkedEntryId) || bookmark.linkedEntryId) : "",
+    };
+  }
+  return nextBookmarkState;
+}
+
+function remapRegistryStateForRescan(nextRegistry) {
+  const previousEntries = Array.isArray(state.data?.entries) ? state.data.entries : [];
+  const nextEntries = Array.isArray(nextRegistry?.entries) ? nextRegistry.entries : [];
+  const idMap = buildRescanIdMap(previousEntries, nextEntries);
+  const nextEntryState = {};
+
+  for (const [entryId, savedState] of Object.entries(state.entryState || {})) {
+    const nextId = idMap.get(entryId) || entryId;
+    nextEntryState[nextId] = {
+      ...(nextEntryState[nextId] || {}),
+      ...savedState,
+    };
+  }
+
+  state.entryState = nextEntryState;
+  state.bookmarkState = remapBookmarkStateIds(state.bookmarkState, idMap);
+  state.selectedId = state.selectedId ? (idMap.get(state.selectedId) || state.selectedId) : null;
+}
+
 function getAllEntries() {
   if (runtimeCache.allEntriesVersion === runtimeCache.entryVersion) {
     return runtimeCache.allEntries;
@@ -1791,10 +1882,12 @@ function buildWorkflowAnalysis(entry) {
 
 function getSessionEntryCounts() {
   const activityEntries = getActivityEntries();
+  const detectionEntries = state.liveSession.detections || [];
   const sessionVersionKey = getSessionKey(state.liveSession);
   if (
     runtimeCache.sessionEntryCountVersionKey === sessionVersionKey
     && runtimeCache.sessionEntryCountActivityRef === activityEntries
+    && runtimeCache.sessionEntryCountDetectionsRef === detectionEntries
     && runtimeCache.sessionEntryCountEntryVersion === runtimeCache.entryVersion
     && runtimeCache.sessionEntryCountPreferenceVersion === runtimeCache.preferenceVersion
   ) {
@@ -1805,47 +1898,17 @@ function getSessionEntryCounts() {
   const counts = new Map();
   const customEntries = runtimeCache.allEntries.filter((entry) => entry.source_type === "custom");
   for (const item of activityEntries) {
-    const matchedEntryIds = new Set();
-    const groupKey = normalizePacketFamilyKey(item.groupKey);
-    if (groupKey && runtimeCache.entriesByPacketFamilyKey.has(groupKey)) {
-      for (const entry of runtimeCache.entriesByPacketFamilyKey.get(groupKey) || []) {
-        matchedEntryIds.add(entry.id);
-      }
+    const matchedEntryIds = collectEntryIdsForCountItem(item, customEntries);
+    for (const entryId of matchedEntryIds) {
+      counts.set(entryId, (counts.get(entryId) || 0) + 1);
     }
+  }
 
-    const opcodes = getDetectionOpcodes(item);
-    if (opcodes.size) {
-      for (const opcode of opcodes) {
-        const normalized = normalizeOpcode(opcode);
-        if (!normalized || !runtimeCache.entriesByOpcode.has(normalized)) continue;
-        for (const entry of runtimeCache.entriesByOpcode.get(normalized) || []) {
-          matchedEntryIds.add(entry.id);
-        }
-      }
-    }
-
-    const payloadPrefix = normalizePacketSignature(item.payloadPrefix);
-    if (payloadPrefix) {
-      for (const [signature, entries] of runtimeCache.entriesByPacketSignature.entries()) {
-        if (!signature || !payloadPrefix.startsWith(signature)) continue;
-        for (const entry of entries) {
-          matchedEntryIds.add(entry.id);
-        }
-      }
-    }
-
-    const customPacketAlias = getPacketPreference(item).alias;
-    const detectionLabelKey = normalizeLabelKey(customPacketAlias || getDetectionDisplayName(item));
-    if (detectionLabelKey.length >= 6) {
-      for (const entry of customEntries) {
-        const entryLabelKey = normalizeLabelKey(getEntryDisplayName(entry) || entry.display_name || "");
-        if (entry.normalizedOpcode || entryLabelKey.length < 6) continue;
-        if (detectionLabelKey.includes(entryLabelKey) || entryLabelKey.includes(detectionLabelKey)) {
-          matchedEntryIds.add(entry.id);
-        }
-      }
-    }
-
+  const seenActivityIds = new Set(activityEntries.map((item) => item?.id).filter(Boolean));
+  for (const detection of detectionEntries) {
+    if (!detection) continue;
+    if (detection.id && seenActivityIds.has(detection.id)) continue;
+    const matchedEntryIds = collectEntryIdsForCountItem(detection, customEntries);
     for (const entryId of matchedEntryIds) {
       counts.set(entryId, (counts.get(entryId) || 0) + 1);
     }
@@ -1854,6 +1917,7 @@ function getSessionEntryCounts() {
   runtimeCache.sessionEntryCounts = counts;
   runtimeCache.sessionEntryCountVersionKey = sessionVersionKey;
   runtimeCache.sessionEntryCountActivityRef = activityEntries;
+  runtimeCache.sessionEntryCountDetectionsRef = detectionEntries;
   runtimeCache.sessionEntryCountEntryVersion = runtimeCache.entryVersion;
   runtimeCache.sessionEntryCountPreferenceVersion = runtimeCache.preferenceVersion;
   return counts;
@@ -1882,6 +1946,51 @@ function syncSessionOpcodeCountPulse() {
     markEntriesCountRecentlyChanged(changedEntryIds);
   }
   return changedEntryIds;
+}
+
+function collectEntryIdsForCountItem(item, customEntries = runtimeCache.allEntries.filter((entry) => entry.source_type === "custom")) {
+  const matchedEntryIds = new Set();
+  const groupKey = normalizePacketFamilyKey(item?.groupKey);
+  if (groupKey && runtimeCache.entriesByPacketFamilyKey.has(groupKey)) {
+    for (const entry of runtimeCache.entriesByPacketFamilyKey.get(groupKey) || []) {
+      matchedEntryIds.add(entry.id);
+    }
+  }
+
+  const opcodes = getDetectionOpcodes(item);
+  if (opcodes.size) {
+    for (const opcode of opcodes) {
+      const normalized = normalizeOpcode(opcode);
+      if (!normalized || !runtimeCache.entriesByOpcode.has(normalized)) continue;
+      for (const entry of runtimeCache.entriesByOpcode.get(normalized) || []) {
+        matchedEntryIds.add(entry.id);
+      }
+    }
+  }
+
+  const payloadPrefix = normalizePacketSignature(item?.payloadPrefix);
+  if (payloadPrefix) {
+    for (const [signature, entries] of runtimeCache.entriesByPacketSignature.entries()) {
+      if (!signature || !payloadPrefix.startsWith(signature)) continue;
+      for (const entry of entries) {
+        matchedEntryIds.add(entry.id);
+      }
+    }
+  }
+
+  const customPacketAlias = getPacketPreference(item).alias;
+  const detectionLabelKey = normalizeLabelKey(customPacketAlias || getDetectionDisplayName(item));
+  if (detectionLabelKey.length >= 6) {
+    for (const entry of customEntries) {
+      const entryLabelKey = normalizeLabelKey(getEntryDisplayName(entry) || entry.display_name || "");
+      if (entry.normalizedOpcode || entryLabelKey.length < 6) continue;
+      if (detectionLabelKey.includes(entryLabelKey) || entryLabelKey.includes(detectionLabelKey)) {
+        matchedEntryIds.add(entry.id);
+      }
+    }
+  }
+
+  return matchedEntryIds;
 }
 
 function activityMatchesEntry(item, entry) {
@@ -3827,6 +3936,11 @@ function attachEvents() {
   els.openCapturesFolderButton.addEventListener("click", () => { openCapturesFolder().catch(() => {}); });
   els.markSessionButton.addEventListener("click", () => { runSessionAction("mark").catch(() => {}); });
   els.refreshSessionButton.addEventListener("click", () => { refreshLiveSession().catch(() => {}); });
+  els.rescanOpcodesButton.addEventListener("click", () => {
+    if (!state.registryRescanPending) {
+      refreshOpcodeRegistry().catch(() => {});
+    }
+  });
   els.clearLiveMonitorFeedButton.addEventListener("click", () => {
     clearLiveMonitorFeed().catch(() => {});
   });
@@ -4026,7 +4140,7 @@ function attachEvents() {
     state.seenActivityIds = new Set();
     clearRecentActivityTimers();
     state.recentDetectedEntryIds = new Set();
-    state.liveMonitorFilters = { tab: "feed", mode: "eqlike", search: "", unknownOnly: false, countLimit: "" };
+    state.liveMonitorFilters = { tab: "feed", mode: "all", search: "", unknownOnly: false, countLimit: "" };
     state.renameOpcodeTarget = "";
     state.renamePacketTarget = "";
     setCustomEntryDrawer(false);
@@ -4063,6 +4177,66 @@ async function refreshLiveSession() {
   renderLiveSession();
   renderBookmarks();
   renderBookmarkModal();
+}
+
+async function refreshOpcodeRegistry() {
+  const previousCount = Array.isArray(state.data?.entries) ? state.data.entries.length : 0;
+  state.registryRescanPending = true;
+  els.rescanOpcodesButton.disabled = true;
+  setRegistryActionMessage("Rescanning EQEmu opcodes...", "muted");
+
+  try {
+    const response = await fetch(API_RESCAN_OPCODES_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || result.message || `Rescan failed with HTTP ${response.status}`);
+    }
+
+    const nextRegistry = result.registry;
+    if (!nextRegistry || !Array.isArray(nextRegistry.entries)) {
+      throw new Error("Rescan completed but the refreshed opcode registry payload was missing.");
+    }
+
+    remapRegistryStateForRescan(nextRegistry);
+    state.data = nextRegistry;
+    invalidateEntryCaches();
+
+    if (state.selectedId && !getEntryById(state.selectedId)) {
+      state.selectedId = null;
+    }
+
+    state.currentAlertMatches = [];
+    state.currentSessionKey = "";
+    state.countPulseSessionKey = "";
+    state.detectionBootstrapComplete = false;
+    state.lastSessionEntryCounts = new Map();
+    clearRecentCountTimers();
+    persistState();
+    await processLiveDetections();
+    renderStats();
+    renderTable();
+    renderLiveSession();
+    renderBookmarks();
+    renderBookmarkModal();
+    renderInspector();
+
+    const nextCount = nextRegistry.entries.length;
+    const delta = nextCount - previousCount;
+    const deltaLabel = delta === 0 ? "no row delta" : `${delta > 0 ? "+" : ""}${delta} row${Math.abs(delta) === 1 ? "" : "s"}`;
+    setRegistryActionMessage(
+      `${result.message || "EQEmu opcodes rescanned."} ${nextCount} rows loaded (${deltaLabel}).`,
+      "success",
+    );
+  } catch (error) {
+    setRegistryActionMessage(error.message || "Opcode registry rescan failed.", "error");
+  } finally {
+    state.registryRescanPending = false;
+    els.rescanOpcodesButton.disabled = false;
+  }
 }
 
 async function loadInterfaces() {

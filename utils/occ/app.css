@@ -1367,6 +1367,21 @@ textarea {
   font-size: 0.92rem;
 }
 
+.registry-action-message {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.registry-action-message[data-tone="success"] {
+  color: var(--good);
+}
+
+.registry-action-message[data-tone="error"] {
+  color: var(--bad);
+}
+
 .selection-summary {
   text-align: right;
 }

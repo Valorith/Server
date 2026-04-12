@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent.parent
 SESSION_SCRIPT = Path(r"C:\Users\rgagn\.codex\skills\eqemu-opcode-inspector\scripts\invoke_eqemu_tshark_session.ps1")
 LIVE_SESSION_PATH = ROOT / "data" / "live-session.json"
+REGISTRY_BUILD_SCRIPT = ROOT / "scripts" / "build_rof2_reference.py"
+REGISTRY_DATA_PATH = ROOT / "data" / "rof2-reference.json"
 CAPTURES_ROOT = Path(r"C:\AkkStack\.codex\captures\sessions")
 HOST = "127.0.0.1"
 PORT = 8765
@@ -96,6 +98,37 @@ def load_markers(path):
         return []
 
     return markers
+
+
+def rescan_opcode_registry():
+    if not REGISTRY_BUILD_SCRIPT.exists():
+        raise FileNotFoundError(f"Missing registry build script: {REGISTRY_BUILD_SCRIPT}")
+
+    completed = subprocess.run(
+        [sys.executable, str(REGISTRY_BUILD_SCRIPT)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=CREATE_NO_WINDOW,
+        timeout=90,
+        check=False,
+    )
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(details or f"Opcode registry rescan failed with exit code {completed.returncode}.")
+
+    registry = load_json(REGISTRY_DATA_PATH)
+    if not isinstance(registry, dict) or not isinstance(registry.get("entries"), list):
+        raise RuntimeError(f"Opcode registry output was not written to {REGISTRY_DATA_PATH}.")
+
+    message = (completed.stdout or "").strip() or f"Rescanned EQEmu opcodes and loaded {len(registry['entries'])} entries."
+    return {
+        "message": message,
+        "registry": registry,
+        "entryCount": len(registry["entries"]),
+    }
 
 
 def hydrate_session_payload(session):
@@ -449,6 +482,18 @@ class OccRequestHandler(SimpleHTTPRequestHandler):
                     creationflags=CREATE_NO_WINDOW,
                 )
                 self.respond_json({"ok": True, "path": str(CAPTURES_ROOT)})
+            except Exception as exc:
+                self.respond_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        if parsed.path == "/api/rescan-opcodes":
+            try:
+                self.respond_json({"ok": True, **rescan_opcode_registry()})
+            except subprocess.TimeoutExpired:
+                self.respond_json(
+                    {"ok": False, "error": "Opcode registry rescan timed out after 90 seconds."},
+                    status=HTTPStatus.GATEWAY_TIMEOUT,
+                )
             except Exception as exc:
                 self.respond_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return

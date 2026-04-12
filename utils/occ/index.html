@@ -198,9 +198,14 @@
 
     <section class="main-grid">
       <div class="panel panel-stack">
-        <div class="panel-header">
-          <h2>Opcode Registry</h2>
-          <p>Search quickly, filter ruthlessly, and click a row to work it in the inspector.</p>
+        <div class="panel-header panel-header-row">
+          <div>
+            <h2>Opcode Registry</h2>
+            <p>Search quickly, filter ruthlessly, and click a row to work it in the inspector.</p>
+          </div>
+          <div class="inline-actions">
+            <button id="rescanOpcodesButton" class="button button-quiet" type="button">Rescan EQEmu Opcodes</button>
+          </div>
         </div>
         <div class="filters">
           <label class="field">
@@ -246,6 +251,7 @@
         </div>
         <div class="registry-meta">
           <p id="resultsSummary" class="results-summary"></p>
+          <p id="registryActionMessage" class="registry-action-message" data-tone="muted"></p>
           <p id="selectionSummary" class="selection-summary">No opcode selected.</p>
         </div>
 
