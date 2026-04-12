@@ -54,9 +54,10 @@ bool TaskManager::LoadTasks(int single_task)
 
 		task_query_filter = fmt::format("id > 0");
 	} else {
-		// Single-task reloads should replace that task in-place without evicting
-		// unrelated task definitions that online clients may still reference.
-		m_task_data.erase(single_task);
+		// For single-task reloads, keep the existing in-memory definition until
+		// a replacement row is actually loaded. If the query returns no rows
+		// (disabled, missing, or transient DB issue), preserving the current
+		// entry avoids breaking clients still referencing this task.
 	}
 
 	task_query_filter += " AND enabled = 1";
