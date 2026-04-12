@@ -44,22 +44,35 @@ bool TaskManager::LoadTaskSets()
 
 bool TaskManager::LoadTasks(int single_task)
 {
-	m_task_data.clear();
-
 	std::string task_query_filter = fmt::format("id = {}", single_task);
 	if (single_task == 0) {
+		m_task_data.clear();
+
 		if (!LoadTaskSets()) {
 			LogTasks("LoadTaskSets failed");
 		}
 
 		task_query_filter = fmt::format("id > 0");
+	} else {
+		// For single-task reloads, keep the existing in-memory definition until
+		// a replacement row is actually loaded. If the query returns no rows
+		// (disabled, missing, or transient DB issue), preserving the current
+		// entry avoids breaking clients still referencing this task.
 	}
 
 	task_query_filter += " AND enabled = 1";
 
 	// load task level data
 	auto repo_tasks = TasksRepository::GetWhere(content_db, task_query_filter);
-	m_task_data.reserve(repo_tasks.size());
+	if (single_task == 0) {
+		m_task_data.reserve(repo_tasks.size());
+	} else if (repo_tasks.empty()) {
+		LogInfo(
+			"Single-task reload for task [{}] found no replacement row; preserving existing in-memory definition",
+			single_task
+		);
+		return true;
+	}
 
 	for (auto &task: repo_tasks) {
 		int task_id = task.id;
@@ -100,7 +113,14 @@ bool TaskManager::LoadTasks(int single_task)
 		ti.request_timer_seconds = task.request_timer_seconds;
 		ti.activity_count        = 0;
 
-		m_task_data.try_emplace(task_id, std::move(ti));
+		// Full reloads clear the map up front, so try_emplace preserves the existing
+		// bulk-load behavior. Single-task reloads must replace an existing definition
+		// when a fresh row is returned from the database.
+		if (single_task == 0) {
+			m_task_data.try_emplace(task_id, std::move(ti));
+		} else {
+			m_task_data.insert_or_assign(task_id, std::move(ti));
+		}
 
 		LogTasksDetail(
 			"(Task) task_id [{}] type [{}] () duration [{}] duration_code [{}] title [{}] description [{}] "

@@ -4187,7 +4187,6 @@ void EntityList::ReloadAllClientsTaskState(int task_id)
 				Log(Logs::General, Logs::Tasks, "[CLIENTLOAD] Reloading Task State For Client %s", client->GetName());
 				client->RemoveClientTaskState();
 				client->LoadClientTaskState();
-				TaskManager::Instance()->SendActiveTasksToClient(client);
 			}
 		}
 		++it;
