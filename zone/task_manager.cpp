@@ -44,22 +44,28 @@ bool TaskManager::LoadTaskSets()
 
 bool TaskManager::LoadTasks(int single_task)
 {
-	m_task_data.clear();
-
 	std::string task_query_filter = fmt::format("id = {}", single_task);
 	if (single_task == 0) {
+		m_task_data.clear();
+
 		if (!LoadTaskSets()) {
 			LogTasks("LoadTaskSets failed");
 		}
 
 		task_query_filter = fmt::format("id > 0");
+	} else {
+		// Single-task reloads should replace that task in-place without evicting
+		// unrelated task definitions that online clients may still reference.
+		m_task_data.erase(single_task);
 	}
 
 	task_query_filter += " AND enabled = 1";
 
 	// load task level data
 	auto repo_tasks = TasksRepository::GetWhere(content_db, task_query_filter);
-	m_task_data.reserve(repo_tasks.size());
+	if (single_task == 0) {
+		m_task_data.reserve(repo_tasks.size());
+	}
 
 	for (auto &task: repo_tasks) {
 		int task_id = task.id;

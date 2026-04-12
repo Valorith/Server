@@ -86,5 +86,5 @@ private:
 public:
 	ZoneEventScheduler *GetScheduler() const;
 	void SetScheduler(ZoneEventScheduler *scheduler);
-	void SendReload(ServerReload::Type type, bool is_global = true);
+	void SendReload(ServerReload::Type type, bool is_global = true, int32_t opt_param = 0);
 };
