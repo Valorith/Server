@@ -4683,7 +4683,11 @@ void WorldServer::SendReloadTasks(uint8 reload_type, uint32 task_id) {
 	if (reload_type == RELOADTASKSETS) {
 		opt_param = -1;
 	} else if (reload_type == RELOADTASKS && task_id > 0) {
-		opt_param = static_cast<int32>(task_id);
+		if (task_id > static_cast<uint32_t>(INT32_MAX)) {
+			LogError("task_id [{}] exceeds maximum encodable value for targeted task reload; falling back to full task reload", task_id);
+		} else {
+			opt_param = static_cast<int32_t>(task_id);
+		}
 	}
 
 	SendReload(ServerReload::Type::Tasks, true, opt_param);
