@@ -136,36 +136,50 @@ public:
 
 	static bool DeleteBuyLine(Database &db, uint32 char_id, int32 slot_id = 0xffffffff)
 	{
-		std::vector<BuyerBuyLines> buylines{};
-		if (slot_id == 0xffffffff) {
-			auto buylines = GetWhere(db, fmt::format("`char_id` = '{}'", char_id));
-			DeleteWhere(db, fmt::format("`char_id` = '{}'", char_id));
-		}
-		else {
-			auto buylines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id));
-			DeleteWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id));
-		}
+		const auto buy_line_filter = GetDeleteBuyLineWhereFilter(char_id, slot_id);
+		const auto buylines        = GetWhere(db, buy_line_filter);
+
+		DeleteWhere(db, buy_line_filter);
 
 		if (buylines.empty()) {
 			return 0;
 		}
 
-		std::vector<std::string> buyline_ids{};
-		for (auto const          &bl: buylines) {
-			buyline_ids.push_back((std::to_string(bl.id)));
-		}
-
-		if (!buyline_ids.empty()) {
+		const auto trade_item_filter = GetTradeItemCleanupWhereFilter(buylines);
+		if (!trade_item_filter.empty()) {
 			BuyerTradeItemsRepository::DeleteWhere(
 				db,
-				fmt::format(
-					"`buyer_buy_lines_id` IN({})",
-					Strings::Implode(", ", buyline_ids)
-				)
+				trade_item_filter
 			);
 		}
 
 		return 1;
+	}
+
+	static std::string GetDeleteBuyLineWhereFilter(uint32 char_id, int32 slot_id = 0xffffffff)
+	{
+		if (slot_id == 0xffffffff) {
+			return fmt::format("`char_id` = '{}'", char_id);
+		}
+
+		return fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot_id);
+	}
+
+	static std::string GetTradeItemCleanupWhereFilter(const std::vector<BuyerBuyLines> &buylines)
+	{
+		std::vector<std::string> buyline_ids{};
+		for (auto const          &bl: buylines) {
+			buyline_ids.push_back(std::to_string(bl.id));
+		}
+
+		if (buyline_ids.empty()) {
+			return {};
+		}
+
+		return fmt::format(
+			"`buyer_buy_lines_id` IN({})",
+			Strings::Implode(", ", buyline_ids)
+		);
 	}
 
 	static std::vector<BuyerLineItems_Struct> GetBuyLines(Database &db, uint32 char_id)

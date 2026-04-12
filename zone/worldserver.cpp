@@ -4362,8 +4362,8 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					strn0cpy(sell_line.item_name, in->item_name, sizeof(sell_line.item_name));
 
 					if (!seller->DoBarterSellerChecks(sell_line)) {
-						in->action = Barter_FailedTransaction;
-						in->action = Barter_FailedSellerChecks;
+						in->action     = Barter_FailedTransaction;
+						in->sub_action = Barter_FailedSellerChecks;
 						worldserver.SendPacket(pack);
 						return;
 					}
