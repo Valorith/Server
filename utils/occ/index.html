@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opcode Command Center</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">RoF2 Cooperative Workspace</p>
+        <h1>Opcode Command Center</h1>
+        <p class="subtitle">A lightweight collaborative surface for known, suspected, and newly detected RoF2 opcodes.</p>
+      </div>
+      <div class="hero-actions">
+        <div class="dropdown-shell">
+          <button id="toggleCustomEntryButton" class="button" type="button" aria-expanded="false" aria-controls="customEntryDrawer">Add Custom Entry</button>
+          <section id="customEntryDrawer" class="panel panel-stack custom-entry-drawer" hidden>
+            <div class="panel-header">
+              <h2>Add Custom Entry</h2>
+              <p>Create a working opcode or packet candidate even if it is not present in the seeded data yet.</p>
+            </div>
+            <div class="custom-grid">
+              <label class="field">
+                <span>Opcode (optional)</span>
+                <input id="customOpcode" type="text" placeholder="0x53d3">
+              </label>
+              <label class="field">
+                <span>Name</span>
+                <input id="customName" type="text" placeholder="Offline Mode Button">
+              </label>
+            </div>
+            <label class="field">
+              <span>Packet Signature</span>
+              <input id="customPacketSignature" type="text" placeholder="0009a556f1d3532fc9">
+            </label>
+            <label class="field">
+              <span>Packet Family</span>
+              <input id="customPacketFamilyKey" type="text" placeholder="Seed from a live feed item for the most reliable match">
+            </label>
+            <label class="field">
+              <span>Confidence</span>
+              <select id="customConfidence">
+                <option value="unknown">Unknown</option>
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Notes</span>
+              <textarea id="customNotes" rows="4" placeholder="Action, timing, repeatability, nearby packets, and why this candidate matters..."></textarea>
+            </label>
+            <div class="inline-actions">
+              <button id="addCustomEntryButton" class="button button-primary" type="button">Add Custom Entry</button>
+            </div>
+          </section>
+        </div>
+        <div class="dropdown-shell">
+          <button id="toggleSettingsButton" class="button icon-button" type="button" aria-expanded="false" aria-controls="settingsDrawer" aria-label="Open settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M19.14 12.94a7.96 7.96 0 0 0 .05-.94 7.96 7.96 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.38 7.38 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.03.31-.05.63-.05.94s.02.63.05.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/>
+            </svg>
+          </button>
+          <section id="settingsDrawer" class="panel panel-stack settings-drawer" hidden>
+            <div class="panel-header">
+              <h2>Settings</h2>
+              <p>Manage OCC state exports, imports, and local browser resets.</p>
+            </div>
+            <div class="settings-actions">
+              <button id="exportStateButton" class="button button-primary" type="button">Export State</button>
+              <label class="button" for="importStateInput">
+                Import State
+              </label>
+              <input id="importStateInput" type="file" accept=".json,application/json" hidden>
+              <button id="resetStateButton" class="button button-danger" type="button">Reset Local State</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </header>
+
+    <section class="stats-grid" id="statsGrid"></section>
+
+    <section class="operations-grid">
+      <div class="panel panel-stack session-panel">
+        <div class="session-header">
+          <div class="panel-header">
+            <h2>Capture Session</h2>
+            <p>Track the current tshark session, filter, interface, and marker count.</p>
+          </div>
+          <div class="session-header-controls">
+            <span id="sessionStatusBadge" class="session-badge">idle</span>
+            <button id="refreshSessionButton" class="button button-quiet icon-button" type="button" aria-label="Refresh session" title="Refresh session">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L14 10h7V3z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="detail-grid session-detail-grid">
+          <div class="detail-card">
+            <span class="detail-label">Session</span>
+            <span class="detail-value" id="sessionNameValue">No session loaded</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Markers</span>
+            <span class="detail-value" id="sessionMarkersValue">0</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Interface</span>
+            <span class="detail-value" id="sessionInterfaceValue">—</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Capture Filter</span>
+            <span class="detail-value" id="sessionFilterValue">—</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Live Detections</span>
+            <span class="detail-value" id="sessionDetectionsValue">0</span>
+          </div>
+        </div>
+        <div class="session-control-grid">
+          <label class="field">
+            <span>Session</span>
+            <input id="sessionNameInput" type="text" value="rof2-live-ui" placeholder="rof2-live-ui">
+          </label>
+          <label class="field">
+            <span>Interface</span>
+            <select id="sessionInterfaceInput">
+              <option value="loopback">Loopback</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Capture Filter</span>
+            <input id="sessionCaptureFilterInput" type="text" value="udp" placeholder="udp">
+          </label>
+          <label class="field">
+            <span>Duration (sec)</span>
+            <input id="sessionDurationInput" type="number" min="0" step="1" value="0" placeholder="0">
+          </label>
+        </div>
+        <div class="session-action-bar">
+          <button id="sessionToggleButton" class="button button-primary" type="button">Start Capture</button>
+          <button id="restartSessionButton" class="button" type="button">Restart</button>
+        </div>
+        <p id="sessionActionMessage" class="session-action-message">OCC can start and stop local RoF2 capture sessions directly.</p>
+          <div class="session-footer">
+            <div class="session-footer-row">
+              <button id="openCapturesFolderButton" class="button button-quiet icon-button" type="button" aria-label="Open captures folder" title="Open captures folder">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M10 4l2 2h8a2 2 0 0 1 2 2v1H2V6a2 2 0 0 1 2-2h6zm12 7v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7h20z"/>
+                </svg>
+              </button>
+              <button id="openLiveMonitorButton" class="button button-quiet icon-button" type="button" aria-label="Open live monitor" title="Open live monitor" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M3 12h4.2l1.7-3.8a.75.75 0 0 1 1.38.07l2.27 7.18 2.05-4.1A.75.75 0 0 1 15.25 11H21v2h-5.29l-2.54 5.08a.75.75 0 0 1-1.4-.12l-2.34-7.41-1.02 2.27A.75.75 0 0 1 7.73 13H3z"/>
+                </svg>
+              </button>
+              <p id="sessionTimingValue" class="session-timing">No live session state yet.</p>
+            </div>
+            <div id="sessionPathsValue" class="session-paths">Use the skill to start a session and OCC will follow it here.</div>
+          </div>
+      </div>
+
+      <div class="panel panel-stack markers-panel">
+        <div class="markers-header">
+          <div class="panel-header">
+            <h2>Interaction Markers</h2>
+            <p>Tie client actions back to packets and opcode candidates via live timing markers.</p>
+          </div>
+          <button id="resetMarkersButton" class="button button-quiet button-sm" type="button">Reset</button>
+        </div>
+        <div class="session-marker-grid">
+          <label class="field">
+            <span>Marker Label</span>
+            <input id="sessionMarkerLabelInput" type="text" value="marker" placeholder="inventory button">
+          </label>
+          <label class="field">
+            <span>Marker Note</span>
+            <input id="sessionMarkerNoteInput" type="text" placeholder="Optional timing context">
+          </label>
+          <button id="markSessionButton" class="button button-quiet" type="button">Add Marker</button>
+        </div>
+        <div id="bookmarkEmpty" class="empty-state">No bookmarks yet. Start a tshark session and add markers as you test UI actions.</div>
+        <div id="bookmarkWorkspace" class="bookmark-workspace" hidden>
+          <div id="bookmarkList" class="bookmark-list"></div>
+          <div class="bookmark-pagination">
+            <div class="pagination-group">
+              <button id="prevBookmarkPageButton" class="button button-quiet" type="button">Previous</button>
+              <button id="nextBookmarkPageButton" class="button button-quiet" type="button">Next</button>
+            </div>
+            <p id="bookmarkPageSummary" class="results-summary"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="main-grid">
+      <div class="panel panel-stack">
+        <div class="panel-header">
+          <h2>Opcode Registry</h2>
+          <p>Search quickly, filter ruthlessly, and click a row to work it in the inspector.</p>
+        </div>
+        <div class="filters">
+          <label class="field">
+            <span>Search</span>
+            <input id="searchInput" type="search" placeholder="Opcode, name, notes, tags...">
+          </label>
+          <label class="field">
+            <span>Status</span>
+            <select id="statusFilter">
+              <option value="all">All statuses</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Source</span>
+            <select id="sourceFilter">
+              <option value="all">All sources</option>
+              <option value="sheet">Reference only</option>
+              <option value="sheet+patch">Reference + EQEmu</option>
+              <option value="patch-only">EQEmu only</option>
+              <option value="custom">Custom only</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Sort</span>
+            <select id="sortFilter">
+              <option value="tracked">Tracked first</option>
+              <option value="recent">Recently touched</option>
+              <option value="alert">Alert armed</option>
+              <option value="count">Count</option>
+              <option value="opcode">Opcode</option>
+              <option value="name">Name</option>
+              <option value="eqemu">EQEmu</option>
+              <option value="status">Status</option>
+              <option value="source">Source</option>
+              <option value="notes">Notes</option>
+            </select>
+          </label>
+          <label class="field field-checkbox">
+            <input id="trackedOnlyToggle" type="checkbox">
+            <span>Tracked only</span>
+          </label>
+          <button id="clearFiltersButton" class="button button-quiet" type="button">Clear Filters</button>
+        </div>
+        <div class="registry-meta">
+          <p id="resultsSummary" class="results-summary"></p>
+          <p id="selectionSummary" class="selection-summary">No opcode selected.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="opcode-table">
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="alert">
+                    <span>Alert</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="opcode">
+                    <span>Opcode</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="count">
+                    <span>Count</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="name">
+                    <span>Name</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="eqemu">
+                    <span>EQEmu</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="status">
+                    <span>Status</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="source">
+                    <span>Source</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="notes">
+                    <span>Notes</span>
+                    <span class="sort-indicator" aria-hidden="true">↕</span>
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="opcodeTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination-bar">
+          <div class="pagination-group">
+            <button id="prevPageButton" class="button button-quiet" type="button">Previous</button>
+            <button id="nextPageButton" class="button button-quiet" type="button">Next</button>
+          </div>
+          <p id="pageSummary" class="results-summary"></p>
+          <label class="field field-inline">
+            <span>Rows per page</span>
+            <select id="pageSizeSelect">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="inspectorModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack inspector modal-panel" aria-modal="true" aria-labelledby="inspectorTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <h2>Inspector</h2>
+          <p>Annotate confidence, tags, and cooperative notes with minimal friction.</p>
+        </div>
+        <div class="modal-header-controls">
+          <button id="prevEntryButton" class="button button-quiet icon-button" type="button" aria-label="Previous entry" title="Previous entry (←)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          </button>
+          <button id="nextEntryButton" class="button button-quiet icon-button" type="button" aria-label="Next entry" title="Next entry (→)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+          </button>
+          <button id="closeInspectorButton" class="button button-quiet icon-button" type="button" aria-label="Close inspector" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="inspectorContent" class="inspector-content">
+        <div class="inspector-section inspector-identity">
+          <div class="inspector-title-row">
+            <div>
+              <p class="eyebrow" id="inspectorSourceLine"></p>
+              <h3 id="inspectorTitle"></h3>
+            </div>
+            <span class="badge" id="inspectorAlignment"></span>
+          </div>
+          <div class="inspector-meta">
+            <span class="meta-pill" id="inspectorTrackedState"></span>
+            <span class="meta-pill" id="inspectorLastTouched"></span>
+          </div>
+        </div>
+
+        <hr class="inspector-divider">
+
+        <div class="inspector-section">
+          <div class="detail-grid inspector-detail-grid">
+            <div class="detail-card">
+              <span class="detail-label">RoF2 Opcode</span>
+              <input class="detail-value-input" id="inspectorOpcode" type="text" placeholder="0x1234">
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">Reference Name</span>
+              <input class="detail-value-input" id="inspectorSheetName" type="text" placeholder="Candidate name">
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">EQEmu Name</span>
+              <input class="detail-value-input" id="inspectorEqemuName" type="text" placeholder="OP_CustomCandidate">
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">Test Opcode</span>
+              <input class="detail-value-input" id="inspectorTestOpcode" type="text" placeholder="0x1234">
+            </div>
+          </div>
+        </div>
+
+        <hr class="inspector-divider">
+
+        <div class="inspector-section inspector-classification">
+            <div class="inspector-form-row">
+              <label class="field">
+                <span>Status</span>
+                <select id="entryStatus"></select>
+              </label>
+            <label class="field">
+              <span>Confidence</span>
+              <select id="entryConfidence">
+                <option value="unknown">Unknown</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="locked">Locked</option>
+                </select>
+              </label>
+            </div>
+            <label class="field field-checkbox field-checkbox-card">
+              <input id="entryAlertEnabled" type="checkbox">
+              <span>Alert on live detection</span>
+            </label>
+            <label class="field">
+              <span>Tags</span>
+              <input id="entryTags" type="text" placeholder="ui, barter, marker-1, packet-family">
+          </label>
+        </div>
+
+        <hr class="inspector-divider">
+
+        <div class="inspector-section inspector-workflow-launcher">
+          <div class="workflow-launcher-row">
+            <div>
+              <p class="eyebrow">Candidate Workflow</p>
+              <p class="workflow-launcher-stage" id="inspectorWorkflowStageSummary">Candidate Packet</p>
+            </div>
+            <div class="workflow-launcher-actions">
+              <span class="meta-pill" id="inspectorWorkflowProgressPill">Step 1 of 5</span>
+              <button id="openWorkflowButton" class="button button-sm" type="button">Open Workflow</button>
+            </div>
+          </div>
+        </div>
+
+        <hr class="inspector-divider">
+
+        <div class="inspector-section inspector-notes-section">
+          <label class="field">
+            <span>Cooperative Notes</span>
+            <textarea id="entryNotes" rows="6" placeholder="Packet timing, evidence, offsets, next steps..."></textarea>
+          </label>
+          <label class="field">
+            <span>Reference Notes</span>
+            <textarea id="entryReferenceNotes" rows="4" readonly></textarea>
+          </label>
+        </div>
+
+        <div class="inspector-section inline-actions">
+          <button id="copySummaryButton" class="button" type="button">Copy Row Summary</button>
+          <button id="deleteCustomEntryButton" class="button button-danger" type="button" hidden>Delete Custom Entry</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="workflowModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack modal-panel workflow-modal-panel" aria-modal="true" aria-labelledby="workflowModalTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <p class="eyebrow">Candidate Workflow</p>
+          <h2 id="workflowModalTitle">Candidate Packet</h2>
+        </div>
+        <div class="modal-header-controls">
+          <button id="closeWorkflowButton" class="button button-quiet icon-button" type="button" aria-label="Close workflow" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="workflow-modal-context">
+        <span class="meta-pill" id="workflowEntryOpcode"></span>
+        <span class="workflow-entry-name" id="workflowEntryName"></span>
+      </div>
+
+      <div class="workflow-stepper" role="list" aria-label="Workflow progress">
+        <div class="workflow-step" data-stage="candidate" role="listitem">
+          <div class="workflow-step-indicator"><span class="workflow-step-dot"></span></div>
+          <span class="workflow-step-label">Candidate Packet</span>
+        </div>
+        <div class="workflow-step-connector"></div>
+        <div class="workflow-step" data-stage="repeatable" role="listitem">
+          <div class="workflow-step-indicator"><span class="workflow-step-dot"></span></div>
+          <span class="workflow-step-label">Repeatable Trigger</span>
+        </div>
+        <div class="workflow-step-connector"></div>
+        <div class="workflow-step" data-stage="isolated" role="listitem">
+          <div class="workflow-step-indicator"><span class="workflow-step-dot"></span></div>
+          <span class="workflow-step-label">Isolated Capture</span>
+        </div>
+        <div class="workflow-step-connector"></div>
+        <div class="workflow-step" data-stage="opcode-hypothesis" role="listitem">
+          <div class="workflow-step-indicator"><span class="workflow-step-dot"></span></div>
+          <span class="workflow-step-label">Opcode Hypothesis</span>
+        </div>
+        <div class="workflow-step-connector"></div>
+        <div class="workflow-step" data-stage="confirmed" role="listitem">
+          <div class="workflow-step-indicator"><span class="workflow-step-dot"></span></div>
+          <span class="workflow-step-label">Confirmed</span>
+        </div>
+      </div>
+
+      <div class="workflow-modal-body">
+        <div class="workflow-modal-section">
+          <div class="detail-grid workflow-evidence-grid">
+            <div class="detail-card">
+              <span class="detail-label">Current Session Count</span>
+              <span class="detail-value" id="workflowSessionCount">0</span>
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">Linked Markers</span>
+              <span class="detail-value" id="workflowMarkerCount">0</span>
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">Signal Identity</span>
+              <span class="detail-value" id="workflowIdentityValue">Name only</span>
+            </div>
+            <div class="detail-card">
+              <span class="detail-label">Alert State</span>
+              <span class="detail-value" id="workflowAlertValue">Off</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="workflow-modal-section">
+          <p class="eyebrow">Completion Checklist</p>
+          <div class="workflow-checklist">
+            <label class="field field-checkbox field-checkbox-card">
+              <input id="workflowRepeatableCheck" type="checkbox">
+              <span>Repeatable trigger proven</span>
+            </label>
+            <label class="field field-checkbox field-checkbox-card">
+              <input id="workflowIsolatedCheck" type="checkbox">
+              <span>Isolated capture recorded</span>
+            </label>
+            <label class="field field-checkbox field-checkbox-card">
+              <input id="workflowHypothesisCheck" type="checkbox">
+              <span>Opcode hypothesis recorded</span>
+            </label>
+            <label class="field field-checkbox field-checkbox-card">
+              <input id="workflowConfirmedCheck" type="checkbox">
+              <span>Confirmed against code or reference</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="workflow-modal-section">
+          <div class="inline-actions workflow-analysis-actions">
+            <button id="workflowSyncStageButton" class="button button-quiet" type="button">Use Suggested Stage</button>
+            <button id="workflowApplyHypothesisButton" class="button button-quiet" type="button">Record Suggested Hypothesis</button>
+            <button id="workflowPromoteHypothesisButton" class="button button-quiet" type="button">Promote Hypothesis</button>
+          </div>
+          <label class="field">
+            <span>Automated Analysis</span>
+            <textarea id="workflowAnalysisSummary" rows="7" readonly></textarea>
+          </label>
+        </div>
+
+        <div class="workflow-modal-section">
+          <label class="field">
+            <span>Recommended Next Step</span>
+            <textarea id="workflowNextStep" rows="3" readonly></textarea>
+          </label>
+        </div>
+
+        <div class="workflow-modal-section">
+          <label class="field">
+            <span>Reference-Guided Path</span>
+            <textarea id="workflowReferenceHints" rows="6" readonly></textarea>
+          </label>
+        </div>
+
+        <div class="workflow-modal-section">
+          <label class="field">
+            <span>Workflow Stage</span>
+            <select id="entryWorkflowStage">
+              <option value="candidate">Candidate Packet</option>
+              <option value="repeatable">Repeatable Trigger</option>
+              <option value="isolated">Isolated Capture</option>
+              <option value="opcode-hypothesis">Opcode Hypothesis</option>
+              <option value="confirmed">Confirmed Mapping</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="workflow-modal-footer">
+        <button id="workflowBackButton" class="button button-quiet" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          Back
+        </button>
+        <span class="meta-pill" id="workflowProgressPill">Step 1 of 5</span>
+        <button id="workflowAdvanceButton" class="button" type="button">
+          Advance
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <div id="detectionAlertModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack modal-panel alert-panel" aria-modal="true" aria-labelledby="detectionAlertTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <p class="eyebrow">Live Detection</p>
+          <h2 id="detectionAlertTitle">Flagged opcode detected</h2>
+          <p id="detectionAlertSummary">A flagged opcode was seen during the active capture session.</p>
+        </div>
+        <button id="dismissDetectionAlertButton" class="button button-quiet icon-button" type="button" aria-label="Dismiss alert" title="Dismiss">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+      <div id="detectionAlertList" class="alert-list"></div>
+      <div class="inline-actions">
+        <button id="openDetectionEntryButton" class="button button-primary" type="button">Open First Match</button>
+        <button id="dismissDetectionAlertFooterButton" class="button" type="button">Dismiss</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="liveMonitorModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack modal-panel monitor-panel" aria-modal="true" aria-labelledby="liveMonitorTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <p class="eyebrow" id="liveMonitorEyebrow">Live monitor</p>
+          <h2 id="liveMonitorTitle">Capture Activity</h2>
+          <p id="liveMonitorSummary">Watch live UDP activity, candidate opcodes, and flagged matches during an active capture.</p>
+        </div>
+        <div class="modal-header-controls">
+          <button id="closeLiveMonitorButton" class="button button-quiet icon-button" type="button" aria-label="Close live monitor" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="monitor-toolbar">
+        <div class="tab-strip" role="tablist" aria-label="Capture activity tabs">
+          <button id="liveFeedTabButton" class="tab-button" type="button" role="tab" aria-selected="true" data-tab="feed">Live Feed</button>
+          <button id="suppressedTabButton" class="tab-button" type="button" role="tab" aria-selected="false" data-tab="suppressed">Suppressed</button>
+        </div>
+        <button id="clearLiveMonitorFeedButton" class="button button-quiet" type="button">Clear All</button>
+        <label class="field">
+          <span>View</span>
+          <select id="liveMonitorModeFilter">
+            <option value="all">All traffic</option>
+            <option value="eqlike">EQ-like only</option>
+            <option value="candidates">Opcode candidates</option>
+            <option value="flagged">Flagged matches</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Filter</span>
+          <input id="liveMonitorSearchInput" type="search" placeholder="Opcode, name, address, info, payload...">
+        </label>
+        <label class="field monitor-count-limit-field">
+          <span>Count Limit</span>
+          <input id="liveMonitorCountLimitInput" type="number" min="1" step="1" placeholder="No limit">
+        </label>
+        <label class="field field-checkbox field-checkbox-card monitor-filter-toggle">
+          <input id="liveMonitorUnknownOnlyToggle" type="checkbox">
+          <span>Unknown only</span>
+        </label>
+      </div>
+
+      <div class="detail-grid monitor-detail-grid">
+        <div class="detail-card">
+          <span class="detail-label">Visible Packets</span>
+          <span class="detail-value" id="liveMonitorPacketsValue">0</span>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">Opcode Candidates</span>
+          <span class="detail-value" id="liveMonitorCandidatesValue">0</span>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">Flagged Matches</span>
+          <span class="detail-value" id="liveMonitorFlaggedValue">0</span>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">Last Sync</span>
+          <span class="detail-value" id="liveMonitorSyncValue">Waiting for data</span>
+        </div>
+      </div>
+
+      <div id="liveMonitorEmpty" class="empty-state">Start a capture session to watch live packet activity here.</div>
+      <div id="liveMonitorList" class="monitor-list" hidden></div>
+      <div id="suppressedListEmpty" class="empty-state" hidden>No suppression rules yet.</div>
+      <div id="suppressedList" class="monitor-list suppressed-list" hidden></div>
+    </section>
+  </div>
+
+  <div id="liveMonitorContextMenu" class="context-menu" hidden>
+    <div class="context-menu-header">
+      <p class="eyebrow">Live Detection</p>
+      <p id="liveMonitorContextTitle" class="context-menu-title">Opcode</p>
+    </div>
+    <div class="context-menu-actions">
+      <button id="toggleLiveMonitorFlagButton" class="button button-quiet context-menu-button" type="button">Flag opcode for alerts</button>
+      <button id="renameLiveMonitorOpcodeButton" class="button button-quiet context-menu-button" type="button">Rename opcode label</button>
+      <button id="createLiveMonitorEntryButton" class="button button-quiet context-menu-button" type="button">Create custom registry entry</button>
+      <button id="suppressLiveMonitorItemButton" class="button button-quiet context-menu-button" type="button">Suppress from live feed</button>
+      <button id="openLiveMonitorEntryButton" class="button button-quiet context-menu-button" type="button">Open linked registry row</button>
+    </div>
+  </div>
+
+  <div id="renameOpcodeModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack modal-panel rename-opcode-modal" aria-modal="true" aria-labelledby="renameOpcodeTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <p class="eyebrow">Live Detection</p>
+          <h2 id="renameOpcodeTitle">Rename opcode label</h2>
+          <p id="renameOpcodeSummary">Set a local alias for this opcode so future live detections use the same name.</p>
+        </div>
+        <button id="closeRenameOpcodeButton" class="button button-quiet icon-button" type="button" aria-label="Close rename dialog" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+      <label class="field">
+        <span>Alias</span>
+        <input id="renameOpcodeInput" type="text" placeholder="Bazaar search request">
+      </label>
+      <div class="inline-actions">
+        <button id="clearRenameOpcodeButton" class="button" type="button">Clear Alias</button>
+        <button id="saveRenameOpcodeButton" class="button button-primary" type="button">Save Alias</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="bookmarkModal" class="modal-shell" hidden>
+    <div class="modal-backdrop"></div>
+    <section class="panel panel-stack modal-panel bookmark-modal" aria-modal="true" aria-labelledby="bookmarkModalTitle" role="dialog">
+      <div class="modal-header">
+        <div class="panel-header">
+          <p class="eyebrow" id="bookmarkTime"></p>
+          <h2 id="bookmarkModalTitle">Marker</h2>
+          <p id="bookmarkSourceNote">No marker note captured.</p>
+        </div>
+        <button id="closeBookmarkModalButton" class="button button-quiet icon-button" type="button" aria-label="Close marker details" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+      <div class="bookmark-editor-fields">
+        <label class="field">
+          <span>Expected Opcode</span>
+          <input id="bookmarkExpectedOpcode" type="text" placeholder="0x53d3 or OP_BarterOfflineMode">
+        </label>
+        <label class="field">
+          <span>Linked OCC Entry</span>
+          <div class="bookmark-link-row">
+            <div id="bookmarkLinkedEntry" class="bookmark-linked-entry">No linked opcode row.</div>
+            <button id="linkSelectedOpcodeButton" class="button button-quiet button-sm" type="button">Link Selected</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Association Notes</span>
+          <textarea id="bookmarkNotes" rows="5" placeholder="What UI action happened here, what traffic was nearby, what should we test next?"></textarea>
+        </label>
+      </div>
+    </section>
+  </div>
+
+  <template id="rowTemplate">
+    <tr>
+      <td class="alert-cell"></td>
+      <td class="mono opcode-cell"></td>
+      <td class="count-cell mono"></td>
+      <td class="name-cell"></td>
+      <td class="eqemu-cell"></td>
+      <td><span class="status-pill"></span></td>
+      <td><span class="source-pill"></span></td>
+      <td class="notes-cell"></td>
+    </tr>
+  </template>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
