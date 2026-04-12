@@ -792,6 +792,7 @@ luabind::scope lua_register_packet_opcodes() {
 		luabind::value("DeleteCharge", static_cast<int>(OP_DeleteCharge)),
 		luabind::value("PotionBelt", static_cast<int>(OP_PotionBelt)),
 		luabind::value("Barter", static_cast<int>(OP_Barter)),
+		luabind::value("BarterOfflineMode", static_cast<int>(OP_BarterOfflineMode)),
 		luabind::value("VoiceMacroIn", static_cast<int>(OP_VoiceMacroIn)),
 		luabind::value("VoiceMacroOut", static_cast<int>(OP_VoiceMacroOut)),
 		luabind::value("WorldObjectsSent", static_cast<int>(OP_WorldObjectsSent)),

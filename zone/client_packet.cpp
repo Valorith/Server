@@ -313,6 +313,7 @@ void MapOpcodes()
 	ConnectedOpcodes[OP_MoveCoin] = &Client::Handle_OP_MoveCoin;
 	ConnectedOpcodes[OP_MoveItem] = &Client::Handle_OP_MoveItem;
 	ConnectedOpcodes[OP_MoveMultipleItems] = &Client::Handle_OP_MoveMultipleItems;
+	ConnectedOpcodes[OP_BarterOfflineMode] = &Client::Handle_OP_Offline;
 	ConnectedOpcodes[OP_Offline] = &Client::Handle_OP_Offline;
 	ConnectedOpcodes[OP_OpenContainer] = &Client::Handle_OP_OpenContainer;
 	ConnectedOpcodes[OP_OpenGuildTributeMaster] = &Client::Handle_OP_OpenGuildTributeMaster;
