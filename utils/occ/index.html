@@ -58,6 +58,18 @@
             </div>
           </section>
         </div>
+        <a
+          class="button button-quiet icon-button hero-guide-link"
+          href="https://docs.eqemu.dev/developer/packet-and-opcode-analysis/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open the packet and opcode analysis guide"
+          title="Open the packet and opcode analysis guide"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M11 10h2V8h-2zm0 8h2v-6h-2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16"/>
+          </svg>
+        </a>
         <div class="dropdown-shell">
           <button id="toggleSettingsButton" class="button icon-button" type="button" aria-expanded="false" aria-controls="settingsDrawer" aria-label="Open settings">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -231,7 +243,7 @@
           <label class="field">
             <span>Sort</span>
             <select id="sortFilter">
-              <option value="tracked">Tracked first</option>
+              <option value="tracked">Research first</option>
               <option value="recent">Recently touched</option>
               <option value="alert">Alert armed</option>
               <option value="count">Count</option>
@@ -243,9 +255,15 @@
               <option value="notes">Notes</option>
             </select>
           </label>
-          <label class="field field-checkbox">
-            <input id="trackedOnlyToggle" type="checkbox">
-            <span>Tracked only</span>
+          <label
+            class="field field-checkbox filter-toggle filter-toggle-alert"
+            title="Show only registry rows with live alerts armed."
+          >
+            <input id="alertOnlyToggle" type="checkbox">
+            <span class="filter-toggle-copy">
+              <span class="filter-toggle-label">Alert armed only</span>
+              <span class="filter-toggle-hint">Rows that can trigger live OCC alerts</span>
+            </span>
           </label>
           <button id="clearFiltersButton" class="button button-quiet" type="button">Clear Filters</button>
         </div>

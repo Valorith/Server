@@ -76,7 +76,7 @@ const state = {
   bookmarkModalOpen: false,
   liveMonitorOpen: false,
   renameOpcodeModalOpen: false,
-  filters: { search: "", status: "all", source: "all", sort: "tracked", sortDirection: "desc", trackedOnly: false },
+  filters: { search: "", status: "all", source: "all", sort: "tracked", sortDirection: "desc", alertOnly: false },
   pagination: { page: 1, pageSize: 50 },
   bookmarkPagination: { page: 1, pageSize: 6 },
   liveMonitorFilters: { tab: "feed", mode: "all", search: "", unknownOnly: false, countLimit: "" },
@@ -119,7 +119,7 @@ const els = {
   sourceFilter: document.querySelector("#sourceFilter"),
   sortFilter: document.querySelector("#sortFilter"),
   sortButtons: [...document.querySelectorAll(".sort-button")],
-  trackedOnlyToggle: document.querySelector("#trackedOnlyToggle"),
+  alertOnlyToggle: document.querySelector("#alertOnlyToggle"),
   clearFiltersButton: document.querySelector("#clearFiltersButton"),
   resultsSummary: document.querySelector("#resultsSummary"),
   registryActionMessage: document.querySelector("#registryActionMessage"),
@@ -2047,7 +2047,7 @@ function entryMatchesFilters(entry) {
 
   if (state.filters.status !== "all" && entry.status !== state.filters.status) return false;
   if (state.filters.source !== "all" && entry.source_type !== state.filters.source) return false;
-  if (state.filters.trackedOnly && !entry.tracked) return false;
+  if (state.filters.alertOnly && !entry.alertEnabled) return false;
   return true;
 }
 
@@ -2766,7 +2766,7 @@ function renderStats() {
   const stats = [
     ["Total Rows", all.length],
     ["Named", named],
-    ["Tracked", tracked],
+    ["Research", tracked],
     ["Validated", validated],
     ["Name Mismatches", mismatches],
   ];
@@ -2802,7 +2802,14 @@ function renderTable() {
   state.pagination.page = page;
   syncSortUi();
   els.opcodeTableBody.innerHTML = "";
-  els.resultsSummary.textContent = `${entries.length} visible of ${getAllEntries().length} total • ${entries.filter((entry) => entry.tracked).length} tracked in view`;
+  const summaryParts = [
+    `${entries.length} visible of ${getAllEntries().length} total`,
+    `${entries.filter((entry) => entry.tracked).length} research rows in view`,
+  ];
+  if (state.filters.alertOnly) {
+    summaryParts.push("alert filter on");
+  }
+  els.resultsSummary.textContent = summaryParts.join(" • ");
   els.selectionSummary.textContent = state.selectedId
     ? (() => {
       const selected = getEntryById(state.selectedId);
@@ -3279,7 +3286,7 @@ function renderInspector() {
   els.inspectorTitle.textContent = entry.rof2_name || entry.eqemu_name || entry.rof2_opcode || "Custom Entry";
   els.inspectorSourceLine.textContent = entry.source_type === "custom" ? "Custom entry" : getSourceLabel(entry.source_type);
   els.inspectorAlignment.textContent = getAlignmentLabel(entry.alignment);
-  els.inspectorTrackedState.textContent = entry.tracked ? "Tracked locally" : "Seed entry";
+  els.inspectorTrackedState.textContent = entry.tracked ? "Local research" : "Seed entry";
   els.inspectorLastTouched.textContent = formatTimestamp(entry.updatedAt);
   const customEditable = entry.source_type === "custom";
   els.inspectorOpcode.value = entry.rof2_opcode || "";
@@ -3903,14 +3910,14 @@ function attachEvents() {
       renderTable();
     });
   }
-  els.trackedOnlyToggle.addEventListener("change", (event) => { state.filters.trackedOnly = event.target.checked; resetToFirstPage(); renderTable(); });
+  els.alertOnlyToggle.addEventListener("change", (event) => { state.filters.alertOnly = event.target.checked; resetToFirstPage(); renderTable(); });
   els.clearFiltersButton.addEventListener("click", () => {
-    state.filters = { search: "", status: "all", source: "all", sort: "tracked", sortDirection: "desc", trackedOnly: false };
+    state.filters = { search: "", status: "all", source: "all", sort: "tracked", sortDirection: "desc", alertOnly: false };
     state.pagination.page = 1;
     els.searchInput.value = "";
     els.statusFilter.value = "all";
     els.sourceFilter.value = "all";
-    els.trackedOnlyToggle.checked = false;
+    els.alertOnlyToggle.checked = false;
     syncSortUi();
     renderTable();
   });
@@ -4240,15 +4247,22 @@ async function refreshOpcodeRegistry() {
 }
 
 async function loadInterfaces() {
+  let interfaceWarning = "";
   try {
     const response = await fetch(`${API_INTERFACES_URL}?t=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     state.interfaces = Array.isArray(payload.interfaces) ? payload.interfaces : [];
-  } catch {
+  } catch (error) {
+    interfaceWarning = error.message || "";
     state.interfaces = [{ value: "loopback", label: "Loopback", description: "Adapter for loopback traffic capture" }];
   }
   renderInterfaceOptions(getPreferredCaptureInterfaceValue(state.interfaces));
+  if (interfaceWarning) {
+    setSessionActionMessage(`${interfaceWarning} Capture setup stays unavailable until tshark is installed.`, "error");
+  }
 }
 
 async function bootstrap() {

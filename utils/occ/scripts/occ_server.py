@@ -1,6 +1,5 @@
 import json
 import mimetypes
-import re
 import subprocess
 import sys
 import time
@@ -9,18 +8,24 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from occ_runtime import (
+    CAPTURES_ROOT,
+    CREATE_NO_WINDOW,
+    HOST,
+    LIVE_SESSION_PATH,
+    PORT,
+    REPO_ROOT,
+    ROOT,
+    find_tshark_path,
+    list_capture_interfaces as runtime_list_capture_interfaces,
+    open_path,
+)
 
-ROOT = Path(__file__).resolve().parent.parent
-SESSION_SCRIPT = Path(r"C:\Users\rgagn\.codex\skills\eqemu-opcode-inspector\scripts\invoke_eqemu_tshark_session.ps1")
+WINDOWS_SESSION_SCRIPT = ROOT / "scripts" / "invoke_occ_tshark_session.ps1"
+PYTHON_SESSION_SCRIPT = ROOT / "scripts" / "occ_session.py"
 LIVE_SESSION_PATH = ROOT / "data" / "live-session.json"
 REGISTRY_BUILD_SCRIPT = ROOT / "scripts" / "build_rof2_reference.py"
 REGISTRY_DATA_PATH = ROOT / "data" / "rof2-reference.json"
-CAPTURES_ROOT = Path(r"C:\AkkStack\.codex\captures\sessions")
-HOST = "127.0.0.1"
-PORT = 8765
-CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-TSHARK_PATH = Path(r"C:\Program Files\Wireshark\tshark.exe")
-INTERFACE_LINE_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)(?:\s+\((.*)\))?\s*$")
 
 
 def load_live_session():
@@ -230,36 +235,78 @@ def build_session_command(payload):
         raise ValueError("Unsupported session action.")
 
     session_name = resolve_session_name(str(payload.get("sessionName") or "").strip())
-    command = [
-        "powershell",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        str(SESSION_SCRIPT),
-        "-Action",
-        action,
-        "-SessionName",
-        session_name,
-        "-Client",
-        "RoF2",
-    ]
+    if sys.platform.startswith("win"):
+        if not WINDOWS_SESSION_SCRIPT.exists():
+            raise RuntimeError(f"Missing OCC session helper: {WINDOWS_SESSION_SCRIPT}")
+        command = [
+            "powershell",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(WINDOWS_SESSION_SCRIPT),
+            "-Action",
+            action,
+            "-SessionName",
+            session_name,
+            "-Client",
+            "RoF2",
+        ]
+    else:
+        if not PYTHON_SESSION_SCRIPT.exists():
+            raise RuntimeError(f"Missing OCC session helper: {PYTHON_SESSION_SCRIPT}")
+        action_map = {
+            "Start": "start",
+            "Stop": "stop",
+            "Mark": "mark",
+            "Status": "status",
+            "ClearMarkers": "clear-markers",
+            "ClearDetections": "clear-detections",
+        }
+        command = [
+            sys.executable,
+            str(PYTHON_SESSION_SCRIPT),
+            "--action",
+            action_map[action],
+            "--session-name",
+            session_name,
+            "--client",
+            "RoF2",
+        ]
 
     if action == "Start":
-        command.extend([
-            "-Interface",
-            str(payload.get("interface") or "Ethernet"),
-            "-CaptureFilter",
-            str(payload.get("captureFilter") or "udp"),
-            "-DurationSec",
-            str(int(payload.get("durationSec") or 0)),
-        ])
+        if sys.platform.startswith("win"):
+            command.extend([
+                "-Interface",
+                str(payload.get("interface") or "Ethernet"),
+                "-CaptureFilter",
+                str(payload.get("captureFilter") or "udp"),
+                "-DurationSec",
+                str(int(payload.get("durationSec") or 0)),
+            ])
+        else:
+            command.extend([
+                "--interface",
+                str(payload.get("interface") or "Ethernet"),
+                "--capture-filter",
+                str(payload.get("captureFilter") or "udp"),
+                "--duration-sec",
+                str(int(payload.get("durationSec") or 0)),
+            ])
     elif action == "Mark":
-        command.extend([
-            "-Label",
-            str(payload.get("label") or "marker"),
-            "-Note",
-            str(payload.get("note") or ""),
-        ])
+        if sys.platform.startswith("win"):
+            command.extend([
+                "-Label",
+                str(payload.get("label") or "marker"),
+                "-Note",
+                str(payload.get("note") or ""),
+            ])
+        else:
+            command.extend([
+                "--label",
+                str(payload.get("label") or "marker"),
+                "--note",
+                str(payload.get("note") or ""),
+            ])
 
     return action, session_name, command
 
@@ -299,7 +346,7 @@ def run_session_script(payload):
     if action == "Start":
         process = subprocess.Popen(
             command,
-            cwd=str(ROOT.parent.parent),
+            cwd=str(REPO_ROOT),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -336,7 +383,7 @@ def run_session_script(payload):
 
     result = subprocess.run(
         command,
-        cwd=str(ROOT.parent.parent),
+        cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
         timeout=20,
@@ -370,78 +417,12 @@ def get_fresh_session_state():
 
 
 def list_capture_interfaces():
-    if not TSHARK_PATH.exists():
-        return [
-            {
-                "value": "loopback",
-                "label": "Loopback",
-                "device": r"\Device\NPF_Loopback",
-                "description": "Adapter for loopback traffic capture",
-            }
-        ]
+    tshark_path = find_tshark_path()
+    if not tshark_path:
+        launcher = "utils\\occ\\start_occ.ps1" if sys.platform.startswith("win") else "utils/occ/start_occ.sh"
+        raise RuntimeError(f"tshark is not installed. Run {launcher} for guided setup.")
 
-    result = subprocess.run(
-        [str(TSHARK_PATH), "-D"],
-        cwd=str(ROOT.parent.parent),
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-        creationflags=CREATE_NO_WINDOW,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Failed to list tshark interfaces.")
-
-    interfaces = []
-    seen_values = set()
-    for raw_line in result.stdout.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-
-        match = INTERFACE_LINE_RE.match(line)
-        if not match:
-            continue
-
-        _index, device, description = match.groups()
-        description = (description or "").strip()
-        if not device.startswith(r"\Device\NPF_") and device != r"\Device\NPF_Loopback":
-            continue
-
-        if device == r"\Device\NPF_Loopback":
-            value = "loopback"
-            label = "Loopback"
-        elif description:
-            value = description
-            label = description
-        else:
-            value = device
-            label = device
-
-        if value in seen_values:
-            continue
-        seen_values.add(value)
-
-        interfaces.append(
-            {
-                "value": value,
-                "label": label,
-                "device": device,
-                "description": description,
-            }
-        )
-
-    if "loopback" not in seen_values:
-        interfaces.append(
-            {
-                "value": "loopback",
-                "label": "Loopback",
-                "device": r"\Device\NPF_Loopback",
-                "description": "Adapter for loopback traffic capture",
-            }
-        )
-
-    return interfaces
+    return runtime_list_capture_interfaces(tshark_path)
 
 
 class OccRequestHandler(SimpleHTTPRequestHandler):
@@ -473,14 +454,7 @@ class OccRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/open-captures-folder":
             try:
                 CAPTURES_ROOT.mkdir(parents=True, exist_ok=True)
-                subprocess.Popen(
-                    ["explorer.exe", str(CAPTURES_ROOT)],
-                    cwd=str(ROOT.parent.parent),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=CREATE_NO_WINDOW,
-                )
+                open_path(CAPTURES_ROOT)
                 self.respond_json({"ok": True, "path": str(CAPTURES_ROOT)})
             except Exception as exc:
                 self.respond_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)

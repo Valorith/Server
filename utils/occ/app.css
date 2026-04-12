@@ -235,6 +235,45 @@ textarea {
   padding-top: 28px;
 }
 
+.filter-toggle {
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.filter-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-toggle-label {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.filter-toggle-hint {
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+
+.filter-toggle-alert {
+  background: rgba(240, 129, 129, 0.08);
+  border-color: rgba(240, 129, 129, 0.2);
+}
+
+.filter-toggle-alert input {
+  accent-color: #f29a9a;
+}
+
+.filter-toggle-alert:hover,
+.filter-toggle-alert:focus-within {
+  border-color: rgba(240, 129, 129, 0.36);
+  background: rgba(240, 129, 129, 0.12);
+}
+
 .field-checkbox-card {
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -298,6 +337,16 @@ textarea {
 
 .button-quiet {
   background: transparent;
+}
+
+.hero-guide-link {
+  color: var(--muted);
+}
+
+.hero-guide-link:hover,
+.hero-guide-link:focus-visible {
+  color: var(--text);
+  border-color: rgba(161, 201, 255, 0.28);
 }
 
 .custom-grid,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "EQEmu Opcode Inspector"
+  short_description: "Map EQEmu opcodes from captures."
+  default_prompt: "Use this skill to drive tshark for EQEmu capture, filtering, and payload export, use Wireshark only when GUI inspection is needed, resolve client opcode bytes to EQEmu OP_* names, and trace the result into the local EQEmu codebase."

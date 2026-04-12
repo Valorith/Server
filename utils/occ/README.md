@@ -17,13 +17,32 @@ OCC is not just a registry. It is the main working surface for:
 
 ## Launching OCC
 
-Run:
+Windows:
 
 ```powershell
 C:\AkkStack\code\utils\occ\start_occ.ps1
 ```
 
-OCC starts a local Python server and opens:
+Linux or macOS:
+
+```bash
+/path/to/repo/utils/occ/start_occ.sh
+```
+
+You can also call the shared Python launcher directly:
+
+```bash
+python3 /path/to/repo/utils/occ/scripts/start_occ.py
+```
+
+On first run, the launcher:
+- checks for Python 3
+- checks for `tshark`
+- offers guided `tshark` installation help if `tshark` is missing
+- starts the OCC bridge server
+- opens OCC in your default browser
+
+OCC then opens:
 
 ```text
 http://127.0.0.1:8765/
@@ -33,6 +52,22 @@ Notes:
 - OCC defaults new capture sessions to `Ethernet` when available.
 - The page talks to the local OCC bridge in [C:\AkkStack\code\utils\occ\scripts\occ_server.py](C:/AkkStack/code/utils/occ/scripts/occ_server.py).
 - Capture data is stored under `C:\AkkStack\.codex\captures\sessions\`.
+- An optional repo-local Codex skill snapshot now ships in [C:\AkkStack\code\utils\occ\codex-skill](C:/AkkStack/code/utils/occ/codex-skill/README.md).
+- Windows keeps the existing PowerShell launcher and session helper; Linux/macOS use the shared Python launcher and session helper.
+
+Useful launcher options:
+
+```powershell
+C:\AkkStack\code\utils\occ\start_occ.ps1 -NoBrowser
+C:\AkkStack\code\utils\occ\start_occ.ps1 -AutoInstallTshark
+```
+
+```bash
+/path/to/repo/utils/occ/start_occ.sh --no-browser
+/path/to/repo/utils/occ/start_occ.sh --auto-install-tshark
+```
+
+If the Windows Wireshark installer appears, keep the `TShark` feature enabled and allow `Npcap` if prompted. On Linux/macOS, follow the launcher guidance for your package manager and make sure your user has permission to capture packets.
 
 ## Main Areas
 
@@ -339,8 +374,16 @@ Important OCC files:
 - [C:\AkkStack\code\utils\occ\app.js](C:/AkkStack/code/utils/occ/app.js)
 - [C:\AkkStack\code\utils\occ\app.css](C:/AkkStack/code/utils/occ/app.css)
 - [C:\AkkStack\code\utils\occ\scripts\occ_server.py](C:/AkkStack/code/utils/occ/scripts/occ_server.py)
+- [C:\AkkStack\code\utils\occ\scripts\occ_runtime.py](C:/AkkStack/code/utils/occ/scripts/occ_runtime.py)
+- [C:\AkkStack\code\utils\occ\scripts\occ_session.py](C:/AkkStack/code/utils/occ/scripts/occ_session.py)
+- [C:\AkkStack\code\utils\occ\scripts\start_occ.py](C:/AkkStack/code/utils/occ/scripts/start_occ.py)
+- [C:\AkkStack\code\utils\occ\scripts\invoke_occ_tshark_session.ps1](C:/AkkStack/code/utils/occ/scripts/invoke_occ_tshark_session.ps1)
+- [C:\AkkStack\code\utils\occ\scripts\monitor_occ_live.py](C:/AkkStack/code/utils/occ/scripts/monitor_occ_live.py)
 - [C:\AkkStack\code\utils\occ\scripts\build_rof2_reference.py](C:/AkkStack/code/utils/occ/scripts/build_rof2_reference.py)
+- [C:\AkkStack\code\utils\occ\codex-skill\README.md](C:/AkkStack/code/utils/occ/codex-skill/README.md)
+- [C:\AkkStack\code\utils\occ\codex-skill\SKILL.md](C:/AkkStack/code/utils/occ/codex-skill/SKILL.md)
 - [C:\AkkStack\code\utils\occ\start_occ.ps1](C:/AkkStack/code/utils/occ/start_occ.ps1)
+- [C:\AkkStack\code\utils\occ\start_occ.sh](C:/AkkStack/code/utils/occ/start_occ.sh)
 
 Capture session data lives under:
 
