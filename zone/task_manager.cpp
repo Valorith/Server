@@ -67,8 +67,10 @@ bool TaskManager::LoadTasks(int single_task)
 	if (single_task == 0) {
 		m_task_data.reserve(repo_tasks.size());
 	} else if (repo_tasks.empty()) {
-		LogInfo("Loaded [0] task(s)");
-		LogInfo("Loaded [0] task activities");
+		LogInfo(
+			"Single-task reload for task [{}] found no replacement row; preserving existing in-memory definition",
+			single_task
+		);
 		return true;
 	}
 
