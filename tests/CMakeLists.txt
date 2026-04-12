@@ -8,6 +8,7 @@ set(tests_sources
 
 set(tests_headers
 	atobool_test.h
+	buyer_buy_lines_repository_test.h
 	data_verification_test.h
 	fixed_memory_test.h
 	fixed_memory_variable_test.h
