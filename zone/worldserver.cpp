@@ -4681,7 +4681,7 @@ void WorldServer::SendReloadTasks(uint8 reload_type, uint32 task_id) {
 	int32_t opt_param = 0;
 
 	if (reload_type == RELOADTASKSETS) {
-		opt_param = -1;
+		opt_param = ServerReload::TaskOptParam::ReloadSetsOnly;
 	} else if (reload_type == RELOADTASKS && task_id > 0) {
 		if (task_id > static_cast<uint32_t>(INT32_MAX)) {
 			LogError("task_id [{}] exceeds maximum encodable value for targeted task reload; falling back to full task reload", task_id);
@@ -5021,14 +5021,14 @@ void WorldServer::ProcessReload(const ServerReload::Request& request)
 
 		case ServerReload::Type::Tasks:
 			if (RuleB(Tasks, EnableTaskSystem)) {
-				if (request.opt_param < 0) {
+				if (request.opt_param == ServerReload::TaskOptParam::ReloadSetsOnly) {
 					TaskManager::Instance()->LoadTaskSets();
 					break;
 				}
 
 				entity_list.SaveAllClientsTaskState();
 
-				if (request.opt_param > 0) {
+				if (request.opt_param > ServerReload::TaskOptParam::ReloadAll) {
 					TaskManager::Instance()->LoadTasks(request.opt_param);
 					entity_list.ReloadAllClientsTaskState(request.opt_param);
 					break;

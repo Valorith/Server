@@ -134,6 +134,13 @@ namespace ServerReload {
 		return types;
 	}
 
+	// opt_param values used when reload type is Tasks.
+	// Positive values are interpreted as a single task ID to reload.
+	namespace TaskOptParam {
+		static constexpr int32_t ReloadAll      = 0;   // reload all tasks (default)
+		static constexpr int32_t ReloadSetsOnly = -1;  // reload task sets only
+	}
+
 	struct Request {
 		int      type                 = 0;
 		bool     requires_zone_booted = false;
