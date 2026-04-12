@@ -9,6 +9,7 @@ set(world_sources
     cli/cli_database_concurrency.cpp
     cli/cli_database_dump.cpp
     cli/cli_database_get_schema.cpp
+    cli/cli_database_item_unique_ids.cpp
     cli/cli_database_set_account_status.cpp
     cli/cli_database_updates.cpp
     cli/cli_database_version.cpp

@@ -36,6 +36,12 @@
 
 #include <set>
 
+// String IDs for ZoneWho rank display — these values must stay in sync with
+// the definitions in zone/string_ids.h (BUYER=6056, TRADER=12315).
+// They are duplicated here to avoid a world->zone header dependency.
+static constexpr uint32 WORLD_BUYER_STRING_ID  = 6056;   // "BUYER"
+static constexpr uint32 WORLD_TRADER_STRING_ID = 12315;  // "TRADER"
+
 uint32 numplayers = 0;	//this really wants to be a member variable of ClientList...
 
 ClientList::ClientList()
@@ -427,7 +433,10 @@ void ClientList::ClientUpdate(ZoneServer *zoneserver, ServerClientList_Struct *s
 	while (iterator.MoreElements()) {
 		if (iterator.GetData()->GetID() == scl->wid) {
 			cle = iterator.GetData();
-			if (scl->remove == 2) {
+			if (scl->remove == 3) {
+				cle->Update(zoneserver, scl, CLE_Status::OfflineMode);
+			}
+			else if (scl->remove == 2) {
 				cle->LeavingZone(zoneserver, CLE_Status::Offline);
 			}
 			else if (scl->remove == 1) {
@@ -441,7 +450,11 @@ void ClientList::ClientUpdate(ZoneServer *zoneserver, ServerClientList_Struct *s
 		}
 		iterator.Advance();
 	}
-	if (scl->remove == 2) {
+
+	if (scl->remove == 3) {
+		cle = new ClientListEntry(GetNextCLEID(), zoneserver, scl, CLE_Status::OfflineMode);
+	}
+	else if (scl->remove == 2) {
 		cle = new ClientListEntry(GetNextCLEID(), zoneserver, scl, CLE_Status::Online);
 	}
 	else if (scl->remove == 1) {
@@ -479,7 +492,10 @@ void ClientList::ClientUpdate(ZoneServer *zoneserver, ServerClientList_Struct *s
 		" LFGFromLevel [{}]"
 		" LFGToLevel [{}]"
 		" LFGMatchFilter [{}]"
-		" LFGComments [{}]",
+		" LFGComments [{}]"
+		" Trader [{}]"
+		" Buyer [{}]"
+		" Offline [{}]",
 		scl->remove,
 		scl->wid,
 		scl->IP,
@@ -506,7 +522,10 @@ void ClientList::ClientUpdate(ZoneServer *zoneserver, ServerClientList_Struct *s
 		scl->LFGFromLevel,
 		scl->LFGToLevel,
 		scl->LFGMatchFilter,
-		scl->LFGComments
+		scl->LFGComments,
+		scl->trader,
+		scl->buyer,
+		scl->offline
 	);
 
 	clientlist.Insert(cle);
@@ -784,7 +803,14 @@ void ClientList::SendWhoAll(uint32 fromid,const char* to, int16 admin, Who_All_S
 					rankstring = 0;
 					iterator.Advance();
 					continue;
-				} else if (cle->GetGM()) {
+				}
+				else if (cle->GetTrader()) {
+					rankstring = WORLD_TRADER_STRING_ID;
+				}
+				else if (cle->GetBuyer()) {
+					rankstring = WORLD_BUYER_STRING_ID;
+				}
+				else if (cle->GetGM()) {
 					if (cle->Admin() >= AccountStatus::GMImpossible) {
 						rankstring = 5021;
 					} else if (cle->Admin() >= AccountStatus::GMMgmt) {
@@ -875,6 +901,18 @@ void ClientList::SendWhoAll(uint32 fromid,const char* to, int16 admin, Who_All_S
 				char placcount[30]={0};
 				if (admin>=cle->Admin() && admin > AccountStatus::Player) {
 					strcpy(placcount,cle->AccountName());
+				}
+
+				if (cle->GetOfflineMode()) {
+					if (cle->GetTrader()) {
+						pidstring = 0x0430;
+						rankstring = 0xFFFFFFFF;
+					}
+
+					if (cle->GetBuyer()) {
+						pidstring = 0x0420;
+						rankstring = 0xFFFFFFFF;
+					}
 				}
 
 				memcpy(bufptr,&formatstring, sizeof(uint32));
@@ -1631,25 +1669,29 @@ void ClientList::OnTick(EQ::Timer *t)
 			outclient["Server"] = Json::Value();
 		}
 
-		outclient["CharID"] = cle->CharID();
-		outclient["name"] = cle->name();
-		outclient["zone"] = cle->zone();
-		outclient["instance"] = cle->instance();
-		outclient["level"] = cle->level();
-		outclient["class_"] = cle->class_();
-		outclient["race"] = cle->race();
-		outclient["Anon"] = cle->Anon();
+		outclient["CharID"]         = cle->CharID();
+		outclient["name"]           = cle->name();
+		outclient["zone"]           = cle->zone();
+		outclient["instance"]       = cle->instance();
+		outclient["level"]          = cle->level();
+		outclient["class_"]         = cle->class_();
+		outclient["race"]           = cle->race();
+		outclient["Anon"]           = cle->Anon();
 
-		outclient["TellsOff"] = cle->TellsOff();
-		outclient["GuildID"] = cle->GuildID();
-		outclient["LFG"] = cle->LFG();
-		outclient["GM"] = cle->GetGM();
-		outclient["LocalClient"] = cle->IsLocalClient();
-		outclient["LFGFromLevel"] = cle->GetLFGFromLevel();
-		outclient["LFGToLevel"] = cle->GetLFGToLevel();
+		outclient["TellsOff"]       = cle->TellsOff();
+		outclient["GuildID"]        = cle->GuildID();
+		outclient["LFG"]            = cle->LFG();
+		outclient["GM"]             = cle->GetGM();
+		outclient["LocalClient"]    = cle->IsLocalClient();
+		outclient["LFGFromLevel"]   = cle->GetLFGFromLevel();
+		outclient["LFGToLevel"]     = cle->GetLFGToLevel();
 		outclient["LFGMatchFilter"] = cle->GetLFGMatchFilter();
-		outclient["LFGComments"] = cle->GetLFGComments();
-		outclient["ClientVersion"] = cle->GetClientVersion();
+		outclient["LFGComments"]    = cle->GetLFGComments();
+		outclient["ClientVersion"]  = cle->GetClientVersion();
+		outclient["Trader"]         = cle->GetTrader();
+		outclient["Buyer"]          = cle->GetBuyer();
+		outclient["OfflineMode"]    = cle->GetOfflineMode();
+
 		out["data"].append(outclient);
 
 		Iterator.Advance();

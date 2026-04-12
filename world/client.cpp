@@ -37,10 +37,13 @@
 #include "common/races.h"
 #include "common/random.h"
 #include "common/repositories/account_repository.h"
+#include "common/repositories/buyer_repository.h"
 #include "common/repositories/character_data_repository.h"
 #include "common/repositories/group_id_repository.h"
 #include "common/repositories/inventory_repository.h"
+#include "common/repositories/offline_character_sessions_repository.h"
 #include "common/repositories/player_event_logs_repository.h"
+#include "common/repositories/trader_repository.h"
 #include "common/rulesys.h"
 #include "common/shareddb.h"
 #include "common/skill_caps.h"
@@ -59,6 +62,7 @@
 
 #include "zlib.h"
 #include <climits>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -88,6 +92,61 @@ extern uint32 numclients;
 extern volatile bool RunLoops;
 extern volatile bool UCSServerAvailable_;
 
+namespace {
+std::atomic<uint32> g_offline_reclaim_request_id{1};
+
+uint8 ToOfflineSessionMode(const std::string &mode)
+{
+	if (Strings::EqualFold(mode, "buyer")) {
+		return OfflineSessionModeBuyer;
+	}
+
+	if (Strings::EqualFold(mode, "trader")) {
+		return OfflineSessionModeTrader;
+	}
+
+	return OfflineSessionModeNone;
+}
+
+const char *OfflineSessionModeName(uint8 mode)
+{
+	switch (mode) {
+		case OfflineSessionModeTrader:
+			return "trader";
+		case OfflineSessionModeBuyer:
+			return "buyer";
+		default:
+			return "unknown";
+	}
+}
+
+const char *OfflineSessionReclaimResponseName(int8 response)
+{
+	switch (response) {
+		case OfflineSessionReclaimSuccess:
+			return "success";
+		case OfflineSessionReclaimStale:
+			return "stale";
+		case OfflineSessionReclaimBusy:
+			return "busy";
+		case OfflineSessionReclaimInvalid:
+			return "invalid";
+		default:
+			return "failed";
+	}
+}
+
+uint32 NextOfflineReclaimRequestId()
+{
+	auto request_id = g_offline_reclaim_request_id.fetch_add(1);
+	if (request_id == 0) {
+		request_id = g_offline_reclaim_request_id.fetch_add(1);
+	}
+
+	return request_id;
+}
+}
+
 // unused ATM, but here for reference, should match RoF2
 enum class NameApprovalResponse : int {
 	NotValid = -1, // string ID 1576
@@ -102,6 +161,7 @@ enum class NameApprovalResponse : int {
 Client::Client(EQStreamInterface* ieqs)
 :	autobootup_timeout(RuleI(World, ZoneAutobootTimeoutMS)),
 	connect(1000),
+	offline_reclaim_timeout(RuleI(World, OfflineSessionReclaimTimeoutMS)),
 	eqs(ieqs)
 {
 	// Live does not send datarate as of 3/11/2005
@@ -111,6 +171,7 @@ Client::Client(EQStreamInterface* ieqs)
 
 	autobootup_timeout.Disable();
 	connect.Disable();
+	offline_reclaim_timeout.Disable();
 	seen_character_select = false;
 	cle = 0;
 	zone_id = 0;
@@ -119,6 +180,14 @@ Client::Client(EQStreamInterface* ieqs)
 	zone_waiting_for_bootup = 0;
 	enter_world_triggered = false;
 	StartInTutorial = false;
+	offline_reclaim_pending = false;
+	offline_reclaim_request_id = 0;
+	offline_reclaim_character_id = 0;
+	offline_reclaim_zone_id = 0;
+	offline_reclaim_instance_id = 0;
+	offline_reclaim_entity_id = 0;
+	offline_reclaim_started_at = 0;
+	offline_reclaim_mode = OfflineSessionModeNone;
 
 	m_ClientVersion = eqs->ClientVersion();
 	m_ClientVersionBit = EQ::versions::ConvertClientVersionToClientVersionBit(m_ClientVersion);
@@ -932,6 +1001,17 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 		}
 	}
 
+	if (!BeginOfflineSessionReclaimIfNeeded()) {
+		return true;
+	}
+
+	ContinueEnterWorld();
+
+	return true;
+}
+
+void Client::ContinueEnterWorld()
+{
 	if(!is_player_zoning) {
 		GroupIdRepository::DeleteWhere(
 			database,
@@ -1066,8 +1146,225 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 	}
 
 	EnterWorld();
+}
+
+bool Client::BeginOfflineSessionReclaimIfNeeded()
+{
+	if (offline_reclaim_pending) {
+		return false;
+	}
+
+	const auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, GetAccountID());
+	if (!session.id) {
+		return true;
+	}
+
+	const auto mode = ToOfflineSessionMode(session.mode);
+	if (mode == OfflineSessionModeNone) {
+		LogWarning(
+			"Character entry for [{}] account [{}] found offline session with unexpected mode [{}]; attempting targeted reclaim using stored zone and entity metadata",
+			GetCharName(),
+			GetAccountID(),
+			session.mode
+		);
+	}
+
+	LogInfo(
+		"Character entry for [{}] account [{}] found offline {} session character_id [{}] zone_id [{}] instance_id [{}] entity_id [{}]",
+		GetCharName(),
+		GetAccountID(),
+		OfflineSessionModeName(mode),
+		session.character_id,
+		session.zone_id,
+		session.instance_id,
+		session.entity_id
+	);
+
+	auto zone_server = session.instance_id > 0 ?
+		ZSList::Instance()->FindByInstanceID(session.instance_id) :
+		ZSList::Instance()->FindByZoneID(session.zone_id);
+
+	auto clear_stale_session_locally = [this, &session, mode](const char *reason, const char *context) {
+		auto clear_started_at = Timer::GetCurrentTime();
+		if (!ClearStaleOfflineSession(session.character_id, reason)) {
+			LogError(
+				"Failed clearing stale offline {} session locally for account [{}] character [{}] after {}",
+				OfflineSessionModeName(mode),
+				GetAccountID(),
+				session.character_id,
+				context
+			);
+			TellClientZoneUnavailable();
+			return false;
+		}
+
+		LogInfo(
+			"Cleared stale offline {} session locally for account [{}] character [{}] after {} in [{}] ms",
+			OfflineSessionModeName(mode),
+			GetAccountID(),
+			session.character_id,
+			context,
+			Timer::GetCurrentTime() - clear_started_at
+		);
+		return true;
+	};
+
+	if (!zone_server) {
+		return clear_stale_session_locally("zone not booted", "zone not booted");
+	}
+
+	if (!zone_server->IsConnected()) {
+		LogWarning(
+			"Character entry for [{}] account [{}] found offline {} session owned by disconnected zone [{}] instance [{}]; failing entry and preserving session",
+			GetCharName(),
+			GetAccountID(),
+			OfflineSessionModeName(mode),
+			session.zone_id,
+			session.instance_id
+		);
+		TellClientZoneUnavailable();
+		return false;
+	}
+
+	auto pack = new ServerPacket(ServerOP_ReclaimOfflineSessionReq, sizeof(OfflineSessionReclaim_Struct));
+	auto reclaim = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
+	memset(pack->pBuffer, 0, pack->size);
+
+	offline_reclaim_pending      = true;
+	offline_reclaim_request_id   = NextOfflineReclaimRequestId();
+	offline_reclaim_character_id = session.character_id;
+	offline_reclaim_zone_id      = session.zone_id;
+	offline_reclaim_instance_id  = session.instance_id;
+	offline_reclaim_entity_id    = session.entity_id;
+	offline_reclaim_started_at   = Timer::GetCurrentTime();
+	offline_reclaim_mode         = mode;
+	offline_reclaim_timeout.Start(RuleI(World, OfflineSessionReclaimTimeoutMS));
+
+	reclaim->request_id   = offline_reclaim_request_id;
+	reclaim->account_id   = GetAccountID();
+	reclaim->character_id = session.character_id;
+	reclaim->zone_id      = session.zone_id;
+	reclaim->instance_id  = session.instance_id;
+	reclaim->entity_id    = session.entity_id;
+	reclaim->mode         = mode;
+	reclaim->response     = OfflineSessionReclaimFailed;
+
+	LogInfo(
+		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}]",
+		OfflineSessionModeName(mode),
+		offline_reclaim_request_id,
+		session.zone_id,
+		session.instance_id,
+		GetAccountID()
+	);
+
+	zone_server->SendPacket(pack);
+	safe_delete(pack);
+	return false;
+}
+
+bool Client::ClearStaleOfflineSession(uint32 character_id, const char *reason)
+{
+	database.TransactionBegin();
+	AccountRepository::SetOfflineStatus(database, GetAccountID(), false);
+	OfflineCharacterSessionsRepository::DeleteByAccountId(database, GetAccountID());
+
+	if (character_id) {
+		TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", character_id));
+		BuyerRepository::DeleteBuyer(database, character_id);
+	}
+
+	auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed clearing stale offline session for account [{}] character [{}] while {}: ({}) {}",
+			GetAccountID(),
+			character_id,
+			reason ? reason : "processing entry",
+			commit_result.ErrorNumber(),
+			commit_result.ErrorMessage()
+		);
+		return false;
+	}
 
 	return true;
+}
+
+void Client::ResetOfflineSessionReclaimState()
+{
+	offline_reclaim_timeout.Disable();
+	offline_reclaim_pending      = false;
+	offline_reclaim_request_id   = 0;
+	offline_reclaim_character_id = 0;
+	offline_reclaim_zone_id      = 0;
+	offline_reclaim_instance_id  = 0;
+	offline_reclaim_entity_id    = 0;
+	offline_reclaim_started_at   = 0;
+	offline_reclaim_mode         = OfflineSessionModeNone;
+}
+
+void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Struct &response)
+{
+	if (!offline_reclaim_pending) {
+		LogInfo(
+			"Ignoring offline reclaim response [{}] for account [{}] because no reclaim is pending",
+			response.request_id,
+			response.account_id
+		);
+		return;
+	}
+
+	if (response.request_id != offline_reclaim_request_id) {
+		LogInfo(
+			"Ignoring stale offline reclaim response [{}] for account [{}]; current request is [{}]",
+			response.request_id,
+			response.account_id,
+			offline_reclaim_request_id
+		);
+		return;
+	}
+
+	auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
+
+	LogInfo(
+		"Received offline {} reclaim response [{}] status [{}] after [{}] ms for account [{}]",
+		OfflineSessionModeName(offline_reclaim_mode),
+		response.request_id,
+		OfflineSessionReclaimResponseName(response.response),
+		elapsed_ms,
+		response.account_id
+	);
+
+	if (response.response == OfflineSessionReclaimSuccess) {
+		ResetOfflineSessionReclaimState();
+		ContinueEnterWorld();
+		return;
+	}
+
+	if (
+		response.response == OfflineSessionReclaimStale ||
+		response.response == OfflineSessionReclaimInvalid
+	) {
+		auto clear_started_at = Timer::GetCurrentTime();
+		auto clear_reason = response.response == OfflineSessionReclaimStale ?
+			"zone confirmed stale session" :
+			"zone confirmed invalid session state";
+		if (ClearStaleOfflineSession(offline_reclaim_character_id, clear_reason)) {
+			LogInfo(
+				"Cleared offline {} session for account [{}] after zone {} confirmation in [{}] ms",
+				OfflineSessionModeName(offline_reclaim_mode),
+				GetAccountID(),
+				OfflineSessionReclaimResponseName(response.response),
+				Timer::GetCurrentTime() - clear_started_at
+			);
+			ResetOfflineSessionReclaimState();
+			ContinueEnterWorld();
+			return;
+		}
+	}
+
+	TellClientZoneUnavailable();
 }
 
 bool Client::HandleDeleteCharacterPacket(const EQApplicationPacket *app) {
@@ -1220,6 +1517,18 @@ bool Client::Process() {
 
 	if (autobootup_timeout.Check()) {
 		LogInfo("Zone bootup timer expired, bootup failed or too slow");
+		TellClientZoneUnavailable();
+	}
+
+	if (offline_reclaim_pending && offline_reclaim_timeout.Check()) {
+		auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
+		LogWarning(
+			"Offline {} reclaim timed out after [{}] ms for account [{}] selected character [{}]; preserving session state because the zone did not answer before timeout",
+			OfflineSessionModeName(offline_reclaim_mode),
+			elapsed_ms,
+			GetAccountID(),
+			GetCharName()
+		);
 		TellClientZoneUnavailable();
 	}
 
@@ -1601,6 +1910,7 @@ void Client::TellClientZoneUnavailable() {
 	zone_waiting_for_bootup = 0;
 	enter_world_triggered = false;
 	autobootup_timeout.Disable();
+	ResetOfflineSessionReclaimState();
 }
 
 void Client::QueuePacket(const EQApplicationPacket* app, bool ack_req) {
@@ -2403,7 +2713,7 @@ bool Client::StoreCharacter(
 			e.ornament_icon       = inst->GetOrnamentationIcon();
 			e.ornament_idfile     = inst->GetOrnamentationIDFile();
 			e.ornament_hero_model = inst->GetOrnamentHeroModel();
-			e.guid                = inst->GetSerialNumber();
+			e.item_unique_id      = inst->GetUniqueID();
 
 			v.emplace_back(e);
 		}

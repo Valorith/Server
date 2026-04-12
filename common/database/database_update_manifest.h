@@ -7226,6 +7226,183 @@ ALTER TABLE `character_pet_buffs`
 )",
 		.content_schema_update = false
 	},
+	ManifestEntry{
+		.version = 9331,
+		.description = "2026_03_19_inventory_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `inventory` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `inventory`
+	DROP COLUMN `guid`,
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `ornament_hero_model`,
+	ADD UNIQUE INDEX `idx_item_unique_id` (`item_unique_id`);
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9332,
+		.description = "2026_03_19_sharedbank_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `sharedbank` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `sharedbank`
+	DROP COLUMN `guid`,
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `ornament_hero_model`,
+	ADD UNIQUE INDEX `idx_item_unique_id` (`item_unique_id`);
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9333,
+		.description = "2026_03_19_character_parcels_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `character_parcels` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_parcels`
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `aug_slot_6`;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9334,
+		.description = "2026_03_19_character_parcels_containers_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `character_parcels_containers` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_parcels_containers`
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `item_id`;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9335,
+		.description = "2026_03_19_inventory_snapshots_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `inventory_snapshots` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `inventory_snapshots`
+	DROP PRIMARY KEY,
+	CHANGE COLUMN `charid` `character_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' AFTER `time_index`,
+	CHANGE COLUMN `slotid` `slot_id` MEDIUMINT(7) UNSIGNED NOT NULL DEFAULT '0' AFTER `character_id`,
+	CHANGE COLUMN `itemid` `item_id` INT(11) UNSIGNED NULL DEFAULT '0' AFTER `slot_id`,
+	CHANGE COLUMN `augslot1` `augment_one` MEDIUMINT(7) UNSIGNED NOT NULL DEFAULT '0' AFTER `color`,
+	CHANGE COLUMN `augslot2` `augment_two` MEDIUMINT(7) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_one`,
+	CHANGE COLUMN `augslot3` `augment_three` MEDIUMINT(7) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_two`,
+	CHANGE COLUMN `augslot4` `augment_four` MEDIUMINT(7) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_three`,
+	CHANGE COLUMN `augslot5` `augment_five` MEDIUMINT(7) UNSIGNED NULL DEFAULT '0' AFTER `augment_four`,
+	CHANGE COLUMN `augslot6` `augment_six` MEDIUMINT(7) NOT NULL DEFAULT '0' AFTER `augment_five`,
+	CHANGE COLUMN `ornamenticon` `ornament_icon` INT(11) UNSIGNED NOT NULL DEFAULT '0' AFTER `custom_data`,
+	CHANGE COLUMN `ornamentidfile` `ornament_idfile` INT(11) UNSIGNED NOT NULL DEFAULT '0' AFTER `ornament_icon`,
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `ornament_hero_model`,
+	DROP COLUMN `guid`;
+
+ALTER TABLE `inventory_snapshots`
+	ADD PRIMARY KEY (`time_index`, `character_id`, `slot_id`) USING BTREE;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9336,
+		.description = "2026_03_19_trader_item_unique_id.sql",
+		.check = "SHOW COLUMNS FROM `trader` LIKE 'item_unique_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `trader`
+	CHANGE COLUMN `char_id` `character_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' AFTER `id`,
+	ADD COLUMN `item_unique_id` VARCHAR(16) NULL DEFAULT NULL AFTER `item_id`,
+	CHANGE COLUMN `aug_slot_1` `augment_one` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `item_unique_id`,
+	CHANGE COLUMN `aug_slot_2` `augment_two` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_one`,
+	CHANGE COLUMN `aug_slot_3` `augment_three` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_two`,
+	CHANGE COLUMN `aug_slot_4` `augment_four` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_three`,
+	CHANGE COLUMN `aug_slot_5` `augment_five` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_four`,
+	CHANGE COLUMN `aug_slot_6` `augment_six` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `augment_five`,
+	DROP COLUMN `item_sn`,
+	DROP INDEX `idx_trader_item_sn`,
+	DROP INDEX `idx_trader_char`,
+	ADD INDEX `charid_slotid` (`character_id`, `slot_id`) USING BTREE,
+	ADD INDEX `idx_trader_char` (`character_id`, `char_zone_id`, `char_zone_instance_id`) USING BTREE,
+	ADD UNIQUE INDEX `idx_item_unique_id` (`item_unique_id`);
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9337,
+		.description = "2026_03_19_account_offline_status.sql",
+		.check = "SHOW COLUMNS FROM `account` LIKE 'offline'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `account`
+	ADD COLUMN `offline` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `time_creation`;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9338,
+		.description = "2026_03_19_character_offline_transactions.sql",
+		.check = "SHOW TABLES LIKE 'character_offline_transactions'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE IF NOT EXISTS `character_offline_transactions` (
+	`id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`character_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`type` INT(10) UNSIGNED NULL DEFAULT '0',
+	`item_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+	`quantity` INT(11) NULL DEFAULT '0',
+	`price` BIGINT(20) UNSIGNED NULL DEFAULT '0',
+	`buyer_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+	PRIMARY KEY (`id`) USING BTREE,
+	INDEX `idx_character_id` (`character_id`)
+) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9339,
+		.description = "2026_03_19_offline_character_sessions.sql",
+		.check = "SHOW TABLES LIKE 'offline_character_sessions'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE IF NOT EXISTS `offline_character_sessions` (
+	`id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`account_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`character_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`mode` VARCHAR(16) NOT NULL DEFAULT 'trader',
+	`zone_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`instance_id` INT(11) NOT NULL DEFAULT '0',
+	`entity_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`started_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`) USING BTREE,
+	UNIQUE KEY `idx_account_id` (`account_id`),
+	KEY `idx_character_id` (`character_id`),
+	KEY `idx_zone_instance` (`zone_id`, `instance_id`)
+) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
+)",
+		.content_schema_update = false
+	},
+	ManifestEntry{
+		.version = 9340,
+		.description = "2026_03_19_item_unique_id_reservations.sql",
+		.check = "SHOW TABLES LIKE 'item_unique_id_reservations'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE IF NOT EXISTS `item_unique_id_reservations` (
+	`item_unique_id` VARCHAR(16) NOT NULL,
+	`reserved_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`item_unique_id`)
+) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
+)",
+		.content_schema_update = false
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,

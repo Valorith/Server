@@ -51,6 +51,7 @@ public:
 	void	SendPostEnterWorld();
 	void    SendGuildTributeFavorAndTimer(uint32 favor, uint32 time_remaining);
 	void    SendGuildTributeOptInToggle(const GuildTributeMemberToggle* in);
+	void	HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Struct &response);
 
 	inline uint32		GetIP()				{ return ip; }
 	inline uint16		GetPort()			{ return port; }
@@ -100,6 +101,15 @@ private:
 	ClientListEntry* cle;
 	Timer	connect;
 	bool seen_character_select;
+	Timer offline_reclaim_timeout;
+	bool  offline_reclaim_pending;
+	uint32 offline_reclaim_request_id;
+	uint32 offline_reclaim_character_id;
+	uint32 offline_reclaim_zone_id;
+	int32  offline_reclaim_instance_id;
+	uint32 offline_reclaim_entity_id;
+	uint32 offline_reclaim_started_at;
+	uint8  offline_reclaim_mode;
 
 	bool HandlePacket(const EQApplicationPacket *app);
 	bool HandleNameApprovalPacket(const EQApplicationPacket *app);
@@ -114,6 +124,10 @@ private:
 	bool ChecksumVerificationCRCEQGame(uint64 checksum);
 	bool ChecksumVerificationCRCSkillCaps(uint64 checksum);
 	bool ChecksumVerificationCRCBaseData(uint64 checksum);
+	void ContinueEnterWorld();
+	bool BeginOfflineSessionReclaimIfNeeded();
+	bool ClearStaleOfflineSession(uint32 character_id, const char *reason);
+	void ResetOfflineSessionReclaimState();
 
 	EQStreamInterface* eqs;
 	bool CanTradeFVNoDropItem();

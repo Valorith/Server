@@ -634,4 +634,3 @@ void WorldBoot::SendDiscordMessage(int webhook_id, const std::string &message)
 		safe_delete(pack);
 	}
 }
-

@@ -876,7 +876,7 @@ bool WorldDatabase::GetCharSelInventory(
 			continue;
 		}
 
-		EQ::ItemInstance *inst = content_db.CreateBaseItem(item, e.charges);
+		EQ::ItemInstance *inst = content_db.CreateBaseItem(item, e.charges, e.item_unique_id);
 
 		if (!inst) {
 			continue;

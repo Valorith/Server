@@ -229,10 +229,12 @@
 #define ServerOP_LSPlayerJoinWorld	0x3007
 #define ServerOP_LSPlayerZoneChange	0x3008
 
-#define	ServerOP_UsertoWorldReqLeg	0xAB00
-#define	ServerOP_UsertoWorldRespLeg	0xAB01
-#define	ServerOP_UsertoWorldReq		0xAB02
-#define	ServerOP_UsertoWorldResp	0xAB03
+#define ServerOP_UsertoWorldReqLeg         0xAB00
+#define ServerOP_UsertoWorldRespLeg        0xAB01
+#define ServerOP_UsertoWorldReq            0xAB02
+#define ServerOP_UsertoWorldResp           0xAB03
+#define ServerOP_ReclaimOfflineSessionReq  0xAB04
+#define ServerOP_ReclaimOfflineSessionResp 0xAB05
 
 #define ServerOP_LauncherConnectInfo	0x3000
 #define ServerOP_LauncherZoneRequest	0x3001
@@ -360,14 +362,37 @@ enum {	QSG_LFGuild_PlayerMatches = 0, QSG_LFGuild_UpdatePlayerInfo, QSG_LFGuild_
 
 
 enum {
-	UserToWorldStatusWorldUnavail = 0,
-	UserToWorldStatusSuccess = 1,
-	UserToWorldStatusSuspended = -1,
-	UserToWorldStatusBanned = -2,
-	UserToWorldStatusWorldAtCapacity = -3,
-	UserToWorldStatusAlreadyOnline = -4
+	UserToWorldStatusWorldUnavail        = 0,
+	UserToWorldStatusSuccess             = 1,
+	UserToWorldStatusSuspended           = -1,
+	UserToWorldStatusBanned              = -2,
+	UserToWorldStatusWorldAtCapacity     = -3,
+	UserToWorldStatusAlreadyOnline       = -4
 };
 
+enum {
+	BazaarPurchaseFailed                    = 0,
+	BazaarPurchaseSuccess                   = 1,
+	BazaarPurchaseBuyerCompleteSendToSeller = 2,
+	BazaarPurchaseSellerCompleteSendToBuyer = 3,
+	BazaarPurchaseBuyerFailed               = 4,
+	BazaarPurchaseBuyerSuccess              = 5,
+	BazaarPurchaseTraderFailed = 6
+};
+
+enum : uint8 {
+	OfflineSessionModeNone   = 0,
+	OfflineSessionModeTrader = 1,
+	OfflineSessionModeBuyer  = 2
+};
+
+enum : int8 {
+	OfflineSessionReclaimFailed = 0,
+	OfflineSessionReclaimSuccess = 1,
+	OfflineSessionReclaimStale = 2,
+	OfflineSessionReclaimBusy = 3,
+	OfflineSessionReclaimInvalid = 4
+};
 /************ PACKET RELATED STRUCT ************/
 class ServerPacket
 {
@@ -559,6 +584,9 @@ struct ServerClientList_Struct {
 	uint8	LFGToLevel;
 	bool	LFGMatchFilter;
 	char	LFGComments[64];
+	bool    trader;
+	bool    buyer;
+	bool    offline;
 };
 
 struct ServerClientListKeepAlive_Struct {
@@ -832,6 +860,18 @@ struct WorldToZone_Struct {
 	uint32	account_id;
 	int8	response;
 };
+
+struct OfflineSessionReclaim_Struct {
+	uint32 request_id;
+	uint32 account_id;
+	uint32 character_id;
+	uint32 zone_id;
+	int32  instance_id;
+	uint32 entity_id;
+	uint8  mode;
+	int8   response;
+};
+
 struct WorldShutDown_Struct {
 	uint32	time;
 	uint32	interval;
@@ -1022,6 +1062,7 @@ struct ServerGuildMemberUpdate_Struct {
 	char   member_name[64];
 	uint32 zone_id;
 	uint32 last_seen;
+	uint32 offline_mode;
 };
 
 struct ServerGuildPermissionUpdate_Struct {
@@ -1776,8 +1817,15 @@ struct BazaarPurchaseMessaging_Struct {
 	uint32           item_aug_5;
 	uint32           item_aug_6;
 	uint32           buyer_id;
-	uint32           item_quantity_available;
+	uint32           item_quantity;
+	int16            item_charges;
 	uint32           id;
+	uint32           trader_zone_id;
+	uint32           trader_zone_instance_id;
+	uint32           buyer_zone_id;
+	uint32           buyer_zone_instance_id;
+	uint32           transaction_status;
+	bool             offline_purchase;
 };
 
 #pragma pack(pop)
