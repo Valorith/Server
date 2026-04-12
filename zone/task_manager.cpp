@@ -113,6 +113,9 @@ bool TaskManager::LoadTasks(int single_task)
 		ti.request_timer_seconds = task.request_timer_seconds;
 		ti.activity_count        = 0;
 
+		// Full reloads clear the map up front, so try_emplace preserves the existing
+		// bulk-load behavior. Single-task reloads must replace an existing definition
+		// when a fresh row is returned from the database.
 		if (single_task == 0) {
 			m_task_data.try_emplace(task_id, std::move(ti));
 		} else {
