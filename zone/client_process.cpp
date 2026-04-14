@@ -79,10 +79,6 @@ const char* GetDisconnectReason(const Client* client, const char* reason)
 		return reason;
 	}
 
-	if (client->IsZoning()) {
-		return "zone_transition";
-	}
-
 	if (client->GetClientState() == Mob::CLIENT_KICKED) {
 		return "kick";
 	}
@@ -710,7 +706,7 @@ bool Client::Process() {
 					myraid->MemberZoned(this);
 				}
 			}
-			OnDisconnect(false, bZoning ? "zone_transition" : (instalog ? "instalog" : "disconnect"));
+			OnDisconnect(false, instalog ? "instalog" : "disconnect");
 			return false;
 		}
 		else
@@ -738,6 +734,7 @@ bool Client::Process() {
 
 void Client::TryTriggerDisconnectEvent(const char* reason, bool hard_disconnect)
 {
+	// EVENT_DISCONNECT is only for leaving the game server, not zone-to-zone transfers.
 	if (m_disconnect_event_fired || bZoning || !parse->PlayerHasQuestSub(EVENT_DISCONNECT)) {
 		return;
 	}
