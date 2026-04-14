@@ -777,8 +777,8 @@ void Client::TryTriggerDisconnectEvent(const char* reason, bool hard_disconnect)
 	std::vector<std::any> extra_pointers;
 	extra_pointers.emplace_back(context);
 
-	parse->EventPlayer(EVENT_DISCONNECT, this, "", 0, &extra_pointers);
 	m_disconnect_event_fired = true;
+	parse->EventPlayer(EVENT_DISCONNECT, this, "", 0, &extra_pointers);
 }
 
 /* Just a set of actions preformed all over in Client::Process */
