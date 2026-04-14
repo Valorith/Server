@@ -1845,6 +1845,82 @@ void handle_player_connect(
 	lua_setfield(L, -2, "is_first_login");
 }
 
+void handle_player_disconnect(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+)
+{
+	if (!extra_pointers || extra_pointers->empty()) {
+		return;
+	}
+
+	const auto& context = std::any_cast<const PlayerDisconnectEventContext&>(extra_pointers->at(0));
+
+	lua_pushstring(L, context.disconnect_reason.c_str());
+	lua_setfield(L, -2, "disconnect_reason");
+
+	lua_pushstring(L, context.character_name.c_str());
+	lua_setfield(L, -2, "character_name");
+
+	lua_pushstring(L, context.account_name.c_str());
+	lua_setfield(L, -2, "account_name");
+
+	lua_pushinteger(L, context.character_id);
+	lua_setfield(L, -2, "character_id");
+
+	lua_pushinteger(L, context.account_id);
+	lua_setfield(L, -2, "account_id");
+
+	lua_pushinteger(L, context.zone_id);
+	lua_setfield(L, -2, "from_zone_id");
+
+	lua_pushinteger(L, context.instance_id);
+	lua_setfield(L, -2, "from_instance_id");
+
+	lua_pushinteger(L, context.instance_version);
+	lua_setfield(L, -2, "from_instance_version");
+
+	lua_pushstring(L, context.from_zone_short_name.c_str());
+	lua_setfield(L, -2, "from_zone_short_name");
+
+	lua_pushstring(L, context.from_zone_long_name.c_str());
+	lua_setfield(L, -2, "from_zone_long_name");
+
+	lua_pushnumber(L, context.from_x);
+	lua_setfield(L, -2, "from_x");
+
+	lua_pushnumber(L, context.from_y);
+	lua_setfield(L, -2, "from_y");
+
+	lua_pushnumber(L, context.from_z);
+	lua_setfield(L, -2, "from_z");
+
+	lua_pushnumber(L, context.from_h);
+	lua_setfield(L, -2, "from_h");
+
+	lua_pushboolean(L, context.is_linkdead);
+	lua_setfield(L, -2, "is_linkdead");
+
+	lua_pushboolean(L, context.is_kicked);
+	lua_setfield(L, -2, "is_kicked");
+
+	lua_pushboolean(L, context.is_client_error);
+	lua_setfield(L, -2, "is_client_error");
+
+	lua_pushboolean(L, context.is_zoning);
+	lua_setfield(L, -2, "is_zoning");
+
+	lua_pushboolean(L, context.is_insta_logout);
+	lua_setfield(L, -2, "is_insta_logout");
+
+	lua_pushboolean(L, context.is_gm);
+	lua_setfield(L, -2, "is_gm");
+}
+
 void handle_player_pet_command(
 	QuestInterface *parse,
 	lua_State* L,

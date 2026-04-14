@@ -88,6 +88,36 @@ namespace EQ
 
 extern Zone* zone;
 
+struct PlayerDisconnectEventContext {
+	std::string disconnect_reason;
+	std::string client_state_name;
+	std::string character_name;
+	std::string account_name;
+	std::string from_zone_short_name;
+	std::string from_zone_long_name;
+	uint32      character_id       = 0;
+	uint32      account_id         = 0;
+	uint32      zone_id            = 0;
+	uint32      instance_id        = 0;
+	uint32      instance_version   = 0;
+	uint32      client_state       = 0;
+	uint32      disconnect_time    = 0;
+	uint16      race_id            = 0;
+	uint8       class_id           = 0;
+	uint8       level              = 0;
+	bool        is_hard_disconnect = false;
+	bool        is_linkdead        = false;
+	bool        is_kicked          = false;
+	bool        is_client_error    = false;
+	bool        is_zoning          = false;
+	bool        is_insta_logout    = false;
+	bool        is_gm              = false;
+	float       from_x             = 0.0f;
+	float       from_y             = 0.0f;
+	float       from_z             = 0.0f;
+	float       from_h             = 0.0f;
+};
+
 class CLIENTPACKET
 {
 public:
@@ -497,6 +527,7 @@ public:
 	inline bool ClientDataLoaded() const { return client_data_loaded; }
 	inline bool Connected() const { return (client_state == CLIENT_CONNECTED); }
 	inline bool InZone() const { return (client_state == CLIENT_CONNECTED || client_state == CLIENT_LINKDEAD); }
+	inline CLIENT_CONN_STATUS GetClientState() const { return client_state; }
 	inline void Disconnect() {
 		if (eqs) {
 			eqs->Close();
@@ -829,7 +860,7 @@ public:
 	void GoToDeath();
 	inline const int32 GetInstanceID() const { return zone->GetInstanceID(); }
 	void SetZoning(bool in) { bZoning = in; }
-	bool IsZoning() { return bZoning; }
+	bool IsZoning() const { return bZoning; }
 	// "Pending" here means a server-initiated MovePC/zone request represented by a
 	// non-ZoneUnsolicited zone_mode; it is not a general indicator for all zoning states.
 	bool HasPendingMovePC() const { return zone_mode != ZoneUnsolicited; }
@@ -938,7 +969,8 @@ public:
 
 	bool TGB() const { return tgb; }
 
-	void OnDisconnect(bool hard_disconnect);
+	void OnDisconnect(bool hard_disconnect, const char* reason = nullptr);
+	void TryTriggerDisconnectEvent(const char* reason, bool hard_disconnect);
 
 	uint16 GetSkillPoints() { return m_pp.points;}
 	void SetSkillPoints(int inp) { m_pp.points = inp;}
@@ -2259,6 +2291,7 @@ private:
 	bool npcflag;
 	uint8 npclevel;
 	bool bZoning;
+	bool m_disconnect_event_fired;
 	bool tgb;
 	bool instalog;
 	int32 last_reported_mana;
