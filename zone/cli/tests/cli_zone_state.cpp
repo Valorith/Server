@@ -1014,6 +1014,36 @@ inline void TestBuffOverwriteStacking()
 	RunTest("Buff stacking > Fire-only buff overwritten", false, test_npc->FindBuff(fire_resist_spell_id));
 	RunTest("Buff stacking > Cold-only buff overwritten", false, test_npc->FindBuff(cold_resist_spell_id));
 	RunTest("Buff stacking > Combined resist buff remains", true, test_npc->FindBuff(fire_and_cold_resist_spell_id));
+
+	constexpr uint16 shield_of_words_spell_id   = 20;   // AC-only cleric buff
+	constexpr uint16 resolution_spell_id        = 314;  // HP/AC cleric buff
+	constexpr uint16 gift_of_aegolism_spell_id  = 2122; // Ancient: Gift of Aegolism
+
+	test_npc->BuffFadeAll();
+
+	RunTest(
+		"Buff stacking > Shield of Words lands",
+		true,
+		test_npc->AddBuff(test_npc, shield_of_words_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Resolution lands",
+		true,
+		test_npc->AddBuff(test_npc, resolution_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Resolution and Shield of Words coexist before Gift",
+		true,
+		test_npc->FindBuff(shield_of_words_spell_id) && test_npc->FindBuff(resolution_spell_id)
+	);
+	RunTest(
+		"Buff stacking > Gift of Aegolism lands",
+		true,
+		test_npc->AddBuff(test_npc, gift_of_aegolism_spell_id, 10) >= 0
+	);
+	RunTest("Buff stacking > Shield of Words overwritten by Gift", false, test_npc->FindBuff(shield_of_words_spell_id));
+	RunTest("Buff stacking > Resolution overwritten by Gift", false, test_npc->FindBuff(resolution_spell_id));
+	RunTest("Buff stacking > Gift of Aegolism remains", true, test_npc->FindBuff(gift_of_aegolism_spell_id));
 }
 
 inline void TestZLocationDrift()
