@@ -1863,9 +1863,6 @@ void handle_player_disconnect(
 	lua_pushstring(L, context.disconnect_reason.c_str());
 	lua_setfield(L, -2, "disconnect_reason");
 
-	lua_pushstring(L, context.client_state_name.c_str());
-	lua_setfield(L, -2, "client_state_name");
-
 	lua_pushstring(L, context.character_name.c_str());
 	lua_setfield(L, -2, "character_name");
 
@@ -1904,24 +1901,6 @@ void handle_player_disconnect(
 
 	lua_pushnumber(L, context.from_h);
 	lua_setfield(L, -2, "from_h");
-
-	lua_pushinteger(L, context.client_state);
-	lua_setfield(L, -2, "client_state");
-
-	lua_pushinteger(L, context.disconnect_time);
-	lua_setfield(L, -2, "disconnect_time");
-
-	lua_pushinteger(L, context.race_id);
-	lua_setfield(L, -2, "race_id");
-
-	lua_pushinteger(L, context.class_id);
-	lua_setfield(L, -2, "class_id");
-
-	lua_pushinteger(L, context.level);
-	lua_setfield(L, -2, "level");
-
-	lua_pushboolean(L, context.is_hard_disconnect);
-	lua_setfield(L, -2, "is_hard_disconnect");
 
 	lua_pushboolean(L, context.is_linkdead);
 	lua_setfield(L, -2, "is_linkdead");

@@ -2524,7 +2524,6 @@ void PerlembParser::ExportEventVariables(
 				const auto& context = std::any_cast<const PlayerDisconnectEventContext&>(extra_pointers->at(0));
 
 				ExportVar(package_name.c_str(), "disconnect_reason", context.disconnect_reason.c_str());
-				ExportVar(package_name.c_str(), "client_state_name", context.client_state_name.c_str());
 				ExportVar(package_name.c_str(), "character_name", context.character_name.c_str());
 				ExportVar(package_name.c_str(), "account_name", context.account_name.c_str());
 				ExportVar(package_name.c_str(), "character_id", context.character_id);
@@ -2538,12 +2537,6 @@ void PerlembParser::ExportEventVariables(
 				ExportVar(package_name.c_str(), "from_y", context.from_y);
 				ExportVar(package_name.c_str(), "from_z", context.from_z);
 				ExportVar(package_name.c_str(), "from_h", context.from_h);
-				ExportVar(package_name.c_str(), "client_state", context.client_state);
-				ExportVar(package_name.c_str(), "disconnect_time", context.disconnect_time);
-				ExportVar(package_name.c_str(), "race_id", context.race_id);
-				ExportVar(package_name.c_str(), "class_id", context.class_id);
-				ExportVar(package_name.c_str(), "level", context.level);
-				ExportVar(package_name.c_str(), "is_hard_disconnect", context.is_hard_disconnect);
 				ExportVar(package_name.c_str(), "is_linkdead", context.is_linkdead);
 				ExportVar(package_name.c_str(), "is_kicked", context.is_kicked);
 				ExportVar(package_name.c_str(), "is_client_error", context.is_client_error);
