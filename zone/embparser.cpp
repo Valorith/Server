@@ -2519,6 +2519,42 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_DISCONNECT: {
+			if (extra_pointers && extra_pointers->size() == 1) {
+				const auto& context = std::any_cast<const PlayerDisconnectEventContext&>(extra_pointers->at(0));
+
+				ExportVar(package_name.c_str(), "disconnect_reason", context.disconnect_reason.c_str());
+				ExportVar(package_name.c_str(), "client_state_name", context.client_state_name.c_str());
+				ExportVar(package_name.c_str(), "character_name", context.character_name.c_str());
+				ExportVar(package_name.c_str(), "account_name", context.account_name.c_str());
+				ExportVar(package_name.c_str(), "character_id", context.character_id);
+				ExportVar(package_name.c_str(), "account_id", context.account_id);
+				ExportVar(package_name.c_str(), "from_zone_id", context.zone_id);
+				ExportVar(package_name.c_str(), "from_instance_id", context.instance_id);
+				ExportVar(package_name.c_str(), "from_instance_version", context.instance_version);
+				ExportVar(package_name.c_str(), "from_zone_short_name", context.from_zone_short_name.c_str());
+				ExportVar(package_name.c_str(), "from_zone_long_name", context.from_zone_long_name.c_str());
+				ExportVar(package_name.c_str(), "from_x", context.from_x);
+				ExportVar(package_name.c_str(), "from_y", context.from_y);
+				ExportVar(package_name.c_str(), "from_z", context.from_z);
+				ExportVar(package_name.c_str(), "from_h", context.from_h);
+				ExportVar(package_name.c_str(), "client_state", context.client_state);
+				ExportVar(package_name.c_str(), "disconnect_time", context.disconnect_time);
+				ExportVar(package_name.c_str(), "race_id", context.race_id);
+				ExportVar(package_name.c_str(), "class_id", context.class_id);
+				ExportVar(package_name.c_str(), "level", context.level);
+				ExportVar(package_name.c_str(), "is_hard_disconnect", context.is_hard_disconnect);
+				ExportVar(package_name.c_str(), "is_linkdead", context.is_linkdead);
+				ExportVar(package_name.c_str(), "is_kicked", context.is_kicked);
+				ExportVar(package_name.c_str(), "is_client_error", context.is_client_error);
+				ExportVar(package_name.c_str(), "is_zoning", context.is_zoning);
+				ExportVar(package_name.c_str(), "is_insta_logout", context.is_insta_logout);
+				ExportVar(package_name.c_str(), "is_gm", context.is_gm);
+			}
+
+			break;
+		}
+
 		case EVENT_CONNECT: {
 			Seperator sep(data);
 			ExportVar(package_name.c_str(), "last_login", sep.arg[0]);

@@ -232,6 +232,7 @@ Client::Client() : Mob(
 	zonesummon_id = 0;
 	zonesummon_ignorerestrictions = 0;
 	bZoning              = false;
+	m_disconnect_event_fired = false;
 	m_lock_save_position = false;
 	zone_mode            = ZoneUnsolicited;
 	casting_spell_id = 0;
@@ -542,6 +543,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	zonesummon_id = 0;
 	zonesummon_ignorerestrictions = 0;
 	bZoning              = false;
+	m_disconnect_event_fired = false;
 	m_lock_save_position = false;
 	zone_mode            = ZoneUnsolicited;
 	casting_spell_id = 0;

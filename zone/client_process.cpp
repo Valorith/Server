@@ -49,6 +49,57 @@ extern volatile bool is_zone_loaded;
 extern WorldServer worldserver;
 extern EntityList entity_list;
 
+namespace {
+
+const char* GetClientStateName(Mob::CLIENT_CONN_STATUS state)
+{
+	switch (state) {
+		case Mob::CLIENT_CONNECTING:
+			return "connecting";
+		case Mob::CLIENT_CONNECTED:
+			return "connected";
+		case Mob::CLIENT_LINKDEAD:
+			return "linkdead";
+		case Mob::CLIENT_KICKED:
+			return "kicked";
+		case Mob::DISCONNECTED:
+			return "disconnected";
+		case Mob::CLIENT_ERROR:
+			return "client_error";
+		case Mob::CLIENT_CONNECTINGALL:
+			return "connecting_all";
+		default:
+			return "unknown";
+	}
+}
+
+const char* GetDisconnectReason(const Client* client, const char* reason)
+{
+	if (reason && reason[0]) {
+		return reason;
+	}
+
+	if (client->IsZoning()) {
+		return "zone_transition";
+	}
+
+	if (client->GetClientState() == Mob::CLIENT_KICKED) {
+		return "kick";
+	}
+
+	if (client->GetClientState() == Mob::CLIENT_ERROR) {
+		return "client_error";
+	}
+
+	if (client->IsLD()) {
+		return "linkdead";
+	}
+
+	return "disconnect";
+}
+
+}
+
 bool Client::Process() {
 	bool ret = true;
 
@@ -175,9 +226,7 @@ bool Client::Process() {
 
 			RecordPlayerEventLog(PlayerEvent::WENT_OFFLINE, PlayerEvent::EmptyEvent{});
 
-			if (parse->PlayerHasQuestSub(EVENT_DISCONNECT)) {
-				parse->EventPlayer(EVENT_DISCONNECT, this, "", 0);
-			}
+			TryTriggerDisconnectEvent("linkdead_timeout", true);
 
 			return false; //delete client
 		}
@@ -560,7 +609,7 @@ bool Client::Process() {
 
 	if (client_state == CLIENT_KICKED) {
 		Save();
-		OnDisconnect(true);
+		OnDisconnect(true, "kick");
 		std::cout << "Client disconnected (cs=k): " << GetName() << std::endl;
 		return false;
 	}
@@ -573,13 +622,13 @@ bool Client::Process() {
 	}
 
 	if (client_state == CLIENT_ERROR) {
-		OnDisconnect(true);
+		OnDisconnect(true, "client_error");
 		std::cout << "Client disconnected (cs=e): " << GetName() << std::endl;
 		return false;
 	}
 
 	if (eqs && client_state != CLIENT_LINKDEAD && !eqs->CheckState(ESTABLISHED)) {
-		OnDisconnect(true);
+		OnDisconnect(true, "socket_closed");
 		LogInfo("Client linkdead: {}", name);
 
 		if (Admin() > AccountStatus::GMAdmin) {
@@ -661,14 +710,14 @@ bool Client::Process() {
 					myraid->MemberZoned(this);
 				}
 			}
-			OnDisconnect(false);
+			OnDisconnect(false, bZoning ? "zone_transition" : (instalog ? "instalog" : "disconnect"));
 			return false;
 		}
 		else
 		{
 			LinkDead();
 		}
-		OnDisconnect(true);
+		OnDisconnect(true, "linkdead");
 	}
 	// Feign Death 2 minutes and zone forgets you
 	if (forget_timer.Check()) {
@@ -687,8 +736,55 @@ bool Client::Process() {
 	return ret;
 }
 
+void Client::TryTriggerDisconnectEvent(const char* reason, bool hard_disconnect)
+{
+	if (m_disconnect_event_fired || bZoning || !parse->PlayerHasQuestSub(EVENT_DISCONNECT)) {
+		return;
+	}
+
+	PlayerDisconnectEventContext context{};
+	context.disconnect_reason   = GetDisconnectReason(this, reason);
+	context.client_state_name   = GetClientStateName(GetClientState());
+	context.character_name      = GetName();
+	context.account_name        = AccountName();
+	context.character_id        = CharacterID();
+	context.account_id          = AccountID();
+	context.zone_id             = zone ? zone->GetZoneID() : 0;
+	context.instance_id         = zone ? zone->GetInstanceID() : 0;
+	context.instance_version    = zone ? zone->GetInstanceVersion() : 0;
+	context.client_state        = static_cast<uint32>(GetClientState());
+	context.disconnect_time     = static_cast<uint32>(time(nullptr));
+	context.race_id             = GetRace();
+	context.class_id            = GetClass();
+	context.level               = GetLevel();
+	context.is_hard_disconnect  = hard_disconnect;
+	context.is_linkdead         = IsLD() || linkdead_timer.Enabled() || context.disconnect_reason == "linkdead" || context.disconnect_reason == "linkdead_timeout";
+	context.is_kicked          = GetClientState() == Mob::CLIENT_KICKED || context.disconnect_reason == "kick";
+	context.is_client_error     = GetClientState() == Mob::CLIENT_ERROR || context.disconnect_reason == "client_error";
+	context.is_zoning           = bZoning;
+	context.is_insta_logout     = instalog;
+	context.is_gm               = GetGM();
+	context.from_x              = GetX();
+	context.from_y              = GetY();
+	context.from_z              = GetZ();
+	context.from_h              = GetHeading();
+
+	if (zone) {
+		context.from_zone_short_name = zone->GetShortName();
+		context.from_zone_long_name  = zone->GetLongName();
+	}
+
+	std::vector<std::any> extra_pointers;
+	extra_pointers.emplace_back(context);
+
+	parse->EventPlayer(EVENT_DISCONNECT, this, "", 0, &extra_pointers);
+	m_disconnect_event_fired = true;
+}
+
 /* Just a set of actions preformed all over in Client::Process */
-void Client::OnDisconnect(bool hard_disconnect) {
+void Client::OnDisconnect(bool hard_disconnect, const char* reason) {
+	TryTriggerDisconnectEvent(reason, hard_disconnect);
+
 	if (hard_disconnect) {
 		LeaveGroup();
 
@@ -733,10 +829,6 @@ void Client::OnDisconnect(bool hard_disconnect) {
 	FastQueuePacket(&outapp);
 
 	RecordPlayerEventLog(PlayerEvent::WENT_OFFLINE, PlayerEvent::EmptyEvent{});
-
-	if (parse->PlayerHasQuestSub(EVENT_DISCONNECT)) {
-		parse->EventPlayer(EVENT_DISCONNECT, this, "", 0);
-	}
 
 	RecordStats();
 

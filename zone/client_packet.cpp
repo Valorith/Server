@@ -4319,7 +4319,7 @@ void Client::Handle_OP_Camp(const EQApplicationPacket *app)
 			camp_timer.Start(100, true);
 		}
 		else {
-			OnDisconnect(true);
+			OnDisconnect(true, "gm_camp");
 		}
 
 		return;
@@ -10306,6 +10306,7 @@ void Client::Handle_OP_Logout(const EQApplicationPacket *app)
 	auto outapp = new EQApplicationPacket(OP_LogoutReply);
 	FastQueuePacket(&outapp);
 
+	TryTriggerDisconnectEvent("logout", true);
 	Disconnect();
 	return;
 }
@@ -17609,7 +17610,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	);
 
 	SetOffline(true);
-	OnDisconnect(true);
+	OnDisconnect(true, "offline_mode");
 
 	auto outapp = new EQApplicationPacket();
 	offline_client->CreateSpawnPacket(outapp);
