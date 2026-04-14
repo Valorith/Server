@@ -3638,13 +3638,14 @@ int Mob::AddBuff(Mob *caster, uint16 spell_id, int duration, int32 level_overrid
 				}
 
 				return -1;
-			} else if (ret == 1 && !will_overwrite) {
+			} else if (ret == 1) {
 				// Reject buffing a superior buff while an inferior one is suppressed or else they end up with both
 				if (curbuf.spellid == SPELL_SUPPRESSED) {
 					return -1;
 				}
 
-				// set a flag to indicate that there will be overwriting
+				// Keep collecting every slot this buff should replace so composite buffs
+				// can evict multiple single-effect buffs in one landing.
 				LogSpells(
 					"Adding buff [{}] will overwrite spell [{}] in slot [{}] with caster level [{}]",
 					spell_id,
