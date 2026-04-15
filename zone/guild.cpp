@@ -209,7 +209,7 @@ void Client::SendGuildList()
 
 void Client::SendGuildMembers()
 {
-	SendGuildMembersList();
+	SendGuildMembersList(GetCleanName());
 
 	auto pack =
 	    new ServerPacket(ServerOP_RequestOnlineGuildMembers, sizeof(ServerRequestOnlineGuildMembers_Struct));
