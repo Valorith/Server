@@ -357,7 +357,7 @@ void EntityList::SendGuildMembers(uint32 guild_id)
 	while (it != client_list.end()) {
 		Client *client = it->second;
 		if (client->GuildID() == guild_id) {
-			client->SendGuildMembersList();
+			client->SendGuildMembers();
 		}
 		++it;
 	}
