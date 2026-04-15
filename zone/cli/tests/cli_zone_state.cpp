@@ -968,6 +968,84 @@ inline void TestBuffs()
 	RunTest("Buffs > Persist after shutdown/bootup", false, missing_buffs);
 }
 
+inline void TestBuffOverwriteStacking()
+{
+	constexpr uint16 fire_resist_spell_id          = 60;   // Resist Fire: FR on slot 1
+	constexpr uint16 cold_resist_spell_id          = 1276; // Aura of White Petals: CR on slot 2
+	constexpr uint16 fire_and_cold_resist_spell_id = 2681; // Beta Seasons: FR on slot 1, CR on slot 2
+
+	NPC *test_npc = nullptr;
+	for (auto &e: entity_list.GetNPCList()) {
+		if (e.second->GetNPCTypeID() == 0) {
+			continue;
+		}
+
+		test_npc = e.second;
+		break;
+	}
+
+	if (!test_npc) {
+		RunTest("Buff stacking > Test NPC exists", true, false);
+		return;
+	}
+
+	test_npc->BuffFadeAll();
+
+	RunTest(
+		"Buff stacking > Fire-only buff lands",
+		true,
+		test_npc->AddBuff(test_npc, fire_resist_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Cold-only buff lands",
+		true,
+		test_npc->AddBuff(test_npc, cold_resist_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Fire and cold buffs coexist before overwrite",
+		true,
+		test_npc->FindBuff(fire_resist_spell_id) && test_npc->FindBuff(cold_resist_spell_id)
+	);
+	RunTest(
+		"Buff stacking > Combined resist buff lands",
+		true,
+		test_npc->AddBuff(test_npc, fire_and_cold_resist_spell_id, 10) >= 0
+	);
+	RunTest("Buff stacking > Fire-only buff overwritten", false, test_npc->FindBuff(fire_resist_spell_id));
+	RunTest("Buff stacking > Cold-only buff overwritten", false, test_npc->FindBuff(cold_resist_spell_id));
+	RunTest("Buff stacking > Combined resist buff remains", true, test_npc->FindBuff(fire_and_cold_resist_spell_id));
+
+	constexpr uint16 shield_of_words_spell_id   = 20;   // AC-only cleric buff
+	constexpr uint16 resolution_spell_id        = 314;  // HP/AC cleric buff
+	constexpr uint16 gift_of_aegolism_spell_id  = 2122; // Ancient: Gift of Aegolism
+
+	test_npc->BuffFadeAll();
+
+	RunTest(
+		"Buff stacking > Shield of Words lands",
+		true,
+		test_npc->AddBuff(test_npc, shield_of_words_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Resolution lands",
+		true,
+		test_npc->AddBuff(test_npc, resolution_spell_id, 10) >= 0
+	);
+	RunTest(
+		"Buff stacking > Resolution and Shield of Words coexist before Gift",
+		true,
+		test_npc->FindBuff(shield_of_words_spell_id) && test_npc->FindBuff(resolution_spell_id)
+	);
+	RunTest(
+		"Buff stacking > Gift of Aegolism lands",
+		true,
+		test_npc->AddBuff(test_npc, gift_of_aegolism_spell_id, 10) >= 0
+	);
+	RunTest("Buff stacking > Shield of Words overwritten by Gift", false, test_npc->FindBuff(shield_of_words_spell_id));
+	RunTest("Buff stacking > Resolution overwritten by Gift", false, test_npc->FindBuff(resolution_spell_id));
+	RunTest("Buff stacking > Gift of Aegolism remains", true, test_npc->FindBuff(gift_of_aegolism_spell_id));
+}
+
 inline void TestZLocationDrift()
 {
 	zone->Shutdown();
@@ -1244,6 +1322,7 @@ void ZoneCLI::TestZoneState(int argc, char **argv, argh::parser &cmd, std::strin
 	TestHpManaEnd();
 	TestClientBuffPersistence();
 	TestBuffs();
+	TestBuffOverwriteStacking();
 	TestLocationChange();
 	TestEntityVariables();
 	TestLoot();
