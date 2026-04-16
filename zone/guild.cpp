@@ -207,20 +207,9 @@ void Client::SendGuildList()
 }
 
 
-void Client::SendGuildMembers() {
-	uint32 len;
-	uint8 *data = guild_mgr.MakeGuildMembers(GuildID(), GetName(), len);
-	if(data == nullptr)
-		return;	//invalid guild, shouldent happen.
-
-	auto outapp = new EQApplicationPacket(OP_GuildMemberList);
-	outapp->size = len;
-	outapp->pBuffer = data;
-	data = nullptr;
-
-	LogGuilds("Sending OP_GuildMemberList of length [{}]", outapp->size);
-
-	FastQueuePacket(&outapp);
+void Client::SendGuildMembers()
+{
+	SendGuildMembersList();
 
 	auto pack =
 	    new ServerPacket(ServerOP_RequestOnlineGuildMembers, sizeof(ServerRequestOnlineGuildMembers_Struct));
@@ -233,10 +222,6 @@ void Client::SendGuildMembers() {
 	worldserver.SendPacket(pack);
 
 	safe_delete(pack);
-
-	// We need to send the Guild URL and Channel name again, as sending OP_GuildMemberList appears to clear this information out.
-	SendGuildURL();
-	SendGuildChannel();
 }
 
 void Client::RefreshGuildInfo()
@@ -372,7 +357,7 @@ void EntityList::SendGuildMembers(uint32 guild_id)
 	while (it != client_list.end()) {
 		Client *client = it->second;
 		if (client->GuildID() == guild_id) {
-			//client->SendGuildMembers();
+			client->SendGuildMembers();
 		}
 		++it;
 	}
