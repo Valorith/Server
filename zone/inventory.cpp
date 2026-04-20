@@ -3131,6 +3131,11 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			if (!bag || !bag->IsClassBag() || !EQ::InventoryProfile::CanItemFitInContainer(item->GetItem(), bag->GetItem())) {
 				return false;
 			}
+
+			const int16 bag_index = EQ::InventoryProfile::CalcBagIdx(slot_id);
+			if (bag_index < 0 || bag_index >= bag->GetItem()->BagSlots) {
+				return false;
+			}
 		}
 
 		if (slot_id == EQ::invslot::slotCursor) {
