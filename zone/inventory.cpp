@@ -3179,7 +3179,10 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		}
 
 		const uint8 bag_size = bag->GetItem()->BagSlots;
-		const uint8 bag_index = EQ::InventoryProfile::CalcBagIdx(slot_id);
+		const int16 bag_index = EQ::InventoryProfile::CalcBagIdx(slot_id);
+		if (bag_index < 0 || bag_index >= bag_size) {
+			return INVALID_INDEX;
+		}
 
 		for (uint8 distance = 1; distance < bag_size; ++distance) {
 			if (bag_index >= distance) {
