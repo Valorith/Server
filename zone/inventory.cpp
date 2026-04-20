@@ -3138,8 +3138,17 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			return true;
 		}
 
-		m_inv.PutItem(slot_id, *item);
-		database.SaveInventory(character_id, m_inv.GetItem(slot_id), slot_id);
+		const int16 placed_slot = m_inv.PutItem(slot_id, *item);
+		if (placed_slot == INVALID_INDEX || placed_slot != slot_id) {
+			return false;
+		}
+
+		auto *placed_item = m_inv.GetItem(slot_id);
+		if (!placed_item) {
+			return false;
+		}
+
+		database.SaveInventory(character_id, placed_item, slot_id);
 		return true;
 	};
 
