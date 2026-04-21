@@ -3139,7 +3139,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		}
 
 		if (slot_id == EQ::invslot::slotCursor) {
-			PushItemOnCursor(*item, false);
+			PushItemOnCursor(*item, true);
 			return true;
 		}
 
@@ -3153,6 +3153,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			return false;
 		}
 
+		SendItemPacket(slot_id, placed_item, ItemPacketTrade);
 		database.SaveInventory(character_id, placed_item, slot_id);
 		return true;
 	};
