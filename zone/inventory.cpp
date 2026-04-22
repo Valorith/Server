@@ -22,6 +22,7 @@
 #include "common/events/player_event_logs.h"
 #include "common/evolving_items.h"
 #include "common/repositories/character_corpse_items_repository.h"
+#include "common/repositories/inventory_repository.h"
 #include "common/strings.h"
 #include "zone/bot.h"
 #include "zone/queryserv.h"
@@ -3106,6 +3107,79 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 	int16 WeaponSlot = 0;
 	EQ::ItemInstance *BandolierItems[4] = { nullptr, nullptr, nullptr, nullptr }; // Temporary holding area for the weapons we pull out of their inventory
 	int16 BandolierSourceSlots[4] = { INVALID_INDEX, INVALID_INDEX, INVALID_INDEX, INVALID_INDEX };
+	bool bandolier_persistence_ok = true;
+
+	auto fail_bandolier_persistence = [&](const std::string &reason) {
+		if (bandolier_persistence_ok) {
+			LogError(
+				"Bandolier activation failed for char [{}] set [{}]: {}",
+				GetName(),
+				bss->Number,
+				reason
+			);
+		}
+
+		bandolier_persistence_ok = false;
+	};
+
+	auto clear_bandolier_inventory_slot = [&](int16 slot_id, const std::string &context) -> bool {
+		auto delete_result = database.QueryDatabase(
+			fmt::format(
+				"DELETE FROM {} WHERE `character_id` = {} AND `slot_id` = {}",
+				InventoryRepository::TableName(),
+				character_id,
+				slot_id
+			)
+		);
+
+		if (!delete_result.Success()) {
+			fail_bandolier_persistence(fmt::format("{} slot [{}]", context, slot_id));
+			return false;
+		}
+
+		if (!EQ::InventoryProfile::SupportsContainers(slot_id)) {
+			return true;
+		}
+
+		const int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(slot_id, EQ::invbag::SLOT_BEGIN);
+		auto delete_bag_result = database.QueryDatabase(
+			fmt::format(
+				"DELETE FROM {} WHERE `character_id` = {} AND `slot_id` BETWEEN {} AND {}",
+				InventoryRepository::TableName(),
+				character_id,
+				base_slot_id,
+				base_slot_id + (EQ::invbag::SLOT_COUNT - 1)
+			)
+		);
+
+		if (!delete_bag_result.Success()) {
+			fail_bandolier_persistence(fmt::format("{} slot [{}] bag contents", context, slot_id));
+			return false;
+		}
+
+		return true;
+	};
+
+	auto save_bandolier_inventory = [&](const EQ::ItemInstance *inst, int16 slot_id, const std::string &context) -> bool {
+		if (!inst) {
+			return clear_bandolier_inventory_slot(slot_id, context);
+		}
+
+		if (database.SaveInventory(character_id, inst, slot_id)) {
+			return true;
+		}
+
+		fail_bandolier_persistence(fmt::format("{} slot [{}]", context, slot_id));
+		return false;
+	};
+
+	database.TransactionBegin();
+
+	struct BandolierReturnResult {
+		bool success = false;
+		int16 actual_slot = INVALID_INDEX;
+		bool used_targeted_placement = false;
+	};
 
 	auto is_bandolier_return_slot = [](int16 slot_id) {
 		return (
@@ -3116,46 +3190,116 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		);
 	};
 
-	auto try_put_bandolier_return_item = [&](EQ::ItemInstance *item, int16 slot_id) -> bool {
+	auto try_put_bandolier_return_item = [&](EQ::ItemInstance *item, int16 slot_id) -> int16 {
 		if (!item || slot_id == INVALID_INDEX || !is_bandolier_return_slot(slot_id)) {
-			return false;
+			if (item) {
+				LogInventoryDetail(
+					"Bandolier targeted return rejected for item [{}] ([{}]) to slot [{}] due to invalid target",
+					item->GetItem()->Name,
+					item->GetID(),
+					slot_id
+				);
+			}
+			return INVALID_INDEX;
 		}
 
 		if (slot_id != EQ::invslot::slotCursor && m_inv.GetItem(slot_id)) {
-			return false;
+			LogInventoryDetail(
+				"Bandolier targeted return blocked for item [{}] ([{}]) because slot [{}] is occupied by [{}] ([{}])",
+				item->GetItem()->Name,
+				item->GetID(),
+				slot_id,
+				m_inv.GetItem(slot_id)->GetItem()->Name,
+				m_inv.GetItem(slot_id)->GetID()
+			);
+			return INVALID_INDEX;
 		}
 
 		const int16 parent_slot = EQ::InventoryProfile::CalcSlotId(slot_id);
 		if (parent_slot != INVALID_INDEX) {
 			const auto *bag = m_inv.GetItem(parent_slot);
 			if (!bag || !bag->IsClassBag() || !EQ::InventoryProfile::CanItemFitInContainer(item->GetItem(), bag->GetItem())) {
-				return false;
+				LogInventoryDetail(
+					"Bandolier targeted return rejected for item [{}] ([{}]) to slot [{}] because parent slot [{}] is not a valid bag destination",
+					item->GetItem()->Name,
+					item->GetID(),
+					slot_id,
+					parent_slot
+				);
+				return INVALID_INDEX;
 			}
 
 			const int16 bag_index = EQ::InventoryProfile::CalcBagIdx(slot_id);
 			if (bag_index < 0 || bag_index >= bag->GetItem()->BagSlots) {
-				return false;
+				LogInventoryDetail(
+					"Bandolier targeted return rejected for item [{}] ([{}]) to slot [{}] because bag index [{}] is outside bag size [{}]",
+					item->GetItem()->Name,
+					item->GetID(),
+					slot_id,
+					bag_index,
+					bag->GetItem()->BagSlots
+				);
+				return INVALID_INDEX;
 			}
 		}
 
 		if (slot_id == EQ::invslot::slotCursor) {
-			PushItemOnCursor(*item, true);
-			return true;
+			if (!PushItemOnCursor(*item, false)) {
+				fail_bandolier_persistence(
+					fmt::format(
+						"failed to save cursor return for item [{}] ([{}])",
+						item->GetItem()->Name,
+						item->GetID()
+					)
+				);
+				return INVALID_INDEX;
+			}
+
+			LogInventory(
+				"Bandolier targeted return placed item [{}] ([{}]) on cursor without immediate client update",
+				item->GetItem()->Name,
+				item->GetID()
+			);
+			return slot_id;
 		}
 
 		const int16 placed_slot = m_inv.PutItem(slot_id, *item);
 		if (placed_slot == INVALID_INDEX || placed_slot != slot_id) {
-			return false;
+			return INVALID_INDEX;
 		}
 
 		auto *placed_item = m_inv.GetItem(slot_id);
 		if (!placed_item) {
-			return false;
+			LogInventoryDetail(
+				"Bandolier targeted return failed to read back item [{}] ([{}]) from slot [{}] after PutItem",
+				item->GetItem()->Name,
+				item->GetID(),
+				slot_id
+			);
+			return INVALID_INDEX;
 		}
 
-		SendItemPacket(slot_id, placed_item, ItemPacketTrade);
-		database.SaveInventory(character_id, placed_item, slot_id);
-		return true;
+		if (!save_bandolier_inventory(
+			placed_item,
+			slot_id,
+			fmt::format(
+				"failed to persist targeted return for item [{}] ([{}]) to",
+				placed_item->GetItem()->Name,
+				placed_item->GetID()
+			)
+		)) {
+			auto *failed_item = m_inv.PopItem(slot_id);
+			safe_delete(failed_item);
+			return INVALID_INDEX;
+		}
+
+		LogInventory(
+			"Bandolier targeted return placed item [{}] ([{}]) into slot [{}] without immediate client update",
+			placed_item->GetItem()->Name,
+			placed_item->GetID(),
+			slot_id
+		);
+		return slot_id;
 	};
 
 	auto find_nearby_slot_in_same_bag = [&](EQ::ItemInstance *item, int16 slot_id) -> int16 {
@@ -3204,24 +3348,66 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		return INVALID_INDEX;
 	};
 
-	auto return_bandolier_item = [&](EQ::ItemInstance *item, int16 preferred_slot, bool try_same_bag) -> bool {
-		if (try_put_bandolier_return_item(item, preferred_slot)) {
-			return true;
+	auto return_bandolier_item = [&](EQ::ItemInstance *item, int16 preferred_slot, bool try_same_bag) -> BandolierReturnResult {
+		LogInventoryDetail(
+			"Bandolier return attempt for item [{}] ([{}]) preferred_slot [{}] same_bag [{}]",
+			item ? item->GetItem()->Name : "<null>",
+			item ? item->GetID() : 0,
+			preferred_slot,
+			try_same_bag ? "true" : "false"
+		);
+
+		const int16 placed_slot = try_put_bandolier_return_item(item, preferred_slot);
+		if (placed_slot != INVALID_INDEX) {
+			LogInventory(
+				"Bandolier return kept item [{}] ([{}]) in targeted slot [{}]",
+				item->GetItem()->Name,
+				item->GetID(),
+				placed_slot
+			);
+			return { true, placed_slot, true };
+		}
+
+		if (!bandolier_persistence_ok) {
+			return { false, INVALID_INDEX, false };
 		}
 
 		if (try_same_bag) {
 			const int16 nearby_slot = find_nearby_slot_in_same_bag(item, preferred_slot);
-			if (try_put_bandolier_return_item(item, nearby_slot)) {
-				return true;
+			const int16 nearby_placed_slot = try_put_bandolier_return_item(item, nearby_slot);
+			if (nearby_placed_slot != INVALID_INDEX) {
+				LogInventory(
+					"Bandolier return placed item [{}] ([{}]) into nearby same-bag slot [{}] after preferred slot [{}] was unavailable",
+					item->GetItem()->Name,
+					item->GetID(),
+					nearby_placed_slot,
+					preferred_slot
+				);
+				return { true, nearby_placed_slot, true };
+			}
+
+			if (!bandolier_persistence_ok) {
+				return { false, INVALID_INDEX, false };
 			}
 		}
 
-		return MoveItemToInventory(item);
+		LogInventory(
+			"Bandolier return fell back to legacy MoveItemToInventory for item [{}] ([{}]) preferred_slot [{}] same_bag [{}]",
+			item ? item->GetItem()->Name : "<null>",
+			item ? item->GetID() : 0,
+			preferred_slot,
+			try_same_bag ? "true" : "false"
+		);
+		return { MoveItemToInventory(item), INVALID_INDEX, false };
 	};
 
 	// First we pull the items for this bandolier set out of their inventory, this makes space to put the
 	// currently equipped items back.
 	for(int BandolierSlot = bandolierPrimary; BandolierSlot <= bandolierAmmo; BandolierSlot++) {
+		if (!bandolier_persistence_ok) {
+			break;
+		}
+
 		// If this bandolier set has an item in this position
 		if(m_pp.bandoliers[bss->Number].Items[BandolierSlot].ID) {
 			WeaponSlot = BandolierSlotToWeaponSlot(BandolierSlot);
@@ -3260,6 +3446,16 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 				// Pull the item out of the inventory
 				BandolierItems[BandolierSlot] = m_inv.PopItem(slot);
 				BandolierSourceSlots[BandolierSlot] = slot;
+				if (BandolierItems[BandolierSlot]) {
+					LogInventory(
+						"Bandolier set [{}] pulled item [{}] ([{}]) for bandolier slot [{}] from source slot [{}]",
+						bss->Number,
+						BandolierItems[BandolierSlot]->GetItem()->Name,
+						BandolierItems[BandolierSlot]->GetID(),
+						BandolierSlot,
+						slot
+					);
+				}
 				// If ammo with charges, only take one charge out to put in the range slot, that is what
 				// the client does.
 
@@ -3271,15 +3467,46 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 						BandolierItems[BandolierSlot]->SetCharges(Charges-1);
 						// Take one charge out and put the rest back
 						m_inv.PutItem(slot, *BandolierItems[BandolierSlot]);
-						database.SaveInventory(character_id, BandolierItems[BandolierSlot], slot);
+						if (!save_bandolier_inventory(
+							BandolierItems[BandolierSlot],
+							slot,
+							fmt::format(
+								"failed to persist remaining stack for bandolier source item [{}] ([{}]) to",
+								BandolierItems[BandolierSlot]->GetItem()->Name,
+								BandolierItems[BandolierSlot]->GetID()
+							)
+						)) {
+							break;
+						}
+
 						BandolierItems[BandolierSlot]->SetCharges(1);
 					}
 					else { // Remove the item from the inventory
-						database.SaveInventory(character_id, 0, slot);
+						if (!save_bandolier_inventory(
+							nullptr,
+							slot,
+							fmt::format(
+								"failed to clear depleted stack for bandolier source item [{}] ([{}]) from",
+								BandolierItems[BandolierSlot]->GetItem()->Name,
+								BandolierItems[BandolierSlot]->GetID()
+							)
+						)) {
+							break;
+						}
 					}
 				}
 				else { // Remove the item from the inventory
-					database.SaveInventory(character_id, 0, slot);
+					if (!save_bandolier_inventory(
+						nullptr,
+						slot,
+						fmt::format(
+							"failed to clear bandolier source item [{}] ([{}]) from",
+							BandolierItems[BandolierSlot]->GetItem()->Name,
+							BandolierItems[BandolierSlot]->GetID()
+						)
+					)) {
+						break;
+					}
 				}
 			}
 			else { // The player doesn't have the required weapon with them.
@@ -3293,10 +3520,31 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 						InvItem->GetItem()->Name, WeaponSlot);
 						LogInventory("returning item [{}] in weapon slot [{}] to inventory", InvItem->GetItem()->Name, WeaponSlot);
 						if (MoveItemToInventory(InvItem)) {
-							database.SaveInventory(character_id, 0, WeaponSlot);
+							if (!save_bandolier_inventory(
+								nullptr,
+								WeaponSlot,
+								fmt::format(
+									"failed to clear weapon slot [{}] while returning missing bandolier replacement item [{}] ([{}]) from",
+									WeaponSlot,
+									InvItem->GetItem()->Name,
+									InvItem->GetID()
+								)
+							)) {
+								safe_delete(InvItem);
+								break;
+							}
+
 							LogError("returning item [{}] in weapon slot [{}] to inventory", InvItem->GetItem()->Name, WeaponSlot);
 						}
 						else {
+							fail_bandolier_persistence(
+								fmt::format(
+									"failed to move missing bandolier replacement item [{}] ([{}]) from weapon slot [{}] back to inventory",
+									InvItem->GetItem()->Name,
+									InvItem->GetID(),
+									WeaponSlot
+								)
+							);
 							LogError("Char: [{}], ERROR returning [{}] to inventory", GetName(), InvItem->GetItem()->Name);
 						}
 						safe_delete(InvItem);
@@ -3310,11 +3558,173 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		BandolierItems[bandolierPrimary] &&
 		BandolierItems[bandolierPrimary]->IsWeapon() &&
 		BandolierItems[bandolierPrimary]->GetItem()->IsType2HWeapon();
+	LogInventory(
+		"Bandolier set [{}] activation summary: primary item [{}] ([{}]) source [{}] two_hander_swap [{}]",
+		bss->Number,
+		BandolierItems[bandolierPrimary] ? BandolierItems[bandolierPrimary]->GetItem()->Name : "<none>",
+		BandolierItems[bandolierPrimary] ? BandolierItems[bandolierPrimary]->GetID() : 0,
+		BandolierSourceSlots[bandolierPrimary],
+		is_two_hander_swap ? "true" : "false"
+	);
+
+	std::map<int16, const EQ::ItemInstance*> bandolier_client_shadow_base_slots;
+	for (int16 slot_id = EQ::invslot::GENERAL_BEGIN; slot_id <= EQ::invslot::slotCursor; ++slot_id) {
+		bandolier_client_shadow_base_slots[slot_id] = m_inv.GetItem(slot_id);
+	}
+
+	for (int16 slot_id = EQ::invbag::GENERAL_BAGS_BEGIN; slot_id <= EQ::invbag::GENERAL_BAGS_END; ++slot_id) {
+		bandolier_client_shadow_base_slots[slot_id] = m_inv.GetItem(slot_id);
+	}
+
+	for (int16 slot_id = EQ::invbag::CURSOR_BAG_BEGIN; slot_id <= EQ::invbag::CURSOR_BAG_END; ++slot_id) {
+		bandolier_client_shadow_base_slots[slot_id] = m_inv.GetItem(slot_id);
+	}
+
+	std::set<int16> bandolier_client_predicted_slots;
+	std::set<int16> bandolier_resync_slots;
+
+	auto normalize_bandolier_resync_slot = [&](int16 slot_id) -> int16 {
+		if (slot_id == INVALID_INDEX) {
+			return INVALID_INDEX;
+		}
+
+		const int16 parent_slot = EQ::InventoryProfile::CalcSlotId(slot_id);
+		return (parent_slot != INVALID_INDEX) ? parent_slot : slot_id;
+	};
+
+	auto add_bandolier_resync_slot = [&](int16 slot_id) {
+		const int16 resync_slot = normalize_bandolier_resync_slot(slot_id);
+		if (resync_slot != INVALID_INDEX && IsValidSlot(resync_slot)) {
+			bandolier_resync_slots.insert(resync_slot);
+		}
+	};
+
+	auto get_bandolier_client_shadow_base_item = [&](int16 slot_id) -> const EQ::ItemInstance* {
+		const auto slot_iter = bandolier_client_shadow_base_slots.find(slot_id);
+		return slot_iter != bandolier_client_shadow_base_slots.end() ? slot_iter->second : nullptr;
+	};
+
+	auto is_bandolier_client_shadow_slot_occupied = [&](int16 slot_id) -> bool {
+		return get_bandolier_client_shadow_base_item(slot_id) || bandolier_client_predicted_slots.find(slot_id) != bandolier_client_predicted_slots.end();
+	};
+
+	auto predict_bandolier_client_return_slot = [&](EQ::ItemInstance *item) -> int16 {
+		if (!item || item->IsStackable()) {
+			return INVALID_INDEX;
+		}
+
+		for (int16 inventory_slot = EQ::invslot::GENERAL_BEGIN; inventory_slot <= EQ::invslot::slotCursor; ++inventory_slot) {
+			const auto *inventory_item = get_bandolier_client_shadow_base_item(inventory_slot);
+			if (!inventory_item && !is_bandolier_client_shadow_slot_occupied(inventory_slot)) {
+				return inventory_slot;
+			}
+
+			if (
+				inventory_item &&
+				inventory_item->IsClassBag() &&
+				EQ::InventoryProfile::CanItemFitInContainer(item->GetItem(), inventory_item->GetItem())
+			) {
+				const int16 bag_base_slot = EQ::InventoryProfile::CalcSlotId(inventory_slot, EQ::invbag::SLOT_BEGIN);
+				const uint8 bag_size = inventory_item->GetItem()->BagSlots;
+
+				for (uint8 bag_slot = EQ::invbag::SLOT_BEGIN; bag_slot < bag_size; ++bag_slot) {
+					const int16 bag_slot_id = bag_base_slot + bag_slot;
+					if (!is_bandolier_client_shadow_slot_occupied(bag_slot_id)) {
+						return bag_slot_id;
+					}
+				}
+			}
+		}
+
+		return EQ::invslot::slotCursor;
+	};
+
+	auto send_bandolier_delete_slot = [&](int16 slot_id) {
+		auto outapp = new EQApplicationPacket(OP_DeleteItem, sizeof(DeleteItem_Struct));
+		DeleteItem_Struct *delete_item = (DeleteItem_Struct*)outapp->pBuffer;
+		delete_item->from_slot = slot_id;
+		delete_item->to_slot = 0xFFFFFFFF;
+		delete_item->number_in_stack = 0xFFFFFFFF;
+		QueuePacket(outapp);
+		safe_delete(outapp);
+	};
+
+	auto send_bandolier_actual_slot = [&](int16 slot_id, EQ::ItemInstance *item) {
+		if (slot_id == INVALID_INDEX || !IsValidSlot(slot_id)) {
+			return;
+		}
+
+		if (slot_id == EQ::invslot::slotCursor) {
+			if (item) {
+				SendItemPacket(slot_id, item, ItemPacketLimbo);
+			}
+			return;
+		}
+
+		const auto *placed_item = m_inv.GetItem(slot_id);
+		if (placed_item) {
+			SendItemPacket(slot_id, placed_item, ItemPacketTrade);
+		}
+		else {
+			send_bandolier_delete_slot(slot_id);
+		}
+	};
+
+	auto resync_bandolier_client_slot = [&](int16 slot_id) {
+		if (slot_id == INVALID_INDEX || !IsValidSlot(slot_id)) {
+			return;
+		}
+
+		if (slot_id == EQ::invslot::slotCursor) {
+			send_bandolier_delete_slot(slot_id);
+			for (auto iter = m_inv.cursor_cbegin(); iter != m_inv.cursor_cend(); ++iter) {
+				const EQ::ItemInstance *inst = *iter;
+				if (inst) {
+					SendItemPacket(EQ::invslot::slotCursor, inst, ItemPacketLimbo);
+				}
+			}
+			return;
+		}
+
+		const EQ::ItemData *token_struct = database.GetItem(22292); // Copper Coin
+		EQ::ItemInstance *token_inst = token_struct ? database.CreateItem(token_struct, 1) : nullptr;
+		if (token_inst) {
+			SendItemPacket(slot_id, token_inst, ItemPacketTrade);
+			safe_delete(token_inst);
+		}
+
+		if (m_inv[slot_id]) {
+			SendItemPacket(slot_id, m_inv[slot_id], ItemPacketTrade);
+		}
+		else {
+			send_bandolier_delete_slot(slot_id);
+		}
+	};
+
+	auto clear_bandolier_predicted_slot = [&](int16 predicted_slot, const BandolierReturnResult &return_result) {
+		if (
+			predicted_slot == INVALID_INDEX ||
+			!return_result.success ||
+			!return_result.used_targeted_placement ||
+			return_result.actual_slot == predicted_slot
+		) {
+			return;
+		}
+
+		send_bandolier_delete_slot(predicted_slot);
+	};
+
+	for (int16 source_slot : BandolierSourceSlots) {
+		add_bandolier_resync_slot(source_slot);
+	}
 
 	// Now we move the required weapons into the character weapon slots, and return any items we are replacing
 	// back to inventory.
 	//
 	for(int BandolierSlot = bandolierPrimary; BandolierSlot <= bandolierAmmo; BandolierSlot++) {
+		if (!bandolier_persistence_ok) {
+			break;
+		}
 
 		// Find the inventory slot corresponding to this bandolier slot
 
@@ -3326,16 +3736,72 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			if(BandolierItems[BandolierSlot]) {
 				// Pull the item that we are going to replace
 				EQ::ItemInstance *InvItem = m_inv.PopItem(WeaponSlot);
+				add_bandolier_resync_slot(WeaponSlot);
+				LogInventory(
+					"Bandolier set [{}] equipping bandolier slot [{}] item [{}] ([{}]) into weapon slot [{}], replacing [{}] ([{}])",
+					bss->Number,
+					BandolierSlot,
+					BandolierItems[BandolierSlot]->GetItem()->Name,
+					BandolierItems[BandolierSlot]->GetID(),
+					WeaponSlot,
+					InvItem ? InvItem->GetItem()->Name : "<empty>",
+					InvItem ? InvItem->GetID() : 0
+				);
 				// Put the item specified in the bandolier where it needs to be
 				m_inv.PutItem(WeaponSlot, *BandolierItems[BandolierSlot]);
 
 				safe_delete(BandolierItems[BandolierSlot]);
 				// Update the database, save the item now in the weapon slot
-				database.SaveInventory(character_id, m_inv.GetItem(WeaponSlot), WeaponSlot);
+				if (!save_bandolier_inventory(
+					m_inv.GetItem(WeaponSlot),
+					WeaponSlot,
+					fmt::format(
+						"failed to persist equipped bandolier item into weapon slot [{}] for",
+						WeaponSlot
+					)
+				)) {
+					if (InvItem) {
+						safe_delete(InvItem);
+					}
+					break;
+				}
 
 				if(InvItem) {
 					// If there was already an item in that weapon slot that we replaced, find a place to put it
-					if (!return_bandolier_item(InvItem, BandolierSourceSlots[BandolierSlot], false)) {
+					const bool allow_targeted_return = !InvItem->IsStackable();
+					const int16 predicted_client_slot = allow_targeted_return ? predict_bandolier_client_return_slot(InvItem) : INVALID_INDEX;
+					const auto return_result = allow_targeted_return ?
+						return_bandolier_item(InvItem, BandolierSourceSlots[BandolierSlot], false) :
+						BandolierReturnResult{ MoveItemToInventory(InvItem), INVALID_INDEX, false };
+					if (predicted_client_slot != INVALID_INDEX) {
+						bandolier_client_predicted_slots.insert(predicted_client_slot);
+						clear_bandolier_predicted_slot(predicted_client_slot, return_result);
+						add_bandolier_resync_slot(predicted_client_slot);
+					}
+					if (return_result.success && return_result.used_targeted_placement) {
+						send_bandolier_actual_slot(return_result.actual_slot, InvItem);
+					}
+					add_bandolier_resync_slot(return_result.actual_slot);
+					LogInventory(
+						"Bandolier set [{}] return result for replaced item [{}] ([{}]): predicted_client_slot [{}] actual_slot [{}] targeted [{}] success [{}]",
+						bss->Number,
+						InvItem->GetItem()->Name,
+						InvItem->GetID(),
+						predicted_client_slot,
+						return_result.actual_slot,
+						return_result.used_targeted_placement ? "true" : "false",
+						return_result.success ? "true" : "false"
+					);
+
+					if (!return_result.success) {
+						fail_bandolier_persistence(
+							fmt::format(
+								"failed to return replaced item [{}] ([{}]) from weapon slot [{}] during bandolier activation",
+								InvItem->GetItem()->Name,
+								InvItem->GetID(),
+								WeaponSlot
+							)
+						);
 						LogError("Char: [{}], ERROR returning [{}] to inventory", GetName(), InvItem->GetItem()->Name);
 					}
 					safe_delete(InvItem);
@@ -3346,6 +3812,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			// This bandolier set has no item for this slot, so take whatever is in the weapon slot and
 			// put it in the player's inventory.
 			EQ::ItemInstance *InvItem = m_inv.PopItem(WeaponSlot);
+			add_bandolier_resync_slot(WeaponSlot);
 			if(InvItem) {
 				LogInventory("Bandolier has no item for slot [{}], returning item [{}] to inventory", WeaponSlot, InvItem->GetItem()->Name);
 				// If there was an item in that weapon slot, put it in the inventory
@@ -3356,10 +3823,57 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 				const bool try_same_bag =
 					(BandolierSlot == bandolierSecondary && is_two_hander_swap);
 
-				if (return_bandolier_item(InvItem, preferred_return_slot, try_same_bag)) {
-					database.SaveInventory(character_id, 0, WeaponSlot);
+				const bool allow_targeted_return = !InvItem->IsStackable();
+				const int16 predicted_client_slot = allow_targeted_return ? predict_bandolier_client_return_slot(InvItem) : INVALID_INDEX;
+				const auto return_result = allow_targeted_return ?
+					return_bandolier_item(InvItem, preferred_return_slot, try_same_bag) :
+					BandolierReturnResult{ MoveItemToInventory(InvItem), INVALID_INDEX, false };
+				if (predicted_client_slot != INVALID_INDEX) {
+					bandolier_client_predicted_slots.insert(predicted_client_slot);
+					clear_bandolier_predicted_slot(predicted_client_slot, return_result);
+					add_bandolier_resync_slot(predicted_client_slot);
+				}
+				if (return_result.success && return_result.used_targeted_placement) {
+					send_bandolier_actual_slot(return_result.actual_slot, InvItem);
+				}
+				add_bandolier_resync_slot(return_result.actual_slot);
+				LogInventory(
+					"Bandolier set [{}] empty-slot return result for weapon slot [{}] item [{}] ([{}]): preferred_slot [{}] predicted_client_slot [{}] actual_slot [{}] targeted [{}] success [{}]",
+					bss->Number,
+					WeaponSlot,
+					InvItem->GetItem()->Name,
+					InvItem->GetID(),
+					preferred_return_slot,
+					predicted_client_slot,
+					return_result.actual_slot,
+					return_result.used_targeted_placement ? "true" : "false",
+					return_result.success ? "true" : "false"
+				);
+
+				if (return_result.success) {
+					if (!save_bandolier_inventory(
+						nullptr,
+						WeaponSlot,
+						fmt::format(
+							"failed to clear emptied weapon slot [{}] after returning item [{}] ([{}]) from",
+							WeaponSlot,
+							InvItem->GetItem()->Name,
+							InvItem->GetID()
+						)
+					)) {
+						safe_delete(InvItem);
+						break;
+					}
 				}
 				else {
+					fail_bandolier_persistence(
+						fmt::format(
+							"failed to return item [{}] ([{}]) from empty bandolier weapon slot [{}]",
+							InvItem->GetItem()->Name,
+							InvItem->GetID(),
+							WeaponSlot
+						)
+					);
 					LogError("Char: [{}], ERROR returning [{}] to inventory", GetName(), InvItem->GetItem()->Name);
 				}
 				safe_delete(InvItem);
@@ -3367,9 +3881,42 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		}
 	}
 
+	if (!bandolier_persistence_ok) {
+		database.TransactionRollback();
+		for (auto &bandolier_item : BandolierItems) {
+			safe_delete(bandolier_item);
+		}
+
+		LinkDead();
+		return;
+	}
+
+	const auto bandolier_commit_result = database.TransactionCommit();
+	if (!bandolier_commit_result.Success()) {
+		LogError(
+			"Bandolier activation commit failed for char [{}] set [{}], disconnecting client to preserve authoritative inventory state",
+			GetName(),
+			bss->Number
+		);
+		database.TransactionRollback();
+		LinkDead();
+		return;
+	}
+
 	if (RuleI(Character, BandolierSwapDelay) > 0) {
 		bandolier_throttle_timer.Start(RuleI(Character, BandolierSwapDelay));
 	}
+
+	// Resynchronize only the slot roots touched by the bandolier swap. This clears empty slots too,
+	// which a bulk occupied-item refresh does not.
+	for (const int16 resync_slot : bandolier_resync_slots) {
+		resync_bandolier_client_slot(resync_slot);
+	}
+	LogInventory(
+		"Bandolier set [{}] resynchronized [{}] slot roots after swap",
+		bss->Number,
+		bandolier_resync_slots.size()
+	);
 
 	// finally, recalculate any stat bonuses from the item change
 	CalcBonuses();
@@ -3418,14 +3965,20 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 
 				int ChargesToMove = ItemToReturn->GetCharges() < ChargeSlotsLeft ? ItemToReturn->GetCharges() : ChargeSlotsLeft;
 
+				const int original_inv_charges = InvItem->GetCharges();
+				const int original_return_charges = ItemToReturn->GetCharges();
 				InvItem->SetCharges(InvItem->GetCharges() + ChargesToMove);
+
+				if (!database.SaveInventory(character_id, m_inv.GetItem(i), i)) {
+					InvItem->SetCharges(original_inv_charges);
+					ItemToReturn->SetCharges(original_return_charges);
+					return false;
+				}
 
 				if(UpdateClient)
 					SendItemPacket(i, InvItem, ItemPacketTrade);
 
-				database.SaveInventory(character_id, m_inv.GetItem(i), i);
-
-				ItemToReturn->SetCharges(ItemToReturn->GetCharges() - ChargesToMove);
+				ItemToReturn->SetCharges(original_return_charges - ChargesToMove);
 
 				if(!ItemToReturn->GetCharges())
 					return true;
@@ -3448,14 +4001,20 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 
 						int ChargesToMove = ItemToReturn->GetCharges() < ChargeSlotsLeft ? ItemToReturn->GetCharges() : ChargeSlotsLeft;
 
+						const int original_inv_charges = InvItem->GetCharges();
+						const int original_return_charges = ItemToReturn->GetCharges();
 						InvItem->SetCharges(InvItem->GetCharges() + ChargesToMove);
+
+						if (!database.SaveInventory(character_id, m_inv.GetItem(BaseSlotID + BagSlot), BaseSlotID + BagSlot)) {
+							InvItem->SetCharges(original_inv_charges);
+							ItemToReturn->SetCharges(original_return_charges);
+							return false;
+						}
 
 						if(UpdateClient)
 							SendItemPacket(BaseSlotID + BagSlot, m_inv.GetItem(BaseSlotID + BagSlot), ItemPacketTrade);
 
-						database.SaveInventory(character_id, m_inv.GetItem(BaseSlotID + BagSlot), BaseSlotID + BagSlot);
-
-						ItemToReturn->SetCharges(ItemToReturn->GetCharges() - ChargesToMove);
+						ItemToReturn->SetCharges(original_return_charges - ChargesToMove);
 
 						if(!ItemToReturn->GetCharges())
 							return true;
@@ -3475,12 +4034,26 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 
 		if (!InvItem) {
 			// Found available slot in personal inventory
-			m_inv.PutItem(i, *ItemToReturn);
+			const int16 placed_slot = m_inv.PutItem(i, *ItemToReturn);
+			if (placed_slot != i) {
+				return false;
+			}
+
+			auto *placed_item = m_inv.GetItem(i);
+			if (!placed_item) {
+				auto *failed_item = m_inv.PopItem(i);
+				safe_delete(failed_item);
+				return false;
+			}
+
+			if (!database.SaveInventory(character_id, placed_item, i)) {
+				auto *failed_item = m_inv.PopItem(i);
+				safe_delete(failed_item);
+				return false;
+			}
 
 			if(UpdateClient)
-				SendItemPacket(i, ItemToReturn, ItemPacketTrade);
-
-			database.SaveInventory(character_id, m_inv.GetItem(i), i);
+				SendItemPacket(i, placed_item, ItemPacketTrade);
 
 			LogInventory("Char: [{}] Storing in main inventory slot [{}]", GetName(), i);
 
@@ -3498,12 +4071,26 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 
 				if (!InvItem) {
 					// Found available slot within bag
-					m_inv.PutItem(BaseSlotID + BagSlot, *ItemToReturn);
+					const int16 placed_slot = m_inv.PutItem(BaseSlotID + BagSlot, *ItemToReturn);
+					if (placed_slot != BaseSlotID + BagSlot) {
+						return false;
+					}
+
+					auto *placed_item = m_inv.GetItem(BaseSlotID + BagSlot);
+					if (!placed_item) {
+						auto *failed_item = m_inv.PopItem(BaseSlotID + BagSlot);
+						safe_delete(failed_item);
+						return false;
+					}
+
+					if (!database.SaveInventory(character_id, placed_item, BaseSlotID + BagSlot)) {
+						auto *failed_item = m_inv.PopItem(BaseSlotID + BagSlot);
+						safe_delete(failed_item);
+						return false;
+					}
 
 					if(UpdateClient)
-						SendItemPacket(BaseSlotID + BagSlot, ItemToReturn, ItemPacketTrade);
-
-					database.SaveInventory(character_id, m_inv.GetItem(BaseSlotID + BagSlot), BaseSlotID + BagSlot);
+						SendItemPacket(BaseSlotID + BagSlot, placed_item, ItemPacketTrade);
 
 					LogInventory("Char: [{}] Storing in bag slot [{}]", GetName(), BaseSlotID + BagSlot);
 
@@ -3517,9 +4104,7 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 	//
 	LogInventory("Char: [{}] No space, putting on the cursor", GetName());
 
-	PushItemOnCursor(*ItemToReturn, UpdateClient);
-
-	return true;
+	return PushItemOnCursor(*ItemToReturn, UpdateClient);
 }
 
 bool Client::InterrogateInventory(Client* requester, bool log, bool silent, bool allowtrip, bool& error, bool autolog)
