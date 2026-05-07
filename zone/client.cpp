@@ -5028,6 +5028,25 @@ bool Client::DiscoverItem(uint32 item_id)
 	return true;
 }
 
+bool Client::UndiscoverItem(uint32 item_id)
+{
+	const bool deleted = DiscoveredItemsRepository::DeleteOne(database, item_id) > 0;
+	if (!deleted) {
+		return false;
+	}
+
+	zone->discovered_items.erase(
+		std::remove(
+			zone->discovered_items.begin(),
+			zone->discovered_items.end(),
+			item_id
+		),
+		zone->discovered_items.end()
+	);
+
+	return true;
+}
+
 void Client::CheckItemDiscoverability(EQ::ItemInstance* inst)
 {
 	if (!RuleB(Character, EnableDiscoveredItems) || !inst || !inst->GetItem()) {
