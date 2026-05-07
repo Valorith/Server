@@ -394,6 +394,7 @@ set(gm_command_sources
     gm_commands/depop.cpp
     gm_commands/depopzone.cpp
     gm_commands/devtools.cpp
+    gm_commands/discover.cpp
     gm_commands/disablerecipe.cpp
     gm_commands/disarmtrap.cpp
     gm_commands/doanim.cpp

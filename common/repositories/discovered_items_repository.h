@@ -44,5 +44,25 @@ public:
      */
 
 	// Custom extended repository methods here
+	static bool InsertIgnore(Database& db, const DiscoveredItems &e)
+	{
+		std::vector<std::string> v;
+
+		v.push_back(std::to_string(e.item_id));
+		v.push_back("'" + Strings::Escape(e.char_name) + "'");
+		v.push_back(std::to_string(e.discovered_date));
+		v.push_back(std::to_string(e.account_status));
+
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"INSERT IGNORE INTO {} ({}) VALUES ({})",
+				TableName(),
+				ColumnsRaw(),
+				Strings::Implode(",", v)
+			)
+		);
+
+		return results.Success() && results.RowsAffected() > 0;
+	}
 
 };

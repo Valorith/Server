@@ -68,6 +68,7 @@ void command_delpetition(Client *c, const Seperator *sep);
 void command_depop(Client *c, const Seperator *sep);
 void command_depopzone(Client *c, const Seperator *sep);
 void command_devtools(Client *c, const Seperator *sep);
+void command_discover(Client *c, const Seperator *sep);
 void command_disablerecipe(Client *c, const Seperator *sep);
 void command_disarmtrap(Client *c, const Seperator *sep);
 void command_door(Client *c, const Seperator *sep);
