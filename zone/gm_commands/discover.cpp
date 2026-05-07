@@ -188,11 +188,8 @@ void command_discover(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::Red,
 			fmt::format(
-				"#discover partially failed for {}: {} new, {} already discovered, {} failed.",
-				item_ref.item_link,
-				counts.changed,
-				counts.unchanged,
-				counts.failed
+				"#discover failed for {}. Some item discoveries could not be completed.",
+				item_ref.item_link
 			).c_str()
 		);
 		return;
@@ -202,10 +199,8 @@ void command_discover(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::Red,
 			fmt::format(
-				"#discover found no new discoveries for {}: {} item{} already discovered.",
-				item_ref.item_link,
-				counts.unchanged,
-				counts.unchanged == 1 ? " was" : "s were"
+				"#discover failed for {}. It was already marked discovered.",
+				item_ref.item_link
 			).c_str()
 		);
 		return;
@@ -214,11 +209,8 @@ void command_discover(Client *c, const Seperator *sep)
 	c->Message(
 		Chat::Green,
 		fmt::format(
-			"#discover succeeded for {}: {} new item{} discovered, {} already discovered.",
-			item_ref.item_link,
-			counts.changed,
-			counts.changed == 1 ? "" : "s",
-			counts.unchanged
+			"#discover succeeded for {}. It has now been marked discovered by you.",
+			item_ref.item_link
 		).c_str()
 	);
 }
@@ -236,11 +228,8 @@ void command_undiscover(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::Red,
 			fmt::format(
-				"#undiscover partially failed for {}: {} removed, {} not discovered, {} failed.",
-				item_ref.item_link,
-				counts.changed,
-				counts.unchanged,
-				counts.failed
+				"#undiscover failed for {}. Some item discoveries could not be removed.",
+				item_ref.item_link
 			).c_str()
 		);
 		return;
@@ -250,10 +239,8 @@ void command_undiscover(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::Red,
 			fmt::format(
-				"#undiscover found no discoveries to remove for {}: {} item{} not discovered.",
-				item_ref.item_link,
-				counts.unchanged,
-				counts.unchanged == 1 ? " was" : "s were"
+				"#undiscover failed for {}. It was not marked discovered.",
+				item_ref.item_link
 			).c_str()
 		);
 		return;
@@ -262,11 +249,8 @@ void command_undiscover(Client *c, const Seperator *sep)
 	c->Message(
 		Chat::Green,
 		fmt::format(
-			"#undiscover succeeded for {}: {} item{} removed from discovered items, {} not discovered.",
-			item_ref.item_link,
-			counts.changed,
-			counts.changed == 1 ? "" : "s",
-			counts.unchanged
+			"#undiscover succeeded for {}. It is no longer marked discovered.",
+			item_ref.item_link
 		).c_str()
 	);
 }
