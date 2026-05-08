@@ -106,6 +106,7 @@ int command_init(void)
 		command_add("depop", "[Start Spawn Timer] - Depop your NPC target and optionally start their spawn timer (false by default)", AccountStatus::Guide, command_depop) ||
 		command_add("depopzone", "[Start Spawn Timers] - Depop the zone and optionally start spawn timers (false by default)", AccountStatus::GMAdmin, command_depopzone) ||
 		command_add("devtools", "[menu|window] [enable|disable] - Manages Developer Tools (send no parameter for menu)", AccountStatus::GMMgmt, command_devtools) ||
+		command_add("discover", "[Item ID] - Discovers the item on your cursor or the specified item ID.", AccountStatus::GMMgmt, command_discover) ||
 		command_add("disablerecipe", "[Recipe ID] - Disables a Recipe", AccountStatus::QuestTroupe, command_disablerecipe) ||
 		command_add("disarmtrap", "Analog for ldon disarm trap for the newer clients since we still don't have it working.", AccountStatus::QuestTroupe, command_disarmtrap) ||
 		command_add("door", "Door editing command", AccountStatus::QuestTroupe, command_door) ||
@@ -224,6 +225,7 @@ int command_init(void)
 		command_add("traindisc", "[level] - Trains all the disciplines usable by the target, up to level specified. (may freeze client for a few seconds)", AccountStatus::GMLeadAdmin, command_traindisc) ||
 		command_add("tune", "Calculate statistical values related to combat.", AccountStatus::GMAdmin, command_tune) ||
 		command_add("undye", "Remove dye from all of your or your target's armor slots", AccountStatus::GMAdmin, command_undye) ||
+		command_add("undiscover", "[Item ID] - Removes the item on your cursor or the specified item ID from discovered items.", AccountStatus::GMMgmt, command_undiscover) ||
 		command_add("unmemspell", "[Spell ID] - Unmemorize a Spell by ID for you or your target", AccountStatus::Guide, command_unmemspell) ||
 		command_add("unmemspells", " Unmemorize all spells for you or your target", AccountStatus::Guide, command_unmemspells) ||
 		command_add("unscribespell", "[Spell ID] - Unscribe a spell from your or your target's spell book by Spell ID", AccountStatus::GMCoder, command_unscribespell) ||

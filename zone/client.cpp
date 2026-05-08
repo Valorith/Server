@@ -4992,7 +4992,8 @@ bool Client::IsDiscovered(uint32 item_id)
 	return true;
 }
 
-void Client::DiscoverItem(uint32 item_id) {
+bool Client::DiscoverItem(uint32 item_id)
+{
 	auto e = DiscoveredItemsRepository::NewEntity();
 
 	e.account_status = Admin();
@@ -5000,14 +5001,18 @@ void Client::DiscoverItem(uint32 item_id) {
 	e.discovered_date = std::time(nullptr);
 	e.item_id = item_id;
 
-	auto d = DiscoveredItemsRepository::InsertOne(database, e);
+	if (!DiscoveredItemsRepository::InsertIgnore(database, e)) {
+		return false;
+	}
+
+	zone->discovered_items.emplace_back(item_id);
 
 	if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::DISCOVER_ITEM)) {
 		const auto* item = database.GetItem(item_id);
 
 		auto e = PlayerEvent::DiscoverItemEvent{
 			.item_id = item_id,
-			.item_name = item->Name,
+			.item_name = item ? item->Name : "",
 		};
 		RecordPlayerEventLog(PlayerEvent::DISCOVER_ITEM, e);
 
@@ -5019,6 +5024,27 @@ void Client::DiscoverItem(uint32 item_id) {
 
 		parse->EventPlayer(EVENT_DISCOVER_ITEM, this, "", item_id, &args);
 	}
+
+	return true;
+}
+
+bool Client::UndiscoverItem(uint32 item_id)
+{
+	const bool deleted = DiscoveredItemsRepository::DeleteOne(database, item_id) > 0;
+	if (!deleted) {
+		return false;
+	}
+
+	zone->discovered_items.erase(
+		std::remove(
+			zone->discovered_items.begin(),
+			zone->discovered_items.end(),
+			item_id
+		),
+		zone->discovered_items.end()
+	);
+
+	return true;
 }
 
 void Client::CheckItemDiscoverability(EQ::ItemInstance* inst)

@@ -964,7 +964,8 @@ public:
 	void SendPath(Mob* target);
 
 	bool IsDiscovered(uint32 itemid);
-	void DiscoverItem(uint32 itemid);
+	bool DiscoverItem(uint32 itemid);
+	bool UndiscoverItem(uint32 itemid);
 	void CheckItemDiscoverability(EQ::ItemInstance* inst);
 
 	bool TGB() const { return tgb; }
