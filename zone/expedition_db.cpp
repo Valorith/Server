@@ -829,6 +829,11 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 		return false;
 	}
 
+	// Existing quest scripts remain authoritative; they can opt into DB templates explicitly.
+	if (parse && parse->HasQuestSub(npc.GetNPCTypeID(), EVENT_SAY)) {
+		return false;
+	}
+
 	const std::string phrase = CommandWord(message);
 	for (const auto& [template_id, template_data] : g_templates) {
 		if (!template_data.enabled) {
