@@ -6,6 +6,7 @@
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
 #include "zone/expedition_config.h"
+#include "zone/expedition_db.h"
 #include "zone/embperl.h"
 #include "zone/titles.h"
 
@@ -1994,6 +1995,56 @@ DynamicZone* Perl_Client_CreateExpeditionFromTemplate(Client* self, std::string 
 	return self->CreateExpeditionFromTemplate(template_name);
 }
 
+DynamicZone* Perl_Client_CreateExpeditionFromDBTemplate(Client* self, uint32_t expedition_template_id)
+{
+	return self->CreateExpeditionFromDBTemplate(expedition_template_id);
+}
+
+DynamicZone* Perl_Client_CreateExpeditionFromDBTemplate(Client* self, std::string template_name)
+{
+	return self->CreateExpeditionFromDBTemplate(template_name);
+}
+
+bool Perl_Client_CanCreateExpeditionFromDBTemplate(Client* self, uint32_t expedition_template_id)
+{
+	return self->CanCreateExpeditionFromDBTemplate(expedition_template_id);
+}
+
+bool Perl_Client_CanCreateExpeditionFromDBTemplate(Client* self, std::string template_name)
+{
+	return self->CanCreateExpeditionFromDBTemplate(template_name);
+}
+
+perl::reference Perl_Client_GetExpeditionTemplate(Client* self, uint32_t expedition_template_id)
+{
+	perl::hash result;
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	if (!template_data) {
+		return perl::reference(result);
+	}
+
+	result["id"] = template_data->id;
+	result["name"] = template_data->name;
+	result["slug"] = template_data->slug;
+	result["enabled"] = template_data->enabled;
+	result["dz_template_id"] = template_data->dz_template_id;
+	result["zone_id"] = template_data->dz_template.zone_id;
+	result["zone_version"] = template_data->dz_template.zone_version;
+	result["duration_seconds"] = template_data->dz_template.duration_seconds;
+	result["min_players"] = template_data->dz_template.min_players;
+	result["max_players"] = template_data->dz_template.max_players;
+	result["replay_lockout_seconds"] = template_data->replay_lockout_seconds;
+	result["silent"] = template_data->silent;
+	result["request_phrase"] = template_data->request_phrase;
+	return perl::reference(result);
+}
+
+perl::reference Perl_Client_GetExpeditionTemplate(Client* self, std::string template_name)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(template_name);
+	return Perl_Client_GetExpeditionTemplate(self, template_data ? template_data->id : 0);
+}
+
 perl::reference Perl_Client_CanCreateExpedition(Client* self, perl::reference table_ref)
 {
 	perl::hash result;
@@ -3658,6 +3709,12 @@ void perl_register_client()
 	package.add("CreateExpedition", (DynamicZone*(*)(Client*, std::string, uint32, uint32, std::string, uint32, uint32, bool))&Perl_Client_CreateExpedition);
 	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromTemplate);
 	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromTemplate);
+	package.add("CreateExpeditionFromDBTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromDBTemplate);
+	package.add("CreateExpeditionFromDBTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromDBTemplate);
+	package.add("CanCreateExpeditionFromDBTemplate", (bool(*)(Client*, uint32_t))&Perl_Client_CanCreateExpeditionFromDBTemplate);
+	package.add("CanCreateExpeditionFromDBTemplate", (bool(*)(Client*, std::string))&Perl_Client_CanCreateExpeditionFromDBTemplate);
+	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, uint32_t))&Perl_Client_GetExpeditionTemplate);
+	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, std::string))&Perl_Client_GetExpeditionTemplate);
 	package.add("CreateTaskDynamicZone", &Perl_Client_CreateTaskDynamicZone);
 	package.add("CanCreateExpedition", &Perl_Client_CanCreateExpedition);
 	package.add("DecreaseByID", &Perl_Client_DecreaseByID);

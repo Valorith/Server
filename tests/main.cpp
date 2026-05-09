@@ -21,6 +21,7 @@
 #include "tests/data_verification_test.h"
 #include "tests/fixed_memory_test.h"
 #include "tests/fixed_memory_variable_test.h"
+#include "tests/expedition_schema_test.h"
 #include "tests/hextoi_32_64_test.h"
 #include "tests/ipc_mutex_test.h"
 #include "tests/memory_mapped_file_test.h"
@@ -54,6 +55,7 @@ int main()
 		tests.add(new IPCMutexTest());
 		tests.add(new FixedMemoryHashTest());
 		tests.add(new FixedMemoryVariableHashTest());
+		tests.add(new ExpeditionSchemaTest());
 		tests.add(new atoboolTest());
 		tests.add(new BuyerBuyLinesRepositoryTest());
 		tests.add(new hextoi_32_64_Test());

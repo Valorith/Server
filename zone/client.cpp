@@ -51,6 +51,7 @@
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
 #include "zone/expedition_config.h"
+#include "zone/expedition_db.h"
 #include "zone/expedition_request.h"
 #include "zone/guild_mgr.h"
 #include "zone/lua_parser.h"
@@ -1640,6 +1641,9 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 			if (t->IsNPC() && !is_engaged) {
 				CheckLDoNHail(t->CastToNPC());
 				CheckEmoteHail(t->CastToNPC(), message);
+				if (ExpeditionDB::HandleRequestSay(*this, *t->CastToNPC(), message)) {
+					break;
+				}
 
 				if (RuleB(TaskSystem, EnableTaskSystem)) {
 					if (UpdateTasksOnSpeakWith(t->CastToNPC())) {
@@ -10192,6 +10196,7 @@ void Client::SendDynamicZoneUpdates()
 		if (dz->IsCurrentZoneDz())
 		{
 			dz->SyncCharacterLockouts(CharacterID(), m_dz_lockouts);
+			ExpeditionDB::ApplyLootEvents(*dz);
 		}
 	}
 
@@ -10231,6 +10236,29 @@ DynamicZone* Client::CreateExpeditionFromTemplate(uint32_t dz_template_id)
 DynamicZone* Client::CreateExpeditionFromTemplate(const std::string& template_name)
 {
 	return CreateExpeditionFromTemplateName(*this, template_name);
+}
+
+DynamicZone* Client::CreateExpeditionFromDBTemplate(uint32_t expedition_template_id)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	return template_data ? ExpeditionDB::CreateExpeditionFromTemplate(*this, *template_data) : nullptr;
+}
+
+DynamicZone* Client::CreateExpeditionFromDBTemplate(const std::string& template_name)
+{
+	return ExpeditionDB::CreateExpeditionFromTemplate(*this, template_name);
+}
+
+bool Client::CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;
+}
+
+bool Client::CanCreateExpeditionFromDBTemplate(const std::string& template_name)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(template_name);
+	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;
 }
 
 void Client::CreateTaskDynamicZone(int task_id, DynamicZone& dz_request)

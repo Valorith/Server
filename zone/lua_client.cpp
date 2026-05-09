@@ -6,6 +6,7 @@
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
 #include "zone/expedition_config.h"
+#include "zone/expedition_db.h"
 #include "zone/expedition_request.h"
 #include "zone/lua_expedition.h"
 #include "zone/lua_group.h"
@@ -2088,6 +2089,54 @@ Lua_Expedition Lua_Client::CreateExpeditionFromTemplate(std::string template_nam
 	return self->CreateExpeditionFromTemplate(template_name);
 }
 
+Lua_Expedition Lua_Client::CreateExpeditionFromDBTemplate(uint32_t expedition_template_id) {
+	Lua_Safe_Call_Class(Lua_Expedition);
+	return self->CreateExpeditionFromDBTemplate(expedition_template_id);
+}
+
+Lua_Expedition Lua_Client::CreateExpeditionFromDBTemplate(std::string template_name) {
+	Lua_Safe_Call_Class(Lua_Expedition);
+	return self->CreateExpeditionFromDBTemplate(template_name);
+}
+
+bool Lua_Client::CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id) {
+	Lua_Safe_Call_Bool();
+	return self->CanCreateExpeditionFromDBTemplate(expedition_template_id);
+}
+
+bool Lua_Client::CanCreateExpeditionFromDBTemplate(std::string template_name) {
+	Lua_Safe_Call_Bool();
+	return self->CanCreateExpeditionFromDBTemplate(template_name);
+}
+
+luabind::object Lua_Client::GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id) {
+	auto result = luabind::newtable(L);
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	if (!template_data) {
+		return result;
+	}
+
+	result["id"] = template_data->id;
+	result["name"] = template_data->name;
+	result["slug"] = template_data->slug;
+	result["enabled"] = template_data->enabled;
+	result["dz_template_id"] = template_data->dz_template_id;
+	result["zone_id"] = template_data->dz_template.zone_id;
+	result["zone_version"] = template_data->dz_template.zone_version;
+	result["duration_seconds"] = template_data->dz_template.duration_seconds;
+	result["min_players"] = template_data->dz_template.min_players;
+	result["max_players"] = template_data->dz_template.max_players;
+	result["replay_lockout_seconds"] = template_data->replay_lockout_seconds;
+	result["silent"] = template_data->silent;
+	result["request_phrase"] = template_data->request_phrase;
+	return result;
+}
+
+luabind::object Lua_Client::GetExpeditionTemplate(lua_State* L, std::string template_name) {
+	const auto* template_data = ExpeditionDB::FindTemplate(template_name);
+	return GetExpeditionTemplate(L, template_data ? template_data->id : 0);
+}
+
 luabind::object Lua_Client::CanCreateExpedition(lua_State* L, luabind::object expedition_table) {
 	auto result = luabind::newtable(L);
 
@@ -3901,6 +3950,12 @@ luabind::scope lua_register_client() {
 	.def("CreateExpedition", (Lua_Expedition(Lua_Client::*)(std::string, uint32, uint32, std::string, uint32, uint32, bool))&Lua_Client::CreateExpedition)
 	.def("CreateExpeditionFromTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromTemplate)
 	.def("CreateExpeditionFromTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromTemplate)
+	.def("CreateExpeditionFromDBTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromDBTemplate)
+	.def("CreateExpeditionFromDBTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromDBTemplate)
+	.def("CanCreateExpeditionFromDBTemplate", (bool(Lua_Client::*)(uint32_t))&Lua_Client::CanCreateExpeditionFromDBTemplate)
+	.def("CanCreateExpeditionFromDBTemplate", (bool(Lua_Client::*)(std::string))&Lua_Client::CanCreateExpeditionFromDBTemplate)
+	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::GetExpeditionTemplate)
+	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::GetExpeditionTemplate)
 	.def("CreateTaskDynamicZone", &Lua_Client::CreateTaskDynamicZone)
 	.def("CanCreateExpedition", &Lua_Client::CanCreateExpedition)
 	.def("DecreaseByID", (bool(Lua_Client::*)(uint32,int))&Lua_Client::DecreaseByID)

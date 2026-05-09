@@ -623,6 +623,12 @@ public:
 	Lua_Expedition  CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players, bool disable_messages);
 	Lua_Expedition  CreateExpeditionFromTemplate(uint32_t dz_template_id);
 	Lua_Expedition  CreateExpeditionFromTemplate(std::string template_name);
+	Lua_Expedition  CreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
+	Lua_Expedition  CreateExpeditionFromDBTemplate(std::string template_name);
+	bool            CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
+	bool            CanCreateExpeditionFromDBTemplate(std::string template_name);
+	luabind::object GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id);
+	luabind::object GetExpeditionTemplate(lua_State* L, std::string template_name);
 	luabind::object CanCreateExpedition(lua_State* L, luabind::object expedition_info);
 	Lua_Expedition  GetExpedition();
 	luabind::object GetExpeditionLockouts(lua_State* L);

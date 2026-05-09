@@ -1674,6 +1674,10 @@ public:
 	DynamicZone* CreateExpedition(uint32 zone_id, uint32 version, uint32 duration, const std::string& name, uint32 min_players, uint32 max_players, bool silent = false);
 	DynamicZone* CreateExpeditionFromTemplate(uint32_t dz_template_id);
 	DynamicZone* CreateExpeditionFromTemplate(const std::string& template_name);
+	DynamicZone* CreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
+	DynamicZone* CreateExpeditionFromDBTemplate(const std::string& template_name);
+	bool CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
+	bool CanCreateExpeditionFromDBTemplate(const std::string& template_name);
 	DynamicZone* GetExpedition() const;
 	uint32 GetExpeditionID() const;
 	const DzLockout* GetDzLockout(const std::string& expedition, const std::string& event) const;

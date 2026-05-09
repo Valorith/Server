@@ -7402,6 +7402,84 @@ CREATE TABLE IF NOT EXISTS `item_unique_id_reservations` (
 )",
 		.content_schema_update = false
 	},
+	ManifestEntry{
+		.version = 9341,
+		.description = "2026_05_09_db_driven_expeditions.sql",
+		.check = "SHOW TABLES LIKE 'expedition_templates'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE IF NOT EXISTS `expedition_templates` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`dz_template_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`name` VARCHAR(128) NOT NULL DEFAULT '',
+	`slug` VARCHAR(128) NOT NULL DEFAULT '',
+	`enabled` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`replay_lockout_seconds` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`replay_on_join` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
+	`silent` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`request_phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
+	`notes` TEXT NULL,
+	`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `uk_expedition_templates_slug` (`slug`),
+	KEY `idx_expedition_templates_dz_template_id` (`dz_template_id`),
+	KEY `idx_expedition_templates_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE IF NOT EXISTS `expedition_template_request_npcs` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`expedition_template_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`zone_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`npc_type_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`spawn2_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
+	`enabled` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
+	PRIMARY KEY (`id`),
+	KEY `idx_expedition_request_template` (`expedition_template_id`),
+	KEY `idx_expedition_request_lookup` (`zone_id`, `npc_type_id`, `spawn2_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE IF NOT EXISTS `expedition_template_events` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`expedition_template_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`event_name` VARCHAR(128) NOT NULL DEFAULT '',
+	`lockout_seconds` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`replay_lockout_seconds` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`lock_on_success` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
+	`lock_on_failure` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`loot_protected` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`sort_order` INT(11) NOT NULL DEFAULT '0',
+	PRIMARY KEY (`id`),
+	KEY `idx_expedition_events_template` (`expedition_template_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE IF NOT EXISTS `expedition_template_event_npcs` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`event_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`npc_type_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`spawn2_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`role` VARCHAR(32) NOT NULL DEFAULT '',
+	`complete_on_death` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`loot_protected` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	PRIMARY KEY (`id`),
+	KEY `idx_expedition_event_npcs_event` (`event_id`),
+	KEY `idx_expedition_event_npcs_lookup` (`npc_type_id`, `spawn2_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`event_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`action_type` VARCHAR(64) NOT NULL DEFAULT '',
+	`action_value` VARCHAR(255) NOT NULL DEFAULT '',
+	`sort_order` INT(11) NOT NULL DEFAULT '0',
+	PRIMARY KEY (`id`),
+	KEY `idx_expedition_actions_event` (`event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+)",
+		.content_schema_update = true
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,
