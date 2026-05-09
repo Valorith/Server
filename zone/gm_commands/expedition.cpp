@@ -2,7 +2,9 @@
 #include "zone/dialogue_window.h"
 #include "zone/expedition_config.h"
 #include "zone/expedition_db.h"
+#include "zone/event_codes.h"
 #include "zone/npc.h"
+#include "zone/quest_parser_collection.h"
 #include "zone/zone.h"
 #include "zone/zonedb.h"
 
@@ -74,6 +76,24 @@ namespace {
 		return Strings::SecondsToTime(seconds);
 	}
 
+	std::string Location(uint32_t zone_id, float x, float y, float z, float h = 0.0f)
+	{
+		return fmt::format("{} ({:.2f}, {:.2f}, {:.2f}, h {:.2f})", ZoneName(zone_id, true), x, y, z, h);
+	}
+
+	std::string RequestModeDescription(const std::string& mode)
+	{
+		if (Strings::EqualFold(mode, "script_only")) {
+			return "script_only: scripts fully own request handling; automatic DB request NPCs are ignored.";
+		}
+
+		if (Strings::EqualFold(mode, "script_can_opt_in")) {
+			return "script_can_opt_in: scripts own dialogue and may explicitly call DB template APIs.";
+		}
+
+		return "db_only: configured request NPCs automatically create DB expeditions.";
+	}
+
 	void ShowHelp(Client* c)
 	{
 		c->Message(Chat::White, "#expedition help - Show this command catalog.");
@@ -93,6 +113,8 @@ namespace {
 			Saylink::Silent("#expedition test", "#expedition test")
 		).c_str());
 		c->Message(Chat::White, "#expedition validate - Check for missing or risky setup.");
+		c->Message(Chat::White, "#expedition wizard - Guided setup popup. #expedition fix - Show validation fixes. #expedition preview - Preview runtime behavior.");
+		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup. #expedition preset group|raid|solo|boss|chest - Apply common defaults.");
 		c->Message(Chat::White, "#expedition enable - Publish the selected expedition. #expedition disable - Unpublish it.");
 		c->Message(Chat::White, "#expedition delete <id|name> confirm - Delete an unpublished/editing template and its linked setup rows.");
 	}
@@ -114,6 +136,7 @@ namespace {
 		c->Message(Chat::White, "#expedition set switchid <id> - Set a specific dynamic-zone switch id.");
 		c->Message(Chat::White, "#expedition set replay <duration> - Set the replay lockout awarded on creation.");
 		c->Message(Chat::White, "#expedition set silent on|off - Toggle normal creation failure/success messages.");
+		c->Message(Chat::White, "#expedition set requestmode db_only|script_can_opt_in|script_only - Choose how DB request NPCs interact with quest scripts.");
 	}
 
 	void ShowRequestNpcHelp(Client* c)
@@ -139,6 +162,8 @@ namespace {
 		c->Message(Chat::White, "#expedition event npc boss|add|chest|loot - Add your targeted NPC with an explicit role.");
 		c->Message(Chat::White, "#expedition event loot on|off - Toggle loot-event protection for your targeted NPC.");
 		c->Message(Chat::White, "#expedition event completeondeath on|off - Toggle whether your targeted NPC completes the selected event on death.");
+		c->Message(Chat::White, "#expedition action add lock|unlock|lockout|replay|depop|message|remaining [value] - Add selected-event runtime actions.");
+		c->Message(Chat::White, "#expedition action list - List selected-event runtime actions. #expedition action clear confirm - Remove them.");
 	}
 
 	void ShowTestHelp(Client* c)
@@ -149,6 +174,30 @@ namespace {
 		c->Message(Chat::White, "#expedition test request - Simulate the targeted request NPC phrase flow.");
 		c->Message(Chat::White, "#expedition test lockout - Apply the selected event lockout to your current expedition.");
 		c->Message(Chat::White, "#expedition test loot - Re-apply DB loot-event protection for your current expedition.");
+	}
+
+	void ShowPresetHelp(Client* c)
+	{
+		c->Message(Chat::White, "#expedition preset command catalog:");
+		c->Message(Chat::White, "#expedition preset solo - 1 player, 90 minute duration, 30 minute replay.");
+		c->Message(Chat::White, "#expedition preset group - 1-6 players, 6 hour duration, 2 hour replay.");
+		c->Message(Chat::White, "#expedition preset raid - 6-54 players, 6 hour duration, 2 hour replay.");
+		c->Message(Chat::White, "#expedition preset boss - Selected event gets 6 hour lockout, 2 hour replay, and targeted NPC as boss when targeted.");
+		c->Message(Chat::White, "#expedition preset chest - Targeted NPC is added as loot-protected chest for selected event.");
+	}
+
+	void ShowActionHelp(Client* c)
+	{
+		c->Message(Chat::White, "#expedition action command catalog:");
+		c->Message(Chat::White, "#expedition action add lock - Lock the expedition when the selected event completes.");
+		c->Message(Chat::White, "#expedition action add unlock - Unlock the expedition when the selected event completes.");
+		c->Message(Chat::White, "#expedition action add lockout [event_name] <duration> - Add a lockout. Event name defaults to the selected event.");
+		c->Message(Chat::White, "#expedition action add replay <duration> - Add or refresh the Replay Timer.");
+		c->Message(Chat::White, "#expedition action add depop <npc_type_id> - Depop all NPCs of that type in the current zone.");
+		c->Message(Chat::White, "#expedition action add message <text> - Message expedition members in the zone.");
+		c->Message(Chat::White, "#expedition action add remaining <duration> - Set expedition remaining time.");
+		c->Message(Chat::White, "#expedition action list - List actions for the selected event.");
+		c->Message(Chat::White, "#expedition action clear confirm - Remove selected-event actions.");
 	}
 
 	void PrintValidation(Client* c, const ExpeditionDB::Template& template_data)
@@ -169,11 +218,12 @@ namespace {
 	void ShowTemplate(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		c->Message(Chat::White, fmt::format(
-			"Expedition [{}] id [{}] dz_template [{}] enabled [{}]",
+			"Expedition [{}] id [{}] dz_template [{}] enabled [{}] request_mode [{}]",
 			template_data.name,
 			template_data.id,
 			template_data.dz_template_id,
-			OnOff(template_data.enabled)
+			OnOff(template_data.enabled),
+			template_data.request_mode
 		).c_str());
 		c->Message(Chat::White, fmt::format(
 			"Zone [{}:{}] duration [{}] players [{}-{}] replay [{}] silent [{}]",
@@ -190,6 +240,108 @@ namespace {
 			template_data.request_npcs.size(),
 			template_data.events.size()
 		).c_str());
+	}
+
+	void ShowPreview(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		c->Message(Chat::White, fmt::format("Preview: [{}] [{}]", template_data.name, template_data.enabled ? "enabled" : "disabled").c_str());
+		c->Message(Chat::White, fmt::format("Request mode: {}", RequestModeDescription(template_data.request_mode)).c_str());
+		c->Message(Chat::White, fmt::format(
+			"Zone [{}:{}], duration [{}], players [{}-{}], replay [{}], silent [{}]",
+			ZoneName(template_data.dz_template.zone_id, true),
+			template_data.dz_template.zone_version,
+			Duration(template_data.dz_template.duration_seconds),
+			template_data.dz_template.min_players,
+			template_data.dz_template.max_players,
+			Duration(template_data.replay_lockout_seconds),
+			OnOff(template_data.silent)
+		).c_str());
+		c->Message(Chat::White, fmt::format(
+			"Zone-in: {}",
+			Location(template_data.dz_template.zone_id, template_data.dz_template.zone_in_x, template_data.dz_template.zone_in_y, template_data.dz_template.zone_in_z, template_data.dz_template.zone_in_h)
+		).c_str());
+		c->Message(Chat::White, fmt::format(
+			"Safe return: {}",
+			Location(template_data.dz_template.return_zone_id, template_data.dz_template.return_x, template_data.dz_template.return_y, template_data.dz_template.return_z, template_data.dz_template.return_h)
+		).c_str());
+		c->Message(Chat::White, fmt::format(
+			"Compass: {}",
+			Location(template_data.dz_template.compass_zone_id, template_data.dz_template.compass_x, template_data.dz_template.compass_y, template_data.dz_template.compass_z)
+		).c_str());
+
+		for (const auto& request_npc : template_data.request_npcs) {
+			const bool scripted = parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY);
+			c->Message(Chat::White, fmt::format(
+				"Request NPC type [{}] spawn [{}] zone [{}] phrase [{}] {}",
+				request_npc.npc_type_id,
+				request_npc.spawn2_id,
+				ZoneName(request_npc.zone_id, true),
+				request_npc.phrase,
+				scripted ? "(has EVENT_SAY script)" : ""
+			).c_str());
+		}
+
+		for (const auto& event_data : template_data.events) {
+			c->Message(Chat::White, fmt::format(
+				"Event [{}] lockout [{}] replay [{}] npcs [{}] actions [{}]",
+				event_data.event_name,
+				Duration(event_data.lockout_seconds),
+				Duration(event_data.replay_lockout_seconds),
+				event_data.npcs.size(),
+				event_data.actions.size()
+			).c_str());
+		}
+	}
+
+	void ShowFixes(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		const auto validation = ExpeditionDB::ValidateTemplate(template_data);
+		c->Message(Chat::White, fmt::format("Fix catalog for [{}]: {}", template_data.name, validation.StatusName()).c_str());
+		for (const auto& error : validation.errors) {
+			c->Message(Chat::Red, fmt::format("Error: {}", error).c_str());
+		}
+		for (const auto& warning : validation.warnings) {
+			c->Message(Chat::Yellow, fmt::format("Warning: {}", warning).c_str());
+		}
+		c->Message(Chat::White, fmt::format("{} - Use your current location as zone-in.", Saylink::Silent("#expedition fix zonein", "#expedition fix zonein")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Use your current location as safe return.", Saylink::Silent("#expedition fix safereturn", "#expedition fix safereturn")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Add your targeted NPC as request NPC.", Saylink::Silent("#expedition fix requestnpc", "#expedition fix requestnpc")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Set a 2 hour replay lockout.", Saylink::Silent("#expedition fix replay 2h", "#expedition fix replay 2h")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Apply group defaults.", Saylink::Silent("#expedition preset group", "#expedition preset group")).c_str());
+	}
+
+	void ShowWizard(Client* c, const ExpeditionDB::Template* template_data)
+	{
+		std::string body;
+		body += DialogueWindow::CenterMessage(DialogueWindow::ColorMessage("gold", "Expedition Wizard"));
+		body += DialogueWindow::Break(2);
+		if (!template_data) {
+			body += "Start by creating an expedition from your current zone and location.";
+			body += DialogueWindow::Break(2);
+			body += Saylink::Silent("#expedition create \"New Expedition\"", "Create New Expedition");
+			c->SendPopupToClient("Expedition Wizard", body.c_str());
+			return;
+		}
+
+		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
+		body += fmt::format("{} [{}]", DialogueWindow::ColorMessage("gold", template_data->name), validation.StatusName());
+		body += DialogueWindow::Break(2);
+		body += DialogueWindow::ColorMessage("gold", "1. Base Setup");
+		body += DialogueWindow::Break();
+		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition set zone", "Use Current Zone"), Saylink::Silent("#expedition set zonein", "Use Current Zone-In"), Saylink::Silent("#expedition set safereturn", "Use Current Safe Return"), Saylink::Silent("#expedition preset group", "Group Preset"));
+		body += DialogueWindow::Break(2);
+		body += DialogueWindow::ColorMessage("gold", "2. Request Handling");
+		body += DialogueWindow::Break();
+		body += fmt::format("{} | {} | {}", Saylink::Silent("#expedition requestnpc", "Use Target Request NPC"), Saylink::Silent("#expedition set requestmode db_only", "DB Auto"), Saylink::Silent("#expedition set requestmode script_can_opt_in", "Script Opt-In"));
+		body += DialogueWindow::Break(2);
+		body += DialogueWindow::ColorMessage("gold", "3. Encounter");
+		body += DialogueWindow::Break();
+		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition event add \"Boss Defeated\"", "Add Event"), Saylink::Silent("#expedition preset boss", "Boss Preset"), Saylink::Silent("#expedition preset chest", "Chest Preset"), Saylink::Silent("#expedition action", "Actions"));
+		body += DialogueWindow::Break(2);
+		body += DialogueWindow::ColorMessage("gold", "4. Review");
+		body += DialogueWindow::Break();
+		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition preview", "Preview"), Saylink::Silent("#expedition fix", "Fixes"), Saylink::Silent("#expedition test request", "Test Request"), Saylink::Silent("#expedition enable", "Enable"));
+		c->SendPopupToClient("Expedition Wizard", body.c_str());
 	}
 
 	void ShowMenu(Client* c)
@@ -212,6 +364,7 @@ namespace {
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Name") + DialogueWindow::TableCell(template_data->name));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Status") + DialogueWindow::TableCell(validation.StatusName()));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Enabled") + DialogueWindow::TableCell(OnOff(template_data->enabled)));
+		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Request Mode") + DialogueWindow::TableCell(template_data->request_mode));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Zone") + DialogueWindow::TableCell(fmt::format("{}:{}", ZoneName(template_data->dz_template.zone_id, true), template_data->dz_template.zone_version)));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Duration") + DialogueWindow::TableCell(Duration(template_data->dz_template.duration_seconds)));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Players") + DialogueWindow::TableCell(fmt::format("{}-{}", template_data->dz_template.min_players, template_data->dz_template.max_players)));
@@ -231,24 +384,29 @@ namespace {
 		body += DialogueWindow::ColorMessage("gold", "Events");
 		body += DialogueWindow::Break();
 		body += fmt::format(
-			"{} | {} | {} | {}",
+			"{} | {} | {} | {} | {}",
 			Saylink::Silent("#expedition event add \"Boss Defeated\"", "Add Event"),
 			Saylink::Silent("#expedition event npc", "Add Target NPC"),
 			Saylink::Silent("#expedition event loot on", "Protect Target Loot"),
-			Saylink::Silent("#expedition event lockout 6h", "Set 6h Lockout")
+			Saylink::Silent("#expedition event lockout 6h", "Set 6h Lockout"),
+			Saylink::Silent("#expedition action", "Actions")
 		);
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "Validation and Testing");
 		body += DialogueWindow::Break();
 		body += fmt::format(
-			"{} | {} | {} | {} | {}",
+			"{} | {} | {} | {} | {} | {} | {}",
+			Saylink::Silent("#expedition wizard", "Wizard"),
+			Saylink::Silent("#expedition preview", "Preview"),
+			Saylink::Silent("#expedition fix", "Fix"),
 			Saylink::Silent("#expedition validate", "Validate"),
 			Saylink::Silent("#expedition test create", "Test Create"),
 			Saylink::Silent("#expedition test move", "Test Move"),
-			Saylink::Silent("#expedition enable", "Enable"),
-			Saylink::Silent("#expedition disable", "Disable")
+			Saylink::Silent("#expedition enable", "Enable")
 		);
 		body += DialogueWindow::Break(2);
+		body += Saylink::Silent("#expedition disable", "Disable");
+		body += " | ";
 		body += Saylink::Silent(fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm");
 
 		c->SendPopupToClient("Expedition Builder", body.c_str());
@@ -334,6 +492,28 @@ void command_expedition(Client* c, const Seperator* sep)
 		return;
 	}
 
+	if (sub == "clone") {
+		const auto* source = strcasecmp(sep->arg[2], "current") == 0 ? SelectedTemplate(c) : ExpeditionDB::FindTemplate(sep->arg[2]);
+		std::string name = sep->argplus[3];
+		Strings::Trim(name);
+		if (!source || name.empty()) {
+			c->Message(Chat::Red, "Usage: #expedition clone <id|name|current> \"New Name\"");
+			return;
+		}
+
+		const std::string source_name = source->name;
+		const uint32_t id = ExpeditionDB::CloneTemplate(content_db, source->id, name);
+		if (!id) {
+			c->Message(Chat::Red, "Failed to clone DB expedition template.");
+			return;
+		}
+
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
+		c->Message(Chat::Green, fmt::format("Cloned expedition [{}] into [{}].", source_name, name).c_str());
+		ShowMenu(c);
+		return;
+	}
+
 	if (sub == "select") {
 		const auto* template_data = ExpeditionDB::FindTemplate(sep->argplus[2]);
 		if (!template_data) {
@@ -356,12 +536,69 @@ void command_expedition(Client* c, const Seperator* sep)
 		return;
 	}
 
+	if (sub == "preview") {
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+		ShowPreview(c, *template_data);
+		return;
+	}
+
+	if (sub == "wizard") {
+		ShowWizard(c, SelectedTemplate(c));
+		return;
+	}
+
 	if (sub == "validate") {
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
 		PrintValidation(c, *template_data);
+		return;
+	}
+
+	if (sub == "fix") {
+		template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		const std::string action = Strings::ToLower(sep->arg[2]);
+		if (action.empty() || action == "help") {
+			ShowFixes(c, *template_data);
+			return;
+		}
+
+		if (action == "zonein") {
+			const auto& pos = c->GetPosition();
+			ExpeditionDB::SetDzTemplateZoneIn(content_db, template_data->dz_template_id, pos.x, pos.y, pos.z, pos.w);
+			c->Message(Chat::Green, "Set zone-in to your current location.");
+		}
+		else if (action == "safereturn") {
+			const auto& pos = c->GetPosition();
+			ExpeditionDB::SetDzTemplateSafeReturn(content_db, template_data->dz_template_id, zone->GetZoneID(), pos.x, pos.y, pos.z, pos.w);
+			c->Message(Chat::Green, "Set safe return to your current location.");
+		}
+		else if (action == "requestnpc") {
+			NPC* npc = TargetNpc(c);
+			if (!npc) {
+				NeedTargetNpc(c);
+				return;
+			}
+			ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), "expedition");
+			c->Message(Chat::Green, "Added targeted NPC as request NPC.");
+		}
+		else if (action == "replay") {
+			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3][0] ? sep->arg[3] : "2h");
+			ExpeditionDB::SetTemplateReplay(content_db, template_data->id, seconds);
+			c->Message(Chat::Green, fmt::format("Set replay lockout to [{}].", Duration(seconds)).c_str());
+		}
+		else {
+			ShowFixes(c, *template_data);
+		}
 		return;
 	}
 
@@ -514,6 +751,14 @@ void command_expedition(Client* c, const Seperator* sep)
 			const bool enabled = Strings::ToBool(sep->arg[3]);
 			ExpeditionDB::SetTemplateSilent(content_db, template_data->id, enabled);
 			c->Message(Chat::Green, fmt::format("Set silent to [{}].", OnOff(enabled)).c_str());
+		}
+		else if (field == "requestmode") {
+			if (sep->arg[3][0] == '\0') {
+				c->Message(Chat::Red, "Usage: #expedition set requestmode db_only|script_can_opt_in|script_only");
+				return;
+			}
+			ExpeditionDB::SetTemplateRequestMode(content_db, template_data->id, sep->arg[3]);
+			c->Message(Chat::Green, fmt::format("Set request mode to [{}].", sep->arg[3]).c_str());
 		}
 		else {
 			c->Message(Chat::Red, "Unknown #expedition set option.");
@@ -689,6 +934,173 @@ void command_expedition(Client* c, const Seperator* sep)
 		return;
 	}
 
+	if (sub == "action") {
+		const std::string action = Strings::ToLower(sep->arg[2]);
+		if (action.empty() || action == "help") {
+			ShowActionHelp(c);
+			return;
+		}
+		template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+		const auto* event_data = SelectedEvent(c, *template_data);
+		if (!event_data) {
+			c->Message(Chat::Red, "Add or select an event first.");
+			return;
+		}
+
+		if (action == "list") {
+			if (event_data->actions.empty()) {
+				c->Message(Chat::White, "Selected event has no runtime actions.");
+				return;
+			}
+			for (const auto& event_action : event_data->actions) {
+				c->Message(Chat::White, fmt::format("[{}] {} [{}]", event_action.id, event_action.action_type, event_action.action_value).c_str());
+			}
+			return;
+		}
+
+		if (action == "clear") {
+			if (strcasecmp(sep->arg[3], "confirm") != 0) {
+				c->Message(Chat::Yellow, "Confirm with: #expedition action clear confirm");
+				return;
+			}
+			ExpeditionDB::ClearActions(content_db, event_data->id);
+			c->Message(Chat::Green, "Cleared selected-event runtime actions.");
+			return;
+		}
+
+		if (action != "add") {
+			ShowActionHelp(c);
+			return;
+		}
+
+		const std::string type = Strings::ToLower(sep->arg[3]);
+		if (type == "lock" || type == "unlock") {
+			ExpeditionDB::AddAction(content_db, event_data->id, type, "");
+			c->Message(Chat::Green, fmt::format("Added [{}] action.", type).c_str());
+		}
+		else if (type == "lockout") {
+			std::string event_name = event_data->event_name;
+			std::string duration = sep->arg[4];
+			if (sep->arg[5][0] != '\0') {
+				event_name = sep->arg[4];
+				duration = sep->arg[5];
+			}
+			const uint32_t seconds = ParseExpeditionDuration(duration);
+			if (!seconds) {
+				c->Message(Chat::Red, "Usage: #expedition action add lockout [event_name] <duration>");
+				return;
+			}
+			ExpeditionDB::AddAction(content_db, event_data->id, "add_lockout", fmt::format("{}|{}", event_name, seconds));
+			c->Message(Chat::Green, fmt::format("Added lockout action [{}] for [{}].", Duration(seconds), event_name).c_str());
+		}
+		else if (type == "replay") {
+			const uint32_t seconds = ParseExpeditionDuration(sep->arg[4]);
+			if (!seconds) {
+				c->Message(Chat::Red, "Usage: #expedition action add replay <duration>");
+				return;
+			}
+			ExpeditionDB::AddAction(content_db, event_data->id, "add_replay_lockout", std::to_string(seconds));
+			c->Message(Chat::Green, fmt::format("Added replay lockout action [{}].", Duration(seconds)).c_str());
+		}
+		else if (type == "depop") {
+			if (!sep->IsNumber(4)) {
+				c->Message(Chat::Red, "Usage: #expedition action add depop <npc_type_id>");
+				return;
+			}
+			ExpeditionDB::AddAction(content_db, event_data->id, "depop_npc_type", sep->arg[4]);
+			c->Message(Chat::Green, fmt::format("Added depop action for NPC type [{}].", sep->arg[4]).c_str());
+		}
+		else if (type == "message") {
+			std::string message = sep->argplus[4];
+			Strings::Trim(message);
+			if (message.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition action add message <text>");
+				return;
+			}
+			ExpeditionDB::AddAction(content_db, event_data->id, "message_members", message);
+			c->Message(Chat::Green, "Added member message action.");
+		}
+		else if (type == "remaining") {
+			const uint32_t seconds = ParseExpeditionDuration(sep->arg[4]);
+			if (!seconds) {
+				c->Message(Chat::Red, "Usage: #expedition action add remaining <duration>");
+				return;
+			}
+			ExpeditionDB::AddAction(content_db, event_data->id, "set_remaining", std::to_string(seconds));
+			c->Message(Chat::Green, fmt::format("Added remaining-time action [{}].", Duration(seconds)).c_str());
+		}
+		else {
+			ShowActionHelp(c);
+		}
+		return;
+	}
+
+	if (sub == "preset") {
+		const std::string preset = Strings::ToLower(sep->arg[2]);
+		if (preset.empty() || preset == "help") {
+			ShowPresetHelp(c);
+			return;
+		}
+		template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		if (preset == "solo") {
+			ExpeditionDB::SetDzTemplatePlayers(content_db, template_data->dz_template_id, 1, 1);
+			ExpeditionDB::SetDzTemplateDuration(content_db, template_data->dz_template_id, ParseExpeditionDuration("90m"));
+			ExpeditionDB::SetTemplateReplay(content_db, template_data->id, ParseExpeditionDuration("30m"));
+			c->Message(Chat::Green, "Applied solo expedition preset.");
+		}
+		else if (preset == "group") {
+			ExpeditionDB::SetDzTemplatePlayers(content_db, template_data->dz_template_id, 1, 6);
+			ExpeditionDB::SetDzTemplateDuration(content_db, template_data->dz_template_id, ParseExpeditionDuration("6h"));
+			ExpeditionDB::SetTemplateReplay(content_db, template_data->id, ParseExpeditionDuration("2h"));
+			c->Message(Chat::Green, "Applied group expedition preset.");
+		}
+		else if (preset == "raid") {
+			ExpeditionDB::SetDzTemplatePlayers(content_db, template_data->dz_template_id, 6, 54);
+			ExpeditionDB::SetDzTemplateDuration(content_db, template_data->dz_template_id, ParseExpeditionDuration("6h"));
+			ExpeditionDB::SetTemplateReplay(content_db, template_data->id, ParseExpeditionDuration("2h"));
+			c->Message(Chat::Green, "Applied raid expedition preset.");
+		}
+		else if (preset == "boss") {
+			const auto* event_data = SelectedEvent(c, *template_data);
+			uint32_t event_id = event_data ? event_data->id : ExpeditionDB::AddEvent(content_db, template_data->id, "Boss Defeated");
+			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+			ExpeditionDB::SetEventLockout(content_db, event_id, ParseExpeditionDuration("6h"));
+			ExpeditionDB::SetEventReplay(content_db, event_id, ParseExpeditionDuration("2h"));
+			if (NPC* npc = TargetNpc(c)) {
+				ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "boss");
+			}
+			c->Message(Chat::Green, "Applied boss event preset.");
+		}
+		else if (preset == "chest") {
+			const auto* event_data = SelectedEvent(c, *template_data);
+			if (!event_data) {
+				c->Message(Chat::Red, "Add or select an event first.");
+				return;
+			}
+			NPC* npc = TargetNpc(c);
+			if (!npc) {
+				NeedTargetNpc(c);
+				return;
+			}
+			ExpeditionDB::SetEventNpc(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "chest");
+			ExpeditionDB::SetEventNpcLoot(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), true);
+			c->Message(Chat::Green, "Applied loot chest preset.");
+		}
+		else {
+			ShowPresetHelp(c);
+		}
+		return;
+	}
+
 	if (sub == "test") {
 		const std::string action = Strings::ToLower(sep->arg[2]);
 		if (action.empty() || action == "help") {
@@ -717,7 +1129,35 @@ void command_expedition(Client* c, const Seperator* sep)
 				NeedTargetNpc(c);
 				return;
 			}
-			ExpeditionDB::HandleRequestSay(*c, *npc, template_data->request_phrase);
+			DynamicZone dz(DynamicZoneType::Expedition);
+			dz.LoadTemplate(template_data->dz_template);
+			const auto check = CheckExpeditionRequest(*c, dz, true);
+			const bool scripted = parse && parse->HasQuestSub(npc->GetNPCTypeID(), EVENT_SAY);
+			c->Message(Chat::White, fmt::format(
+				"Request test: mode [{}] target NPC type [{}] spawn [{}] scripted [{}]",
+				template_data->request_mode,
+				npc->GetNPCTypeID(),
+				npc->GetSpawnPointID(),
+				OnOff(scripted)
+			).c_str());
+			c->Message(Chat::White, fmt::format(
+				"Request validation: success [{}] reason [{}] members [{}] players [{}-{}] raid [{}]",
+				OnOff(check.success),
+				check.reason,
+				check.member_count,
+				check.min_players,
+				check.max_players,
+				OnOff(check.is_raid)
+			).c_str());
+			if (template_data->request_mode == "db_only" && scripted) {
+				c->Message(Chat::Yellow, "Target has EVENT_SAY and request mode is db_only; both the script and DB auto-handler can run.");
+			}
+			else if (template_data->request_mode != "db_only") {
+				c->Message(Chat::Yellow, "Automatic DB request handling is disabled for this request mode; scripts must opt in explicitly.");
+			}
+			if (check.success) {
+				ExpeditionDB::HandleRequestSay(*c, *npc, template_data->request_phrase);
+			}
 		}
 		else if (action == "lockout") {
 			if (DynamicZone* dz = c->GetExpedition()) {

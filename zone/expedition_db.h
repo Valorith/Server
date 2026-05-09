@@ -35,6 +35,14 @@ struct EventNpc {
 	bool loot_protected = false;
 };
 
+struct Action {
+	uint32_t id = 0;
+	uint32_t event_id = 0;
+	std::string action_type;
+	std::string action_value;
+	int32_t sort_order = 0;
+};
+
 struct Event {
 	uint32_t id = 0;
 	uint32_t expedition_template_id = 0;
@@ -46,6 +54,7 @@ struct Event {
 	bool loot_protected = false;
 	int32_t sort_order = 0;
 	std::vector<EventNpc> npcs;
+	std::vector<Action> actions;
 };
 
 struct Template {
@@ -58,6 +67,7 @@ struct Template {
 	bool replay_on_join = true;
 	bool silent = false;
 	std::string request_phrase = "expedition";
+	std::string request_mode = "db_only";
 	std::string notes;
 	DynamicZoneTemplatesRepository::DynamicZoneTemplates dz_template;
 	std::vector<RequestNpc> request_npcs;
@@ -85,10 +95,12 @@ struct BuilderState {
 };
 
 uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::string& name);
+uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::string& name);
 bool DeleteTemplate(Database& db, uint32_t template_id);
 bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent);
+bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode);
 bool SetDzTemplateZone(Database& db, uint32_t dz_template_id, uint32_t zone_id, uint32_t version);
 bool SetDzTemplateDuration(Database& db, uint32_t dz_template_id, uint32_t seconds);
 bool SetDzTemplatePlayers(Database& db, uint32_t dz_template_id, uint32_t min_players, uint32_t max_players);
@@ -105,6 +117,8 @@ bool SetEventReplay(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& role);
 bool SetEventNpcLoot(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
 bool SetEventNpcCompleteOnDeath(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
+uint32_t AddAction(Database& db, uint32_t event_id, const std::string& action_type, const std::string& action_value);
+bool ClearActions(Database& db, uint32_t event_id);
 
 void Reload(Database& db);
 const std::unordered_map<uint32_t, Template>& Templates();

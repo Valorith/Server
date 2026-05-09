@@ -5,6 +5,7 @@
 #include "common/zone_store.h"
 #include "zone/client.h"
 #include "zone/dynamic_zone.h"
+#include "zone/entity.h"
 #include "zone/expedition_config.h"
 #include "zone/event_codes.h"
 #include "zone/npc.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 
 namespace ExpeditionDB {
 namespace {
@@ -48,6 +50,19 @@ namespace {
 	std::string Escape(const std::string& value)
 	{
 		return Strings::Escape(value);
+	}
+
+	std::string NormalizeRequestMode(const std::string& value)
+	{
+		if (Strings::EqualFold(value, "script_only") || Strings::EqualFold(value, "script")) {
+			return "script_only";
+		}
+
+		if (Strings::EqualFold(value, "script_can_opt_in") || Strings::EqualFold(value, "script_opt_in") || Strings::EqualFold(value, "opt_in")) {
+			return "script_can_opt_in";
+		}
+
+		return "db_only";
 	}
 
 	std::string Slugify(std::string value)
@@ -174,6 +189,31 @@ namespace {
 		return out;
 	}
 
+	std::vector<Action> LoadActions(Database& db)
+	{
+		std::vector<Action> out;
+		auto results = db.QueryDatabase(
+			"SELECT id, event_id, action_type, action_value, sort_order "
+			"FROM expedition_template_actions ORDER BY event_id, sort_order, id"
+		);
+
+		if (!results.Success()) {
+			return out;
+		}
+
+		for (auto row = results.begin(); row != results.end(); ++row) {
+			Action e;
+			e.id = UInt(row[0]);
+			e.event_id = UInt(row[1]);
+			e.action_type = Text(row[2]);
+			e.action_value = Text(row[3]);
+			e.sort_order = Int(row[4]);
+			out.push_back(e);
+		}
+
+		return out;
+	}
+
 	DynamicZone BuildDynamicZone(const Template& template_data)
 	{
 		DynamicZone dz(DynamicZoneType::Expedition);
@@ -230,6 +270,64 @@ namespace {
 		}
 
 		return text;
+	}
+
+	std::pair<std::string, uint32_t> ParseLockoutActionValue(const std::string& value, const Event& event_data)
+	{
+		auto parts = Strings::Split(value, "|");
+		if (parts.size() >= 2) {
+			return { parts[0], Strings::ToUnsignedInt(parts[1]) };
+		}
+
+		return { event_data.event_name, Strings::ToUnsignedInt(value) };
+	}
+
+	void MessageMembers(DynamicZone& expedition, const std::string& message)
+	{
+		for (const auto& member : expedition.GetMembers()) {
+			if (Client* client = entity_list.GetClientByCharID(member.id)) {
+				client->Message(Chat::Yellow, "%s", message.c_str());
+			}
+		}
+	}
+
+	void ExecuteActions(DynamicZone& expedition, const Event& event_data)
+	{
+		for (const auto& action : event_data.actions) {
+			if (Strings::EqualFold(action.action_type, "lock")) {
+				expedition.SetLocked(true, true);
+			}
+			else if (Strings::EqualFold(action.action_type, "unlock")) {
+				expedition.SetLocked(false, true);
+			}
+			else if (Strings::EqualFold(action.action_type, "add_lockout")) {
+				const auto [event_name, seconds] = ParseLockoutActionValue(action.action_value, event_data);
+				if (!event_name.empty() && seconds > 0) {
+					expedition.AddLockout(event_name, seconds);
+				}
+			}
+			else if (Strings::EqualFold(action.action_type, "add_replay_lockout")) {
+				const uint32_t seconds = Strings::ToUnsignedInt(action.action_value);
+				if (seconds > 0) {
+					expedition.AddLockout(DzLockout::ReplayTimer, seconds);
+				}
+			}
+			else if (Strings::EqualFold(action.action_type, "depop_npc_type")) {
+				const uint32_t npc_type_id = Strings::ToUnsignedInt(action.action_value);
+				if (npc_type_id > 0) {
+					entity_list.DepopAll(npc_type_id, false);
+				}
+			}
+			else if (Strings::EqualFold(action.action_type, "message_members")) {
+				MessageMembers(expedition, action.action_value);
+			}
+			else if (Strings::EqualFold(action.action_type, "set_remaining")) {
+				const uint32_t seconds = Strings::ToUnsignedInt(action.action_value);
+				if (seconds > 0) {
+					expedition.SetSecondsRemaining(seconds);
+				}
+			}
+		}
 	}
 }
 
@@ -294,8 +392,8 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 
 	const uint32_t template_id = InsertID(db, fmt::format(
 		"INSERT INTO expedition_templates "
-		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, notes) "
-		"VALUES ({}, '{}', '{}', 0, 0, 1, 0, 'expedition', '')",
+		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes) "
+		"VALUES ({}, '{}', '{}', 0, 0, 1, 0, 'expedition', 'db_only', '')",
 		dz_template_id,
 		escaped_name,
 		Escape(Slugify(name))
@@ -304,6 +402,105 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 	if (!template_id) {
 		DynamicZoneTemplatesRepository::DeleteOne(db, dz_template_id);
 		return 0;
+	}
+
+	Reload(db);
+	return template_id;
+}
+
+uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::string& name)
+{
+	const Template* source = FindTemplate(source_template_id);
+	if (!source || name.empty()) {
+		return 0;
+	}
+
+	const std::string escaped_name = Escape(name);
+	const std::string slug = Escape(fmt::format("{}_{}_{}", Slugify(name), source_template_id, static_cast<uint32_t>(std::time(nullptr))));
+	const uint32_t dz_template_id = InsertID(db, fmt::format(
+		"INSERT INTO dynamic_zone_templates "
+		"(zone_id, zone_version, name, min_players, max_players, duration_seconds, dz_switch_id, "
+		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
+		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h) "
+		"SELECT zone_id, zone_version, '{}', min_players, max_players, duration_seconds, dz_switch_id, "
+		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
+		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h "
+		"FROM dynamic_zone_templates WHERE id = {}",
+		escaped_name,
+		source->dz_template_id
+	));
+
+	if (!dz_template_id) {
+		return 0;
+	}
+
+	const uint32_t template_id = InsertID(db, fmt::format(
+		"INSERT INTO expedition_templates "
+		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes) "
+		"SELECT {}, '{}', '{}', 0, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes "
+		"FROM expedition_templates WHERE id = {}",
+		dz_template_id,
+		escaped_name,
+		slug,
+		source_template_id
+	));
+
+	if (!template_id) {
+		DynamicZoneTemplatesRepository::DeleteOne(db, dz_template_id);
+		return 0;
+	}
+
+	QueryOK(db, fmt::format(
+		"INSERT INTO expedition_template_request_npcs "
+		"(expedition_template_id, zone_id, npc_type_id, spawn2_id, phrase, enabled) "
+		"SELECT {}, zone_id, npc_type_id, spawn2_id, phrase, enabled FROM expedition_template_request_npcs WHERE expedition_template_id = {}",
+		template_id,
+		source_template_id
+	));
+
+	for (const auto& event_data : source->events) {
+		const uint32_t event_id = InsertID(db, fmt::format(
+			"INSERT INTO expedition_template_events "
+			"(expedition_template_id, event_name, lockout_seconds, replay_lockout_seconds, lock_on_success, lock_on_failure, loot_protected, sort_order) "
+			"VALUES ({}, '{}', {}, {}, {}, {}, {}, {})",
+			template_id,
+			Escape(event_data.event_name),
+			event_data.lockout_seconds,
+			event_data.replay_lockout_seconds,
+			event_data.lock_on_success ? 1 : 0,
+			event_data.lock_on_failure ? 1 : 0,
+			event_data.loot_protected ? 1 : 0,
+			event_data.sort_order
+		));
+
+		if (!event_id) {
+			continue;
+		}
+
+		for (const auto& event_npc : event_data.npcs) {
+			QueryOK(db, fmt::format(
+				"INSERT INTO expedition_template_event_npcs "
+				"(event_id, npc_type_id, spawn2_id, role, complete_on_death, loot_protected) "
+				"VALUES ({}, {}, {}, '{}', {}, {})",
+				event_id,
+				event_npc.npc_type_id,
+				event_npc.spawn2_id,
+				Escape(event_npc.role),
+				event_npc.complete_on_death ? 1 : 0,
+				event_npc.loot_protected ? 1 : 0
+			));
+		}
+
+		for (const auto& action : event_data.actions) {
+			QueryOK(db, fmt::format(
+				"INSERT INTO expedition_template_actions (event_id, action_type, action_value, sort_order) "
+				"VALUES ({}, '{}', '{}', {})",
+				event_id,
+				Escape(action.action_type),
+				Escape(action.action_value),
+				action.sort_order
+			));
+		}
 	}
 
 	Reload(db);
@@ -354,6 +551,17 @@ bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds)
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent)
 {
 	const bool ok = QueryOK(db, fmt::format("UPDATE expedition_templates SET silent = {} WHERE id = {}", silent ? 1 : 0, template_id));
+	Reload(db);
+	return ok;
+}
+
+bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode)
+{
+	const bool ok = QueryOK(db, fmt::format(
+		"UPDATE expedition_templates SET request_mode = '{}' WHERE id = {}",
+		Escape(NormalizeRequestMode(request_mode)),
+		template_id
+	));
 	Reload(db);
 	return ok;
 }
@@ -586,11 +794,42 @@ bool SetEventNpcCompleteOnDeath(Database& db, uint32_t event_id, uint32_t npc_ty
 	return ok;
 }
 
+uint32_t AddAction(Database& db, uint32_t event_id, const std::string& action_type, const std::string& action_value)
+{
+	auto results = db.QueryDatabase(fmt::format(
+		"SELECT COALESCE(MAX(sort_order), 0) + 1 FROM expedition_template_actions WHERE event_id = {}",
+		event_id
+	));
+	int32_t sort_order = 1;
+	if (results.Success() && results.RowCount() == 1) {
+		auto row = results.begin();
+		sort_order = Int(row[0]);
+	}
+
+	const uint32_t id = InsertID(db, fmt::format(
+		"INSERT INTO expedition_template_actions (event_id, action_type, action_value, sort_order) "
+		"VALUES ({}, '{}', '{}', {})",
+		event_id,
+		Escape(action_type),
+		Escape(action_value),
+		sort_order
+	));
+	Reload(db);
+	return id;
+}
+
+bool ClearActions(Database& db, uint32_t event_id)
+{
+	const bool ok = QueryOK(db, fmt::format("DELETE FROM expedition_template_actions WHERE event_id = {}", event_id));
+	Reload(db);
+	return ok;
+}
+
 void Reload(Database& db)
 {
 	std::unordered_map<uint32_t, Template> templates;
 	auto results = db.QueryDatabase(
-		"SELECT id, dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, notes "
+		"SELECT id, dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes "
 		"FROM expedition_templates"
 	);
 
@@ -610,7 +849,8 @@ void Reload(Database& db)
 		e.replay_on_join = Truthy(row[6]);
 		e.silent = Truthy(row[7]);
 		e.request_phrase = NormalizePhrase(Text(row[8]));
-		e.notes = Text(row[9]);
+		e.request_mode = NormalizeRequestMode(Text(row[9]));
+		e.notes = Text(row[10]);
 		e.dz_template = DynamicZoneTemplatesRepository::FindOne(db, e.dz_template_id);
 		templates[e.id] = e;
 	}
@@ -637,6 +877,19 @@ void Reload(Database& db)
 
 			if (event_it != template_data.events.end()) {
 				event_it->npcs.push_back(event_npc);
+				break;
+			}
+		}
+	}
+
+	for (const auto& action : LoadActions(db)) {
+		for (auto& [id, template_data] : templates) {
+			auto event_it = std::ranges::find_if(template_data.events, [&](const Event& event_data) {
+				return event_data.id == action.event_id;
+			});
+
+			if (event_it != template_data.events.end()) {
+				event_it->actions.push_back(action);
 				break;
 			}
 		}
@@ -731,7 +984,15 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.errors.push_back("Player minimum and maximum are invalid.");
 	}
 
-	if (template_data.enabled && template_data.request_npcs.empty()) {
+	if (
+		template_data.request_mode != "db_only" &&
+		template_data.request_mode != "script_can_opt_in" &&
+		template_data.request_mode != "script_only"
+	) {
+		result.errors.push_back("Request mode must be db_only, script_can_opt_in, or script_only.");
+	}
+
+	if (template_data.enabled && template_data.request_mode == "db_only" && template_data.request_npcs.empty()) {
 		result.errors.push_back("Enabled templates require at least one request NPC.");
 	}
 
@@ -743,6 +1004,14 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		if (parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY)) {
 			result.warnings.push_back(fmt::format("Request NPC [{}] already has an EVENT_SAY quest script.", request_npc.npc_type_id));
 		}
+	}
+
+	if (template_data.request_mode == "script_only" && !template_data.request_npcs.empty()) {
+		result.warnings.push_back("Request mode is script_only, so automatic DB request NPC mappings are ignored.");
+	}
+
+	if (template_data.request_mode == "script_can_opt_in" && !template_data.request_npcs.empty()) {
+		result.warnings.push_back("Request mode is script_can_opt_in, so request NPC mappings are documentation only unless scripts call DB template APIs.");
 	}
 
 	for (const auto& event_data : template_data.events) {
@@ -829,14 +1098,13 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 		return false;
 	}
 
-	// Existing quest scripts remain authoritative; they can opt into DB templates explicitly.
-	if (parse && parse->HasQuestSub(npc.GetNPCTypeID(), EVENT_SAY)) {
-		return false;
-	}
-
 	const std::string phrase = CommandWord(message);
 	for (const auto& [template_id, template_data] : g_templates) {
 		if (!template_data.enabled) {
+			continue;
+		}
+
+		if (template_data.request_mode != "db_only") {
 			continue;
 		}
 
@@ -895,6 +1163,8 @@ bool HandleNpcDeath(NPC& npc, Client* killer)
 				expedition->AddLockout(DzLockout::ReplayTimer, event_data.replay_lockout_seconds);
 				handled = true;
 			}
+
+			ExecuteActions(*expedition, event_data);
 
 			if (killer) {
 				killer->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", event_data.event_name).c_str());

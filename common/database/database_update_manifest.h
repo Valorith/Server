@@ -7419,6 +7419,7 @@ CREATE TABLE IF NOT EXISTS `expedition_templates` (
 	`replay_on_join` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`silent` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`request_phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
+	`request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only',
 	`notes` TEXT NULL,
 	`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -7477,6 +7478,18 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 	PRIMARY KEY (`id`),
 	KEY `idx_expedition_actions_event` (`event_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9342,
+		.description = "2026_05_09_expedition_request_mode.sql",
+		.check = "SHOW COLUMNS FROM `expedition_templates` LIKE 'request_mode'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_templates`
+	ADD COLUMN `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only' AFTER `request_phrase`;
 )",
 		.content_schema_update = true
 	},

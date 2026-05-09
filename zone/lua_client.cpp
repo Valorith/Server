@@ -2129,6 +2129,7 @@ luabind::object Lua_Client::GetExpeditionTemplate(lua_State* L, uint32_t expedit
 	result["replay_lockout_seconds"] = template_data->replay_lockout_seconds;
 	result["silent"] = template_data->silent;
 	result["request_phrase"] = template_data->request_phrase;
+	result["request_mode"] = template_data->request_mode;
 	return result;
 }
 
