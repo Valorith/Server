@@ -1673,6 +1673,7 @@ public:
 	DynamicZone* CreateExpedition(DynamicZone& dz, bool silent = false);
 	DynamicZone* CreateExpedition(uint32 zone_id, uint32 version, uint32 duration, const std::string& name, uint32 min_players, uint32 max_players, bool silent = false);
 	DynamicZone* CreateExpeditionFromTemplate(uint32_t dz_template_id);
+	DynamicZone* CreateExpeditionFromTemplate(const std::string& template_name);
 	DynamicZone* GetExpedition() const;
 	uint32 GetExpeditionID() const;
 	const DzLockout* GetDzLockout(const std::string& expedition, const std::string& event) const;
@@ -1691,6 +1692,7 @@ public:
 	void GoToDzSafeReturnOrBind(const DynamicZone* dynamic_zone);
 	void MovePCDynamicZone(uint32 zone_id, int zone_version = -1, bool msg_if_invalid = false);
 	void MovePCDynamicZone(const std::string& zone_name, int zone_version = -1, bool msg_if_invalid = false);
+	bool MovePCExpedition(bool msg_if_invalid = true);
 	bool TryMovePCDynamicZoneSwitch(int dz_switch_id);
 	std::vector<DynamicZone*> GetDynamicZones(uint32_t zone_id = 0, int zone_version = -1);
 	std::unique_ptr<EQApplicationPacket> CreateDzSwitchListPacket(const std::vector<DynamicZone*>& dzs);

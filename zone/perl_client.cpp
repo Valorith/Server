@@ -5,8 +5,11 @@
 #include "zone/client.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
+#include "zone/expedition_config.h"
 #include "zone/embperl.h"
 #include "zone/titles.h"
+
+#include <initializer_list>
 
 void Perl_Client_SendSound(Client* self) // @categories Script Utility
 {
@@ -1764,51 +1767,211 @@ DynamicZoneLocation GetDynamicZoneLocationFromHash(perl::hash table)
 	return { zone_id, x, y, z, h };
 }
 
-DynamicZone* Perl_Client_CreateExpedition(Client* self, perl::reference table_ref)
+static bool PerlHashExistsAny(const perl::hash& table, std::initializer_list<std::string> keys)
+{
+	for (const auto& key : keys) {
+		if (table.exists(key)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static perl::scalar PerlHashValueAny(perl::hash& table, std::initializer_list<std::string> keys)
+{
+	for (const auto& key : keys) {
+		if (table.exists(key)) {
+			return table[key];
+		}
+	}
+
+	return perl::scalar();
+}
+
+static uint32_t PerlZoneID(perl::scalar zone_value)
+{
+	return zone_value.is_string() ? ZoneID(zone_value.c_str()) : zone_value.as<uint32_t>();
+}
+
+static uint32_t PerlDurationSeconds(perl::scalar duration)
+{
+	return duration.is_string() ? ParseExpeditionDuration(duration.c_str()) : duration.as<uint32_t>();
+}
+
+static bool ParsePerlExpeditionConfig(perl::reference table_ref, DynamicZone& dz, ExpeditionCreationOptions& options, std::string& error)
 {
 	perl::hash table      = table_ref;
-	perl::hash expedition = table["expedition"];
-	perl::hash instance   = table["instance"];
 
-	perl::scalar zone = instance["zone"];
-	uint32_t version  = instance["version"];
-	uint32_t duration = instance["duration"];
-	uint32_t zone_id  = zone.is_string() ? ZoneID(zone.c_str()) : zone.as<uint32_t>();
+	if (table.exists("expedition") && table.exists("instance"))
+	{
+		perl::hash expedition = table["expedition"];
+		perl::hash instance   = table["instance"];
 
-	DynamicZone dz{ zone_id, version, duration, DynamicZoneType::Expedition };
-	dz.SetName(expedition["name"]);
-	dz.SetMinPlayers(expedition["min_players"]);
-	dz.SetMaxPlayers(expedition["max_players"]);
+		if (
+			!instance.exists("zone") ||
+			!instance.exists("duration") ||
+			!expedition.exists("name") ||
+			!expedition.exists("min_players") ||
+			!expedition.exists("max_players")
+		) {
+			error = "missing_required_legacy_field";
+			return false;
+		}
+
+		uint32_t zone_id  = PerlZoneID(instance["zone"]);
+		uint32_t version  = instance.exists("version") ? instance["version"].as<uint32_t>() : 0;
+		uint32_t duration = PerlDurationSeconds(instance["duration"]);
+		if (zone_id == 0 || duration == 0) {
+			error = "invalid_zone_or_duration";
+			return false;
+		}
+
+		dz = DynamicZone{ zone_id, version, duration, DynamicZoneType::Expedition };
+		dz.SetName(expedition["name"]);
+		dz.SetMinPlayers(expedition["min_players"]);
+		dz.SetMaxPlayers(expedition["max_players"]);
+
+		if (table.exists("compass"))
+		{
+			auto compass = GetDynamicZoneLocationFromHash(table["compass"]);
+			dz.SetCompass(compass);
+		}
+
+		if (PerlHashExistsAny(table, { "safe_return", "safereturn" }))
+		{
+			auto safereturn = GetDynamicZoneLocationFromHash(PerlHashValueAny(table, { "safe_return", "safereturn" }));
+			dz.SetSafeReturn(safereturn);
+		}
+
+		if (PerlHashExistsAny(table, { "zone_in", "zonein" }))
+		{
+			auto zonein = GetDynamicZoneLocationFromHash(PerlHashValueAny(table, { "zone_in", "zonein" }));
+			dz.SetZoneInLocation(zonein);
+		}
+
+		if (PerlHashExistsAny(table, { "switch_id", "switchid" }))
+		{
+			dz.SetSwitchID(PerlHashValueAny(table, { "switch_id", "switchid" }).as<int>());
+		}
+
+		if (PerlHashExistsAny(expedition, { "disable_messages", "silent" }))
+		{
+			options.silent = PerlHashValueAny(expedition, { "disable_messages", "silent" }).as<bool>();
+		}
+		if (PerlHashExistsAny(table, { "disable_messages", "silent" }))
+		{
+			options.silent = PerlHashValueAny(table, { "disable_messages", "silent" }).as<bool>();
+		}
+
+		return true;
+	}
+
+	if (table.exists("expedition") || table.exists("instance"))
+	{
+		error = "legacy_config_requires_instance_and_expedition";
+		return false;
+	}
+
+	if (
+		!table.exists("name") ||
+		!PerlHashExistsAny(table, { "zone", "zone_id" }) ||
+		!PerlHashExistsAny(table, { "duration", "duration_seconds" })
+	)
+	{
+		error = "missing_required_field";
+		return false;
+	}
+
+	uint32_t min_players = 0;
+	uint32_t max_players = 0;
+	if (table.exists("players"))
+	{
+		perl::scalar players_value = table["players"];
+		if (players_value.is_hash_ref())
+		{
+			perl::hash players = players_value;
+			if (players.exists("min")) {
+				min_players = players["min"];
+			}
+			if (players.exists("max")) {
+				max_players = players["max"];
+			}
+		}
+	}
+	if (table.exists("min_players")) {
+		min_players = table["min_players"];
+	}
+	if (table.exists("max_players")) {
+		max_players = table["max_players"];
+	}
+	if (min_players == 0 || max_players == 0)
+	{
+		error = "missing_player_bounds";
+		return false;
+	}
+
+	const uint32_t zone_id = PerlZoneID(PerlHashValueAny(table, { "zone", "zone_id" }));
+	const uint32_t version = table.exists("version") ? table["version"].as<uint32_t>() : 0;
+	const uint32_t duration = PerlDurationSeconds(PerlHashValueAny(table, { "duration", "duration_seconds" }));
+	if (zone_id == 0 || duration == 0)
+	{
+		error = "invalid_zone_or_duration";
+		return false;
+	}
+
+	dz = DynamicZone{ zone_id, version, duration, DynamicZoneType::Expedition };
+	dz.SetName(table["name"]);
+	dz.SetMinPlayers(min_players);
+	dz.SetMaxPlayers(max_players);
 
 	if (table.exists("compass"))
 	{
 		auto compass = GetDynamicZoneLocationFromHash(table["compass"]);
 		dz.SetCompass(compass);
 	}
-
-	if (table.exists("safereturn"))
+	if (PerlHashExistsAny(table, { "safe_return", "safereturn" }))
 	{
-		auto safereturn = GetDynamicZoneLocationFromHash(table["safereturn"]);
+		auto safereturn = GetDynamicZoneLocationFromHash(PerlHashValueAny(table, { "safe_return", "safereturn" }));
 		dz.SetSafeReturn(safereturn);
 	}
-
-	if (table.exists("zonein"))
+	if (PerlHashExistsAny(table, { "zone_in", "zonein" }))
 	{
-		auto zonein = GetDynamicZoneLocationFromHash(table["zonein"]);
+		auto zonein = GetDynamicZoneLocationFromHash(PerlHashValueAny(table, { "zone_in", "zonein" }));
 		dz.SetZoneInLocation(zonein);
 	}
-
-	if (table.exists("switchid"))
+	if (PerlHashExistsAny(table, { "switch_id", "switchid" }))
 	{
-		dz.SetSwitchID(table["switchid"].as<int>());
+		dz.SetSwitchID(PerlHashValueAny(table, { "switch_id", "switchid" }).as<int>());
+	}
+	if (PerlHashExistsAny(table, { "silent", "disable_messages" }))
+	{
+		options.silent = PerlHashValueAny(table, { "silent", "disable_messages" }).as<bool>();
+	}
+	if (table.exists("replay_lockout"))
+	{
+		options.has_replay_lockout = true;
+		options.replay_lockout_seconds = PerlDurationSeconds(table["replay_lockout"]);
+	}
+	if (table.exists("replay_on_join"))
+	{
+		options.has_replay_on_join = true;
+		options.replay_on_join = table["replay_on_join"].as<bool>();
 	}
 
-	if (expedition.exists("disable_messages"))
-	{
-		return self->CreateExpedition(dz, expedition["disable_messages"].as<bool>());
+	return true;
+}
+
+DynamicZone* Perl_Client_CreateExpedition(Client* self, perl::reference table_ref)
+{
+	DynamicZone dz;
+	ExpeditionCreationOptions options;
+	std::string error;
+	if (!ParsePerlExpeditionConfig(table_ref, dz, options, error)) {
+		return nullptr;
 	}
 
-	return self->CreateExpedition(dz);
+	return CreateExpeditionWithOptions(*self, dz, options);
 }
 
 DynamicZone* Perl_Client_CreateExpedition(Client* self, std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players)
@@ -1824,6 +1987,37 @@ DynamicZone* Perl_Client_CreateExpedition(Client* self, std::string zone_name, u
 DynamicZone* Perl_Client_CreateExpeditionFromTemplate(Client* self, uint32_t dz_template_id)
 {
 	return self->CreateExpeditionFromTemplate(dz_template_id);
+}
+
+DynamicZone* Perl_Client_CreateExpeditionFromTemplate(Client* self, std::string template_name)
+{
+	return self->CreateExpeditionFromTemplate(template_name);
+}
+
+perl::reference Perl_Client_CanCreateExpedition(Client* self, perl::reference table_ref)
+{
+	perl::hash result;
+	DynamicZone dz;
+	ExpeditionCreationOptions options;
+	std::string error;
+	if (!ParsePerlExpeditionConfig(table_ref, dz, options, error)) {
+		result["success"] = false;
+		result["member_count"] = 0;
+		result["min_players"] = 0;
+		result["max_players"] = 0;
+		result["is_raid"] = false;
+		result["reason"] = error;
+		return perl::reference(result);
+	}
+
+	auto check = CheckExpeditionRequest(*self, dz, true);
+	result["success"] = check.success;
+	result["member_count"] = check.member_count;
+	result["min_players"] = check.min_players;
+	result["max_players"] = check.max_players;
+	result["is_raid"] = check.is_raid;
+	result["reason"] = check.reason;
+	return perl::reference(result);
 }
 
 void Perl_Client_CreateTaskDynamicZone(Client* self, int task_id, perl::reference table_ref)
@@ -1964,6 +2158,16 @@ void Perl_Client_MovePCDynamicZone(Client* self, perl::scalar zone, int zone_ver
 {
 	uint32_t zone_id = zone.is_string() ? ZoneID(zone.c_str()) : zone.as<uint32_t>();
 	self->MovePCDynamicZone(zone_id, zone_version, msg_if_invalid);
+}
+
+bool Perl_Client_MovePCExpedition(Client* self)
+{
+	return self->MovePCExpedition();
+}
+
+bool Perl_Client_MovePCExpedition(Client* self, bool msg_if_invalid)
+{
+	return self->MovePCExpedition(msg_if_invalid);
 }
 
 void Perl_Client_Fling(Client* self, float target_x, float target_y, float target_z)
@@ -3452,8 +3656,10 @@ void perl_register_client()
 	package.add("CreateExpedition", (DynamicZone*(*)(Client*, perl::reference))&Perl_Client_CreateExpedition);
 	package.add("CreateExpedition", (DynamicZone*(*)(Client*, std::string, uint32, uint32, std::string, uint32, uint32))&Perl_Client_CreateExpedition);
 	package.add("CreateExpedition", (DynamicZone*(*)(Client*, std::string, uint32, uint32, std::string, uint32, uint32, bool))&Perl_Client_CreateExpedition);
-	package.add("CreateExpeditionFromTemplate", &Perl_Client_CreateExpeditionFromTemplate);
+	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromTemplate);
+	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromTemplate);
 	package.add("CreateTaskDynamicZone", &Perl_Client_CreateTaskDynamicZone);
+	package.add("CanCreateExpedition", &Perl_Client_CanCreateExpedition);
 	package.add("DecreaseByID", &Perl_Client_DecreaseByID);
 	package.add("DescribeSpecialAbilities", &Perl_Client_DescribeSpecialAbilities);
 	package.add("DeleteAccountBucket", &Perl_Client_DeleteAccountBucket);
@@ -3717,6 +3923,8 @@ void perl_register_client()
 	package.add("MovePCDynamicZone", (void(*)(Client*, perl::scalar))&Perl_Client_MovePCDynamicZone);
 	package.add("MovePCDynamicZone", (void(*)(Client*, perl::scalar, int))&Perl_Client_MovePCDynamicZone);
 	package.add("MovePCDynamicZone", (void(*)(Client*, perl::scalar, int, bool))&Perl_Client_MovePCDynamicZone);
+	package.add("MovePCExpedition", (bool(*)(Client*))&Perl_Client_MovePCExpedition);
+	package.add("MovePCExpedition", (bool(*)(Client*, bool))&Perl_Client_MovePCExpedition);
 	package.add("MovePCInstance", &Perl_Client_MovePCInstance);
 	package.add("MoveZone", (void(*)(Client*, const char*))&Perl_Client_MoveZone);
 	package.add("MoveZone", (void(*)(Client*, const char*, float, float, float))&Perl_Client_MoveZone);

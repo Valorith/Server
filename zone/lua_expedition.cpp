@@ -6,6 +6,7 @@
 #include "zone/dynamic_zone.h"
 
 #include "lua.hpp"
+#include "luabind/iterator_policy.hpp"
 #include "luabind/luabind.hpp"
 #include "luabind/object.hpp"
 
@@ -188,6 +189,53 @@ void Lua_Expedition::SetLootEventBySpawnID(uint32_t spawn_id, std::string event_
 	self->SetLootEvent(spawn_id, event_name, DzLootEvent::Type::Entity);
 }
 
+static void SetLuaLootEventsFromArray(DynamicZone* dz, const luabind::object& ids, const std::string& event_name, DzLootEvent::Type type)
+{
+	if (luabind::type(ids) != LUA_TTABLE) {
+		return;
+	}
+
+	for (luabind::iterator i(ids), end; i != end; i++) {
+		auto id = ids[i.key()];
+		if (luabind::type(id) == LUA_TNUMBER) {
+			dz->SetLootEvent(luabind::object_cast<uint32_t>(id), event_name, type);
+		}
+	}
+}
+
+void Lua_Expedition::SetLootEvents(luabind::object events) {
+	Lua_Safe_Call_Void();
+
+	if (luabind::type(events) != LUA_TTABLE) {
+		return;
+	}
+
+	for (luabind::iterator i(events), end; i != end; i++) {
+		if (luabind::type(i.key()) != LUA_TSTRING) {
+			continue;
+		}
+
+		const std::string event_name = luabind::object_cast<std::string>(i.key());
+		auto event_config = events[i.key()];
+		if (luabind::type(event_config) != LUA_TTABLE) {
+			continue;
+		}
+
+		auto npc_type_id = event_config["npc_type_id"];
+		if (luabind::type(npc_type_id) == LUA_TNUMBER) {
+			self->SetLootEvent(luabind::object_cast<uint32_t>(npc_type_id), event_name, DzLootEvent::Type::NpcType);
+		}
+
+		auto spawn_id = event_config["spawn_id"];
+		if (luabind::type(spawn_id) == LUA_TNUMBER) {
+			self->SetLootEvent(luabind::object_cast<uint32_t>(spawn_id), event_name, DzLootEvent::Type::Entity);
+		}
+
+		SetLuaLootEventsFromArray(self, event_config["npc_type_ids"], event_name, DzLootEvent::Type::NpcType);
+		SetLuaLootEventsFromArray(self, event_config["spawn_ids"], event_name, DzLootEvent::Type::Entity);
+	}
+}
+
 void Lua_Expedition::SetReplayLockoutOnMemberJoin(bool enable) {
 	Lua_Safe_Call_Void();
 	self->SetReplayOnJoin(enable, true);
@@ -268,6 +316,7 @@ luabind::scope lua_register_expedition() {
 	.def("SetLocked", (void(Lua_Expedition::*)(bool, int, uint32_t))&Lua_Expedition::SetLocked)
 	.def("SetLootEventByNPCTypeID", (void(Lua_Expedition::*)(uint32_t, std::string))&Lua_Expedition::SetLootEventByNPCTypeID)
 	.def("SetLootEventBySpawnID", (void(Lua_Expedition::*)(uint32_t, std::string))&Lua_Expedition::SetLootEventBySpawnID)
+	.def("SetLootEvents", &Lua_Expedition::SetLootEvents)
 	.def("SetReplayLockoutOnMemberJoin", (void(Lua_Expedition::*)(bool))&Lua_Expedition::SetReplayLockoutOnMemberJoin)
 	.def("SetSafeReturn", (void(Lua_Expedition::*)(uint32_t, float, float, float, float))&Lua_Expedition::SetSafeReturn)
 	.def("SetSafeReturn", (void(Lua_Expedition::*)(std::string, float, float, float, float))&Lua_Expedition::SetSafeReturn)

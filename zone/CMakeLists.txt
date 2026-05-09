@@ -40,6 +40,7 @@ set(zone_sources
     encounter.cpp
     entity.cpp
     exp.cpp
+    expedition_config.cpp
     expedition_request.cpp
     fastmath.cpp
     fearpath.cpp
@@ -142,6 +143,7 @@ set(zone_headers
     encounter.h
     entity.h
     event_codes.h
+    expedition_config.h
     expedition_request.h
     fastmath.h
     forage.h

@@ -50,6 +50,7 @@
 #include "zone/command.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
+#include "zone/expedition_config.h"
 #include "zone/expedition_request.h"
 #include "zone/guild_mgr.h"
 #include "zone/lua_parser.h"
@@ -10227,6 +10228,11 @@ DynamicZone* Client::CreateExpeditionFromTemplate(uint32_t dz_template_id)
 	return nullptr;
 }
 
+DynamicZone* Client::CreateExpeditionFromTemplate(const std::string& template_name)
+{
+	return CreateExpeditionFromTemplateName(*this, template_name);
+}
+
 void Client::CreateTaskDynamicZone(int task_id, DynamicZone& dz_request)
 {
 	if (task_state)
@@ -10703,6 +10709,20 @@ void Client::MovePCDynamicZone(const std::string& zone_name, int zone_version, b
 {
 	auto zone_id = ZoneID(zone_name.c_str());
 	MovePCDynamicZone(zone_id, zone_version, msg_if_invalid);
+}
+
+bool Client::MovePCExpedition(bool msg_if_invalid)
+{
+	DynamicZone* expedition = GetExpedition();
+	if (!expedition) {
+		if (msg_if_invalid) {
+			Message(Chat::Red, "You are not currently assigned to an expedition.");
+		}
+		return false;
+	}
+
+	MovePCDynamicZone(expedition->GetZoneID(), static_cast<int>(expedition->GetZoneVersion()), msg_if_invalid);
+	return true;
 }
 
 void Client::Fling(float value, float target_x, float target_y, float target_z, bool ignore_los, bool clip_through_walls, bool calculate_speed) {
