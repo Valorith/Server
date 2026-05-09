@@ -202,8 +202,6 @@ struct lua_registered_event {
 };
 
 std::map<std::string, std::list<lua_registered_event>> lua_encounter_events_registered;
-std::map<std::string, bool> lua_encounters_loaded;
-std::map<std::string, Encounter *> lua_encounters;
 
 // use debug.traceback() for errors (luaL_traceback is only in luajit and lua 5.2+)
 static void PushErrorHandler(lua_State* L)
@@ -440,9 +438,7 @@ LuaParser::LuaParser() {
 
 LuaParser::~LuaParser() {
 	// valgrind didn't like when we didn't clean these up :P
-	lua_encounters.clear();
 	lua_encounter_events_registered.clear();
-	lua_encounters_loaded.clear();
 	if(L) {
 		lua_close(L);
 	}
@@ -859,7 +855,7 @@ int LuaParser::_EventEncounter(std::string package_name, QuestEventID evt, std::
 		lua_pushstring(L, encounter_name.c_str());
 		lua_setfield(L, -2, "name");
 
-		Encounter *enc = lua_encounters[encounter_name];
+		Encounter *enc = parse->GetLoadedEncounter(encounter_name);
 
 		auto arg_function = EncounterArgumentDispatch[evt];
 		arg_function(this, L, enc, data, extra_data, extra_pointers);
@@ -1044,16 +1040,6 @@ void LuaParser::ReloadQuests() {
 	errors_.clear();
 	mods_.clear();
 	lua_encounter_events_registered.clear();
-	lua_encounters_loaded.clear();
-
-	for (auto encounter : lua_encounters) {
-		encounter.second->Depop();
-	}
-
-	lua_encounters.clear();
-	// so the Depop function above depends on the Process being called again so ...
-	// And there is situations where it wouldn't be :P
-	entity_list.EncounterProcess();
 
 	if(L) {
 		lua_close(L);
@@ -1230,13 +1216,30 @@ void LuaParser::ReloadQuests() {
 }
 
 /*
- * This function is intended only to clean up lua_encounters when the Encounter object is
- * about to be destroyed. It won't clean up memory else where, since the caller of this
- * function is responsible for that
+ * This function is intended only to clean up Lua registered encounter events when the Encounter
+ * object is about to be destroyed. It won't clean up memory elsewhere, since the caller of this
+ * function is responsible for that.
  */
 void LuaParser::RemoveEncounter(const std::string &name)
 {
-	lua_encounters.erase(name);
+	auto liter = lua_encounter_events_registered.begin();
+	while(liter != lua_encounter_events_registered.end()) {
+		std::list<lua_registered_event> &elist = liter->second;
+		auto iter = elist.begin();
+		while(iter != elist.end()) {
+			if(iter->encounter_name.compare(name) == 0) {
+				iter = elist.erase(iter);
+			} else {
+				++iter;
+			}
+		}
+
+		if(elist.size() == 0) {
+			liter = lua_encounter_events_registered.erase(liter);
+		} else {
+			++liter;
+		}
+	}
 }
 
 void LuaParser::LoadScript(std::string filename, std::string package_name) {
@@ -1311,7 +1314,11 @@ bool LuaParser::HasEncounterSub(const std::string& package_name, QuestEventID ev
 	auto it = lua_encounter_events_registered.find(package_name);
 	if (it != lua_encounter_events_registered.end()) {
 		for (auto & riter : it->second) {
-			if (riter.event_id == evt) {
+			if (
+				riter.event_id == evt &&
+				parse->IsEncounterLoaded(riter.encounter_name) &&
+				!parse->IsEncounterUnloading(riter.encounter_name)
+			) {
 				return true;
 			}
 		}
