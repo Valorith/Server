@@ -7403,7 +7403,7 @@ CREATE TABLE IF NOT EXISTS `item_unique_id_reservations` (
 		.content_schema_update = false
 	},
 	ManifestEntry{
-		.version = 9341,
+		.version = 9342,
 		.description = "2026_05_09_db_driven_expeditions.sql",
 		.check = "SHOW TABLES LIKE 'expedition_templates'",
 		.condition = "empty",
@@ -7482,7 +7482,7 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 		.content_schema_update = true
 	},
 	ManifestEntry{
-		.version = 9342,
+		.version = 9343,
 		.description = "2026_05_09_expedition_request_mode.sql",
 		.check = "SHOW COLUMNS FROM `expedition_templates` LIKE 'request_mode'",
 		.condition = "empty",

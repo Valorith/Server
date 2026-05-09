@@ -1113,6 +1113,10 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 				continue;
 			}
 
+			if (parse && parse->HasQuestSub(npc.GetNPCTypeID(), EVENT_SAY)) {
+				return false;
+			}
+
 			const std::string request_phrase = NormalizePhrase(request_npc.phrase.empty() ? template_data.request_phrase : request_npc.phrase);
 			if (phrase != request_phrase && phrase != fmt::format("start {}", request_phrase)) {
 				continue;

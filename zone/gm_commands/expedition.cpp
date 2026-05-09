@@ -1150,7 +1150,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				OnOff(check.is_raid)
 			).c_str());
 			if (template_data->request_mode == "db_only" && scripted) {
-				c->Message(Chat::Yellow, "Target has EVENT_SAY and request mode is db_only; both the script and DB auto-handler can run.");
+				c->Message(Chat::Yellow, "Target has EVENT_SAY; automatic DB request handling will defer to the script. Use script_can_opt_in and call DB APIs from the script if desired.");
 			}
 			else if (template_data->request_mode != "db_only") {
 				c->Message(Chat::Yellow, "Automatic DB request handling is disabled for this request mode; scripts must opt in explicitly.");
