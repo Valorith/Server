@@ -12,6 +12,8 @@
 #include "common/strings.h"
 #include "common/zone_store.h"
 
+#include <cstring>
+
 namespace {
 	const ExpeditionDB::Template* SelectedTemplate(Client* c)
 	{
@@ -99,14 +101,6 @@ namespace {
 		return fmt::format("{} (type {}, spawn {})", npc.GetCleanName(), npc.GetNPCTypeID(), npc.GetSpawnPointID());
 	}
 
-	std::string PopupAction(const std::string& command, const std::string& label)
-	{
-		std::string escaped_command = command;
-		Strings::FindReplace(escaped_command, "\"", "&quot;");
-
-		return DialogueWindow::Link(escaped_command, DialogueWindow::ColorMessage("cyan_1", label));
-	}
-
 	void SendActionLinks(Client* c, const std::vector<std::pair<std::string, std::string>>& actions)
 	{
 		if (!c || actions.empty()) {
@@ -120,6 +114,45 @@ namespace {
 		}
 
 		c->Message(Chat::White, fmt::format("Expedition actions: {}", Strings::Join(links, " | ")).c_str());
+	}
+
+	void AppendPopupText(std::string& body, const std::string& text)
+	{
+		static constexpr size_t max_popup_text_size = 3900;
+		static constexpr const char* overflow_message = "<br><c \"#FBB117\">Additional snapshot rows omitted because this popup is full. Use #expedition preview for the expanded chat view.</c>";
+
+		if (body.size() >= max_popup_text_size) {
+			return;
+		}
+
+		if ((body.size() + text.size()) < max_popup_text_size) {
+			body += text;
+			return;
+		}
+
+		if (
+			body.find("Additional snapshot rows omitted") == std::string::npos &&
+			(body.size() + strlen(overflow_message)) < max_popup_text_size
+		) {
+			body += overflow_message;
+		}
+	}
+
+	void AppendPopupSection(std::string& body, const std::string& title)
+	{
+		AppendPopupText(body, DialogueWindow::Break(2));
+		AppendPopupText(body, DialogueWindow::ColorMessage("gold", title));
+		AppendPopupText(body, DialogueWindow::Break());
+	}
+
+	std::string SnapshotRow(const std::string& label, const std::string& value)
+	{
+		return DialogueWindow::TableRow(DialogueWindow::TableCell(label) + DialogueWindow::TableCell(value));
+	}
+
+	std::string ZoneLabel(uint32_t zone_id)
+	{
+		return zone_id ? fmt::format("{} ({})", ZoneName(zone_id, true), zone_id) : "unset";
 	}
 
 	void ShowHelp(Client* c)
@@ -358,7 +391,7 @@ namespace {
 		if (!template_data) {
 			body += "Start by creating an expedition from your current zone and location.";
 			body += DialogueWindow::Break(2);
-			body += PopupAction("#expedition create \"New Expedition\"", "Create New Expedition");
+			body += "Use the action link in chat to create a new expedition.";
 			c->SendPopupToClient("Expedition Wizard", body.c_str());
 			SendActionLinks(c, {
 				{"#expedition create \"New Expedition\"", "Create New Expedition"}
@@ -388,19 +421,21 @@ namespace {
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "1. Base Setup");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition set zone", "Use Current Zone"), PopupAction("#expedition set zonein", "Use Current Zone-In"), PopupAction("#expedition set safereturn", "Use Current Safe Return"), PopupAction("#expedition preset group", "Group Preset"));
+		body += "Use Current Zone | Use Current Zone-In | Use Current Safe Return | Group Preset";
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "2. Request Handling");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {}", PopupAction("#expedition requestnpc", "Use Target Request NPC"), PopupAction("#expedition set requestmode db_only", "DB Auto"), PopupAction("#expedition set requestmode script_can_opt_in", "Script Opt-In"));
+		body += "Use Target Request NPC | DB Auto | Script Opt-In";
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "3. Encounter");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition event add \"Boss Defeated\"", "Add Event"), PopupAction("#expedition preset boss", "Boss Preset"), PopupAction("#expedition preset chest", "Chest Preset"), PopupAction("#expedition action", "Actions"));
+		body += "Add Event | Boss Preset | Chest Preset | Actions";
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "4. Review");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition preview", "Preview"), PopupAction("#expedition fix", "Fixes"), PopupAction("#expedition test request", "Test Request"), PopupAction("#expedition enable", "Enable"));
+		body += "Preview | Fixes | Test Request | Enable";
+		body += DialogueWindow::Break(2);
+		body += "Clickable command links are sent to your chat window.";
 		c->SendPopupToClient("Expedition Wizard", body.c_str());
 		SendActionLinks(c, actions);
 	}
@@ -414,8 +449,8 @@ namespace {
 
 		if (!template_data) {
 			body += "No expedition selected.";
-			body += DialogueWindow::Break();
-			body += PopupAction("#expedition list", "List Expeditions");
+			body += DialogueWindow::Break(2);
+			body += "Use the action link in chat to list expeditions.";
 			c->SendPopupToClient("Expedition Builder", body.c_str());
 			SendActionLinks(c, {
 				{"#expedition list", "List Expeditions"}
@@ -446,53 +481,117 @@ namespace {
 			{fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm"}
 		};
 		std::string table;
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Name") + DialogueWindow::TableCell(template_data->name));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Status") + DialogueWindow::TableCell(validation.StatusName()));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Enabled") + DialogueWindow::TableCell(OnOff(template_data->enabled)));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Request Mode") + DialogueWindow::TableCell(template_data->request_mode));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Zone") + DialogueWindow::TableCell(fmt::format("{}:{}", ZoneName(template_data->dz_template.zone_id, true), template_data->dz_template.zone_version)));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Duration") + DialogueWindow::TableCell(Duration(template_data->dz_template.duration_seconds)));
-		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Players") + DialogueWindow::TableCell(fmt::format("{}-{}", template_data->dz_template.min_players, template_data->dz_template.max_players)));
-		body += DialogueWindow::Table(table);
-		body += DialogueWindow::Break(2);
-		body += DialogueWindow::ColorMessage("gold", "Quick Setup");
-		body += DialogueWindow::Break();
-		body += fmt::format(
-			"{} | {} | {} | {} | {}",
-			PopupAction("#expedition set zone", "Set Zone"),
-			PopupAction("#expedition set zonein", "Set Zone-In"),
-			PopupAction("#expedition set safereturn", "Set Safe Return"),
-			PopupAction("#expedition set compass", "Set Compass"),
-			PopupAction("#expedition requestnpc", "Use Target Request NPC")
-		);
-		body += DialogueWindow::Break(2);
-		body += DialogueWindow::ColorMessage("gold", "Events");
-		body += DialogueWindow::Break();
-		body += fmt::format(
-			"{} | {} | {} | {} | {}",
-			PopupAction("#expedition event add \"Boss Defeated\"", "Add Event"),
-			PopupAction("#expedition event npc", "Add Target NPC"),
-			PopupAction("#expedition event loot on", "Protect Target Loot"),
-			PopupAction("#expedition event lockout 6h", "Set 6h Lockout"),
-			PopupAction("#expedition action", "Actions")
-		);
-		body += DialogueWindow::Break(2);
-		body += DialogueWindow::ColorMessage("gold", "Validation and Testing");
-		body += DialogueWindow::Break();
-		body += fmt::format(
-			"{} | {} | {} | {} | {} | {} | {}",
-			PopupAction("#expedition wizard", "Wizard"),
-			PopupAction("#expedition preview", "Preview"),
-			PopupAction("#expedition fix", "Fix"),
-			PopupAction("#expedition validate", "Validate"),
-			PopupAction("#expedition test create", "Test Create"),
-			PopupAction("#expedition test move", "Test Move"),
-			PopupAction("#expedition enable", "Enable")
-		);
-		body += DialogueWindow::Break(2);
-		body += PopupAction("#expedition disable", "Disable");
-		body += " | ";
-		body += PopupAction(fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm");
+		table += SnapshotRow("ID", std::to_string(template_data->id));
+		table += SnapshotRow("Name", template_data->name);
+		table += SnapshotRow("Status", validation.StatusName());
+		table += SnapshotRow("Enabled", OnOff(template_data->enabled));
+		table += SnapshotRow("Request Mode", template_data->request_mode);
+		table += SnapshotRow("DZ Template", std::to_string(template_data->dz_template_id));
+		table += SnapshotRow("Zone", fmt::format("{}:{}", ZoneLabel(template_data->dz_template.zone_id), template_data->dz_template.zone_version));
+		table += SnapshotRow("Duration", Duration(template_data->dz_template.duration_seconds));
+		table += SnapshotRow("Players", fmt::format("{}-{}", template_data->dz_template.min_players, template_data->dz_template.max_players));
+		table += SnapshotRow("Replay", Duration(template_data->replay_lockout_seconds));
+		table += SnapshotRow("Replay On Join", OnOff(template_data->replay_on_join));
+		table += SnapshotRow("Silent", OnOff(template_data->silent));
+		table += SnapshotRow("Switch ID", std::to_string(template_data->dz_template.dz_switch_id));
+		AppendPopupText(body, DialogueWindow::Table(table));
+
+		AppendPopupSection(body, "Locations");
+		table.clear();
+		table += SnapshotRow("Zone-In", template_data->dz_template.override_zone_in ?
+			Location(template_data->dz_template.zone_id, template_data->dz_template.zone_in_x, template_data->dz_template.zone_in_y, template_data->dz_template.zone_in_z, template_data->dz_template.zone_in_h) :
+			"zone default");
+		table += SnapshotRow("Safe Return", template_data->dz_template.return_zone_id ?
+			Location(template_data->dz_template.return_zone_id, template_data->dz_template.return_x, template_data->dz_template.return_y, template_data->dz_template.return_z, template_data->dz_template.return_h) :
+			"zone safe point/default");
+		table += SnapshotRow("Compass", template_data->dz_template.compass_zone_id ?
+			Location(template_data->dz_template.compass_zone_id, template_data->dz_template.compass_x, template_data->dz_template.compass_y, template_data->dz_template.compass_z) :
+			"unset");
+		AppendPopupText(body, DialogueWindow::Table(table));
+
+		AppendPopupSection(body, "Request NPCs");
+		if (template_data->request_npcs.empty()) {
+			AppendPopupText(body, "None configured.");
+		}
+		else {
+			table.clear();
+			for (const auto& request_npc : template_data->request_npcs) {
+				table += SnapshotRow(
+					fmt::format("NPC {}", request_npc.id),
+					fmt::format(
+						"zone {}, type {}, spawn {}, phrase '{}', {}",
+						ZoneLabel(request_npc.zone_id),
+						request_npc.npc_type_id,
+						request_npc.spawn2_id,
+						request_npc.phrase,
+						request_npc.enabled ? "enabled" : "disabled"
+					)
+				);
+			}
+			AppendPopupText(body, DialogueWindow::Table(table));
+		}
+
+		AppendPopupSection(body, fmt::format("Events ({})", template_data->events.size()));
+		if (template_data->events.empty()) {
+			AppendPopupText(body, "No events configured.");
+		}
+		else {
+			const uint32_t selected_event_id = ExpeditionDB::GetBuilderState(c->CharacterID()).selected_event_id;
+			for (const auto& event_data : template_data->events) {
+				table.clear();
+				table += SnapshotRow("Event", fmt::format("{}{} [{}]", event_data.event_name, event_data.id == selected_event_id ? " (selected)" : "", event_data.id));
+				table += SnapshotRow("Lockout", Duration(event_data.lockout_seconds));
+				table += SnapshotRow("Replay", Duration(event_data.replay_lockout_seconds));
+				table += SnapshotRow("Lock Success", OnOff(event_data.lock_on_success));
+				table += SnapshotRow("Lock Failure", OnOff(event_data.lock_on_failure));
+				table += SnapshotRow("Loot Protected", OnOff(event_data.loot_protected));
+				table += SnapshotRow("NPCs", std::to_string(event_data.npcs.size()));
+				table += SnapshotRow("Actions", std::to_string(event_data.actions.size()));
+				AppendPopupText(body, DialogueWindow::Table(table));
+
+				if (!event_data.npcs.empty()) {
+					table.clear();
+					for (const auto& event_npc : event_data.npcs) {
+						table += SnapshotRow(
+							fmt::format("NPC {}", event_npc.id),
+							fmt::format(
+								"role {}, type {}, spawn {}, death {}, loot {}",
+								event_npc.role,
+								event_npc.npc_type_id,
+								event_npc.spawn2_id,
+								OnOff(event_npc.complete_on_death),
+								OnOff(event_npc.loot_protected)
+							)
+						);
+					}
+					AppendPopupText(body, DialogueWindow::Table(table));
+				}
+
+				if (!event_data.actions.empty()) {
+					table.clear();
+					for (const auto& event_action : event_data.actions) {
+						table += SnapshotRow(
+							fmt::format("Action {}", event_action.id),
+							fmt::format("{} [{}] order {}", event_action.action_type, event_action.action_value, event_action.sort_order)
+						);
+					}
+					AppendPopupText(body, DialogueWindow::Table(table));
+				}
+				AppendPopupText(body, DialogueWindow::Break());
+			}
+		}
+
+		AppendPopupSection(body, "Validation");
+		AppendPopupText(body, fmt::format("Status: {}", validation.StatusName()));
+		for (const auto& error : validation.errors) {
+			AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", fmt::format("Error: {}", error)));
+		}
+		for (const auto& warning : validation.warnings) {
+			AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", fmt::format("Warning: {}", warning)));
+		}
+
+		AppendPopupSection(body, "Chat Actions");
+		AppendPopupText(body, "Clickable command links are sent to your chat window.");
 
 		c->SendPopupToClient("Expedition Builder", body.c_str());
 		SendActionLinks(c, actions);
