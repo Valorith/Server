@@ -56,7 +56,7 @@ private:
 		TEST_ASSERT(entry->content_schema_update);
 		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_templates` LIKE 'request_mode'");
 		TEST_ASSERT(entry->condition == "empty");
-		TEST_ASSERT(entry->sql.find("ADD COLUMN `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only'") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("ADD COLUMN IF NOT EXISTS `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only'") != std::string::npos);
 	}
 
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()

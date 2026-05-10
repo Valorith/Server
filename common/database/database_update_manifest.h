@@ -7489,7 +7489,7 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 		.match = "",
 		.sql = R"(
 ALTER TABLE `expedition_templates`
-	ADD COLUMN `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only' AFTER `request_phrase`;
+	ADD COLUMN IF NOT EXISTS `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only' AFTER `request_phrase`;
 )",
 		.content_schema_update = true
 	},
