@@ -94,6 +94,11 @@ namespace {
 		return "db_only: configured request NPCs automatically create DB expeditions.";
 	}
 
+	std::string NpcLabel(NPC& npc)
+	{
+		return fmt::format("{} (type {}, spawn {})", npc.GetCleanName(), npc.GetNPCTypeID(), npc.GetSpawnPointID());
+	}
+
 	std::string PopupAction(const std::string& command, const std::string& label)
 	{
 		std::string escaped_command = command;
@@ -684,8 +689,9 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 		}
+		const std::string template_name = template_data->name;
 		ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, sub == "enable");
-		c->Message(Chat::Green, fmt::format("{} expedition [{}].", sub == "enable" ? "Enabled" : "Disabled", template_data->name).c_str());
+		c->Message(Chat::Green, fmt::format("{} expedition [{}].", sub == "enable" ? "Enabled" : "Disabled", template_name).c_str());
 		return;
 	}
 
@@ -943,14 +949,16 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Red, "Add or select an event first.");
 			return;
 		}
+		const uint32_t selected_event_id = event_data->id;
+		const std::string selected_event_name = event_data->event_name;
 
 		if (action == "remove") {
 			if (strcasecmp(sep->arg[3], "confirm") != 0) {
 				c->Message(Chat::Yellow, "Confirm with: #expedition event remove confirm");
 				return;
 			}
-			ExpeditionDB::DeleteEvent(content_db, event_data->id);
-			c->Message(Chat::Green, "Removed selected event.");
+			ExpeditionDB::DeleteEvent(content_db, selected_event_id);
+			c->Message(Chat::Green, fmt::format("Removed selected event [{}].", selected_event_name).c_str());
 			return;
 		}
 
@@ -960,15 +968,15 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition event lockout <duration>");
 				return;
 			}
-			ExpeditionDB::SetEventLockout(content_db, event_data->id, seconds);
-			c->Message(Chat::Green, fmt::format("Set event lockout to [{}].", Duration(seconds)).c_str());
+			ExpeditionDB::SetEventLockout(content_db, selected_event_id, seconds);
+			c->Message(Chat::Green, fmt::format("Set event [{}] lockout to [{}].", selected_event_name, Duration(seconds)).c_str());
 			return;
 		}
 
 		if (action == "replay") {
 			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3]);
-			ExpeditionDB::SetEventReplay(content_db, event_data->id, seconds);
-			c->Message(Chat::Green, fmt::format("Set event replay lockout to [{}].", Duration(seconds)).c_str());
+			ExpeditionDB::SetEventReplay(content_db, selected_event_id, seconds);
+			c->Message(Chat::Green, fmt::format("Set event [{}] replay lockout to [{}].", selected_event_name, Duration(seconds)).c_str());
 			return;
 		}
 
@@ -981,19 +989,34 @@ void command_expedition(Client* c, const Seperator* sep)
 
 			if (action == "npc") {
 				std::string role = sep->arg[3][0] ? sep->arg[3] : ExpeditionDB::RoleFromTarget(*npc);
-				ExpeditionDB::SetEventNpc(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), role);
-				c->Message(Chat::Green, fmt::format("Added target NPC to event [{}] as [{}].", event_data->event_name, role).c_str());
+				ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), role);
+				c->Message(Chat::Green, fmt::format(
+					"Added target NPC [{}] to event [{}] as [{}].",
+					NpcLabel(*npc),
+					selected_event_name,
+					role
+				).c_str());
 			}
 			else if (action == "loot") {
 				const bool enabled = sep->arg[3][0] == '\0' || Strings::ToBool(sep->arg[3]);
-				ExpeditionDB::SetEventNpc(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "loot");
-				ExpeditionDB::SetEventNpcLoot(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled);
-				c->Message(Chat::Green, fmt::format("Set target loot protection [{}].", OnOff(enabled)).c_str());
+				ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "loot");
+				ExpeditionDB::SetEventNpcLoot(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled);
+				c->Message(Chat::Green, fmt::format(
+					"Set target NPC [{}] loot protection [{}] for event [{}].",
+					NpcLabel(*npc),
+					OnOff(enabled),
+					selected_event_name
+				).c_str());
 			}
 			else {
 				const bool enabled = sep->arg[3][0] == '\0' || Strings::ToBool(sep->arg[3]);
-				ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled);
-				c->Message(Chat::Green, fmt::format("Set complete-on-death [{}].", OnOff(enabled)).c_str());
+				ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled);
+				c->Message(Chat::Green, fmt::format(
+					"Set target NPC [{}] complete-on-death [{}] for event [{}].",
+					NpcLabel(*npc),
+					OnOff(enabled),
+					selected_event_name
+				).c_str());
 			}
 			return;
 		}
@@ -1019,6 +1042,8 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Red, "Add or select an event first.");
 			return;
 		}
+		const uint32_t selected_event_id = event_data->id;
+		const std::string selected_event_name = event_data->event_name;
 
 		if (action == "list") {
 			if (event_data->actions.empty()) {
@@ -1036,8 +1061,8 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Yellow, "Confirm with: #expedition action clear confirm");
 				return;
 			}
-			ExpeditionDB::ClearActions(content_db, event_data->id);
-			c->Message(Chat::Green, "Cleared selected-event runtime actions.");
+			ExpeditionDB::ClearActions(content_db, selected_event_id);
+			c->Message(Chat::Green, fmt::format("Cleared runtime actions for event [{}].", selected_event_name).c_str());
 			return;
 		}
 
@@ -1048,11 +1073,11 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		const std::string type = Strings::ToLower(sep->arg[3]);
 		if (type == "lock" || type == "unlock") {
-			ExpeditionDB::AddAction(content_db, event_data->id, type, "");
-			c->Message(Chat::Green, fmt::format("Added [{}] action.", type).c_str());
+			ExpeditionDB::AddAction(content_db, selected_event_id, type, "");
+			c->Message(Chat::Green, fmt::format("Added [{}] action to event [{}].", type, selected_event_name).c_str());
 		}
 		else if (type == "lockout") {
-			std::string event_name = event_data->event_name;
+			std::string event_name = selected_event_name;
 			std::string duration = sep->arg[4];
 			if (sep->arg[5][0] != '\0') {
 				event_name = sep->arg[4];
@@ -1063,8 +1088,8 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition action add lockout [event_name] <duration>");
 				return;
 			}
-			ExpeditionDB::AddAction(content_db, event_data->id, "add_lockout", fmt::format("{}|{}", event_name, seconds));
-			c->Message(Chat::Green, fmt::format("Added lockout action [{}] for [{}].", Duration(seconds), event_name).c_str());
+			ExpeditionDB::AddAction(content_db, selected_event_id, "add_lockout", fmt::format("{}|{}", event_name, seconds));
+			c->Message(Chat::Green, fmt::format("Added lockout action [{}] for [{}] to event [{}].", Duration(seconds), event_name, selected_event_name).c_str());
 		}
 		else if (type == "replay") {
 			const uint32_t seconds = ParseExpeditionDuration(sep->arg[4]);
@@ -1072,16 +1097,16 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition action add replay <duration>");
 				return;
 			}
-			ExpeditionDB::AddAction(content_db, event_data->id, "add_replay_lockout", std::to_string(seconds));
-			c->Message(Chat::Green, fmt::format("Added replay lockout action [{}].", Duration(seconds)).c_str());
+			ExpeditionDB::AddAction(content_db, selected_event_id, "add_replay_lockout", std::to_string(seconds));
+			c->Message(Chat::Green, fmt::format("Added replay lockout action [{}] to event [{}].", Duration(seconds), selected_event_name).c_str());
 		}
 		else if (type == "depop") {
 			if (!sep->IsNumber(4)) {
 				c->Message(Chat::Red, "Usage: #expedition action add depop <npc_type_id>");
 				return;
 			}
-			ExpeditionDB::AddAction(content_db, event_data->id, "depop_npc_type", sep->arg[4]);
-			c->Message(Chat::Green, fmt::format("Added depop action for NPC type [{}].", sep->arg[4]).c_str());
+			ExpeditionDB::AddAction(content_db, selected_event_id, "depop_npc_type", sep->arg[4]);
+			c->Message(Chat::Green, fmt::format("Added depop action for NPC type [{}] to event [{}].", sep->arg[4], selected_event_name).c_str());
 		}
 		else if (type == "message") {
 			std::string message = sep->argplus[4];
@@ -1090,8 +1115,8 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition action add message <text>");
 				return;
 			}
-			ExpeditionDB::AddAction(content_db, event_data->id, "message_members", message);
-			c->Message(Chat::Green, "Added member message action.");
+			ExpeditionDB::AddAction(content_db, selected_event_id, "message_members", message);
+			c->Message(Chat::Green, fmt::format("Added member message action to event [{}].", selected_event_name).c_str());
 		}
 		else if (type == "remaining") {
 			const uint32_t seconds = ParseExpeditionDuration(sep->arg[4]);
@@ -1099,8 +1124,8 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition action add remaining <duration>");
 				return;
 			}
-			ExpeditionDB::AddAction(content_db, event_data->id, "set_remaining", std::to_string(seconds));
-			c->Message(Chat::Green, fmt::format("Added remaining-time action [{}].", Duration(seconds)).c_str());
+			ExpeditionDB::AddAction(content_db, selected_event_id, "set_remaining", std::to_string(seconds));
+			c->Message(Chat::Green, fmt::format("Added remaining-time action [{}] to event [{}].", Duration(seconds), selected_event_name).c_str());
 		}
 		else {
 			ShowActionHelp(c);
