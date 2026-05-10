@@ -209,11 +209,11 @@ namespace {
 	void ShowTestHelp(Client* c)
 	{
 		c->Message(Chat::White, "#expedition test command catalog:");
-		c->Message(Chat::White, "#expedition test create - Create the selected DB expedition for your current group/raid/self.");
-		c->Message(Chat::White, "#expedition test move - Move you into your current expedition.");
-		c->Message(Chat::White, "#expedition test request - Simulate the targeted request NPC phrase flow.");
-		c->Message(Chat::White, "#expedition test lockout - Apply the selected event lockout to your current expedition.");
-		c->Message(Chat::White, "#expedition test loot - Re-apply DB loot-event protection for your current expedition.");
+		c->Message(Chat::White, fmt::format("{} - Create the selected DB expedition for your current group/raid/self.", Saylink::Silent("#expedition test create", "#expedition test create")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Move you into your current expedition.", Saylink::Silent("#expedition test move", "#expedition test move")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Simulate the targeted request NPC phrase flow.", Saylink::Silent("#expedition test request", "#expedition test request")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Apply the selected event lockout to your current expedition.", Saylink::Silent("#expedition test lockout", "#expedition test lockout")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Re-apply DB loot-event protection for your current expedition.", Saylink::Silent("#expedition test loot", "#expedition test loot")).c_str());
 	}
 
 	void ShowPresetHelp(Client* c)
