@@ -94,6 +94,29 @@ namespace {
 		return "db_only: configured request NPCs automatically create DB expeditions.";
 	}
 
+	std::string PopupAction(const std::string& command, const std::string& label)
+	{
+		std::string escaped_command = command;
+		Strings::FindReplace(escaped_command, "\"", "&quot;");
+
+		return DialogueWindow::Link(escaped_command, DialogueWindow::ColorMessage("cyan_1", label));
+	}
+
+	void SendActionLinks(Client* c, const std::vector<std::pair<std::string, std::string>>& actions)
+	{
+		if (!c || actions.empty()) {
+			return;
+		}
+
+		std::vector<std::string> links;
+		links.reserve(actions.size());
+		for (const auto& action : actions) {
+			links.emplace_back(Saylink::Silent(action.first, action.second));
+		}
+
+		c->Message(Chat::White, fmt::format("Expedition actions: {}", Strings::Join(links, " | ")).c_str());
+	}
+
 	void ShowHelp(Client* c)
 	{
 		c->Message(Chat::White, "#expedition help - Show this command catalog.");
@@ -318,30 +341,51 @@ namespace {
 		if (!template_data) {
 			body += "Start by creating an expedition from your current zone and location.";
 			body += DialogueWindow::Break(2);
-			body += Saylink::Silent("#expedition create \"New Expedition\"", "Create New Expedition");
+			body += PopupAction("#expedition create \"New Expedition\"", "Create New Expedition");
 			c->SendPopupToClient("Expedition Wizard", body.c_str());
+			SendActionLinks(c, {
+				{"#expedition create \"New Expedition\"", "Create New Expedition"}
+			});
 			return;
 		}
 
 		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
+		const std::vector<std::pair<std::string, std::string>> actions = {
+			{"#expedition set zone", "Use Current Zone"},
+			{"#expedition set zonein", "Use Current Zone-In"},
+			{"#expedition set safereturn", "Use Current Safe Return"},
+			{"#expedition preset group", "Group Preset"},
+			{"#expedition requestnpc", "Use Target Request NPC"},
+			{"#expedition set requestmode db_only", "DB Auto"},
+			{"#expedition set requestmode script_can_opt_in", "Script Opt-In"},
+			{"#expedition event add \"Boss Defeated\"", "Add Event"},
+			{"#expedition preset boss", "Boss Preset"},
+			{"#expedition preset chest", "Chest Preset"},
+			{"#expedition action", "Actions"},
+			{"#expedition preview", "Preview"},
+			{"#expedition fix", "Fixes"},
+			{"#expedition test request", "Test Request"},
+			{"#expedition enable", "Enable"}
+		};
 		body += fmt::format("{} [{}]", DialogueWindow::ColorMessage("gold", template_data->name), validation.StatusName());
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "1. Base Setup");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition set zone", "Use Current Zone"), Saylink::Silent("#expedition set zonein", "Use Current Zone-In"), Saylink::Silent("#expedition set safereturn", "Use Current Safe Return"), Saylink::Silent("#expedition preset group", "Group Preset"));
+		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition set zone", "Use Current Zone"), PopupAction("#expedition set zonein", "Use Current Zone-In"), PopupAction("#expedition set safereturn", "Use Current Safe Return"), PopupAction("#expedition preset group", "Group Preset"));
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "2. Request Handling");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {}", Saylink::Silent("#expedition requestnpc", "Use Target Request NPC"), Saylink::Silent("#expedition set requestmode db_only", "DB Auto"), Saylink::Silent("#expedition set requestmode script_can_opt_in", "Script Opt-In"));
+		body += fmt::format("{} | {} | {}", PopupAction("#expedition requestnpc", "Use Target Request NPC"), PopupAction("#expedition set requestmode db_only", "DB Auto"), PopupAction("#expedition set requestmode script_can_opt_in", "Script Opt-In"));
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "3. Encounter");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition event add \"Boss Defeated\"", "Add Event"), Saylink::Silent("#expedition preset boss", "Boss Preset"), Saylink::Silent("#expedition preset chest", "Chest Preset"), Saylink::Silent("#expedition action", "Actions"));
+		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition event add \"Boss Defeated\"", "Add Event"), PopupAction("#expedition preset boss", "Boss Preset"), PopupAction("#expedition preset chest", "Chest Preset"), PopupAction("#expedition action", "Actions"));
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "4. Review");
 		body += DialogueWindow::Break();
-		body += fmt::format("{} | {} | {} | {}", Saylink::Silent("#expedition preview", "Preview"), Saylink::Silent("#expedition fix", "Fixes"), Saylink::Silent("#expedition test request", "Test Request"), Saylink::Silent("#expedition enable", "Enable"));
+		body += fmt::format("{} | {} | {} | {}", PopupAction("#expedition preview", "Preview"), PopupAction("#expedition fix", "Fixes"), PopupAction("#expedition test request", "Test Request"), PopupAction("#expedition enable", "Enable"));
 		c->SendPopupToClient("Expedition Wizard", body.c_str());
+		SendActionLinks(c, actions);
 	}
 
 	void ShowMenu(Client* c)
@@ -354,12 +398,36 @@ namespace {
 		if (!template_data) {
 			body += "No expedition selected.";
 			body += DialogueWindow::Break();
-			body += Saylink::Silent("#expedition list", "List Expeditions");
+			body += PopupAction("#expedition list", "List Expeditions");
 			c->SendPopupToClient("Expedition Builder", body.c_str());
+			SendActionLinks(c, {
+				{"#expedition list", "List Expeditions"}
+			});
 			return;
 		}
 
 		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
+		const std::vector<std::pair<std::string, std::string>> actions = {
+			{"#expedition set zone", "Set Zone"},
+			{"#expedition set zonein", "Set Zone-In"},
+			{"#expedition set safereturn", "Set Safe Return"},
+			{"#expedition set compass", "Set Compass"},
+			{"#expedition requestnpc", "Use Target Request NPC"},
+			{"#expedition event add \"Boss Defeated\"", "Add Event"},
+			{"#expedition event npc", "Add Target NPC"},
+			{"#expedition event loot on", "Protect Target Loot"},
+			{"#expedition event lockout 6h", "Set 6h Lockout"},
+			{"#expedition action", "Actions"},
+			{"#expedition wizard", "Wizard"},
+			{"#expedition preview", "Preview"},
+			{"#expedition fix", "Fix"},
+			{"#expedition validate", "Validate"},
+			{"#expedition test create", "Test Create"},
+			{"#expedition test move", "Test Move"},
+			{"#expedition enable", "Enable"},
+			{"#expedition disable", "Disable"},
+			{fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm"}
+		};
 		std::string table;
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Name") + DialogueWindow::TableCell(template_data->name));
 		table += DialogueWindow::TableRow(DialogueWindow::TableCell("Status") + DialogueWindow::TableCell(validation.StatusName()));
@@ -374,42 +442,43 @@ namespace {
 		body += DialogueWindow::Break();
 		body += fmt::format(
 			"{} | {} | {} | {} | {}",
-			Saylink::Silent("#expedition set zone", "Set Zone"),
-			Saylink::Silent("#expedition set zonein", "Set Zone-In"),
-			Saylink::Silent("#expedition set safereturn", "Set Safe Return"),
-			Saylink::Silent("#expedition set compass", "Set Compass"),
-			Saylink::Silent("#expedition requestnpc", "Use Target Request NPC")
+			PopupAction("#expedition set zone", "Set Zone"),
+			PopupAction("#expedition set zonein", "Set Zone-In"),
+			PopupAction("#expedition set safereturn", "Set Safe Return"),
+			PopupAction("#expedition set compass", "Set Compass"),
+			PopupAction("#expedition requestnpc", "Use Target Request NPC")
 		);
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "Events");
 		body += DialogueWindow::Break();
 		body += fmt::format(
 			"{} | {} | {} | {} | {}",
-			Saylink::Silent("#expedition event add \"Boss Defeated\"", "Add Event"),
-			Saylink::Silent("#expedition event npc", "Add Target NPC"),
-			Saylink::Silent("#expedition event loot on", "Protect Target Loot"),
-			Saylink::Silent("#expedition event lockout 6h", "Set 6h Lockout"),
-			Saylink::Silent("#expedition action", "Actions")
+			PopupAction("#expedition event add \"Boss Defeated\"", "Add Event"),
+			PopupAction("#expedition event npc", "Add Target NPC"),
+			PopupAction("#expedition event loot on", "Protect Target Loot"),
+			PopupAction("#expedition event lockout 6h", "Set 6h Lockout"),
+			PopupAction("#expedition action", "Actions")
 		);
 		body += DialogueWindow::Break(2);
 		body += DialogueWindow::ColorMessage("gold", "Validation and Testing");
 		body += DialogueWindow::Break();
 		body += fmt::format(
 			"{} | {} | {} | {} | {} | {} | {}",
-			Saylink::Silent("#expedition wizard", "Wizard"),
-			Saylink::Silent("#expedition preview", "Preview"),
-			Saylink::Silent("#expedition fix", "Fix"),
-			Saylink::Silent("#expedition validate", "Validate"),
-			Saylink::Silent("#expedition test create", "Test Create"),
-			Saylink::Silent("#expedition test move", "Test Move"),
-			Saylink::Silent("#expedition enable", "Enable")
+			PopupAction("#expedition wizard", "Wizard"),
+			PopupAction("#expedition preview", "Preview"),
+			PopupAction("#expedition fix", "Fix"),
+			PopupAction("#expedition validate", "Validate"),
+			PopupAction("#expedition test create", "Test Create"),
+			PopupAction("#expedition test move", "Test Move"),
+			PopupAction("#expedition enable", "Enable")
 		);
 		body += DialogueWindow::Break(2);
-		body += Saylink::Silent("#expedition disable", "Disable");
+		body += PopupAction("#expedition disable", "Disable");
 		body += " | ";
-		body += Saylink::Silent(fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm");
+		body += PopupAction(fmt::format("#expedition delete {} confirm", template_data->id), "Delete Confirm");
 
 		c->SendPopupToClient("Expedition Builder", body.c_str());
+		SendActionLinks(c, actions);
 	}
 
 	uint32_t ParseZoneArg(const char* arg)
