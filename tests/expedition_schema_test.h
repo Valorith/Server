@@ -2,6 +2,7 @@
 
 #include "common/database/database_update.h"
 #include "common/database_schema.h"
+#include "common/version.h"
 #include "cppunit/cpptest.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::ContentSchemaIncludesExpeditionAuthoringTables);
 		TEST_ADD(ExpeditionSchemaTest::InitialMigrationIncludesRequestMode);
 		TEST_ADD(ExpeditionSchemaTest::FollowupMigrationAddsRequestMode);
+		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 	}
 
 private:
@@ -55,5 +57,10 @@ private:
 		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_templates` LIKE 'request_mode'");
 		TEST_ASSERT(entry->condition == "empty");
 		TEST_ASSERT(entry->sql.find("ADD COLUMN `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only'") != std::string::npos);
+	}
+
+	void BinaryDatabaseVersionIncludesExpeditionMigrations()
+	{
+		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9343);
 	}
 };
