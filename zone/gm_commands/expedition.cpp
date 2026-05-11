@@ -101,6 +101,19 @@ namespace {
 		return fmt::format("{} (type {}, spawn {})", npc.GetCleanName(), npc.GetNPCTypeID(), npc.GetSpawnPointID());
 	}
 
+	bool RequestNpcMatches(const ExpeditionDB::RequestNpc& request_npc, NPC& npc)
+	{
+		if (!request_npc.enabled || !zone || request_npc.zone_id != zone->GetZoneID()) {
+			return false;
+		}
+
+		if (request_npc.spawn2_id != 0 && request_npc.spawn2_id != npc.GetSpawnPointID()) {
+			return false;
+		}
+
+		return request_npc.npc_type_id == npc.GetNPCTypeID();
+	}
+
 	void SendActionGroup(Client* c, const std::string& title, const std::vector<std::pair<std::string, std::string>>& actions)
 	{
 		if (!c || actions.empty()) {
@@ -141,9 +154,9 @@ namespace {
 
 		SendActionGroup(c, "Selected event", {
 			{"#expedition event npc", "Add Target NPC"},
-			{"#expedition event npc boss", "Target Is Boss"},
-			{"#expedition event npc add", "Target Is Add"},
-			{"#expedition event npc chest", "Target Is Chest"},
+			{"#expedition event npc boss", "Target Role: Boss"},
+			{"#expedition event npc add", "Target Role: Add"},
+			{"#expedition event npc chest", "Target Role: Chest"},
 			{"#expedition event loot on", "Protect Target Loot"},
 			{"#expedition event completeondeath on", "Complete On Target Death"}
 		});
@@ -153,7 +166,7 @@ namespace {
 			{"#expedition event replay 2h", "2h Replay"},
 			{"#expedition action", "Action Catalog"},
 			{"#expedition action list", "List Actions"},
-			{"#expedition event remove confirm", "Delete Event"}
+			{"#expedition event remove", "Delete Event..."}
 		});
 	}
 
@@ -201,6 +214,14 @@ namespace {
 			{"#expedition set requestmode script_only", "Script Only"}
 		});
 
+		SendActionGroup(c, "Options", {
+			{"#expedition set silent on", "Silent On"},
+			{"#expedition set silent off", "Silent Off"},
+			{"#expedition set replay 2h", "2h Replay"},
+			{"#expedition set switchid target", "Use Target Switch"},
+			{"#expedition set", "Setup Catalog"}
+		});
+
 		SendActionGroup(c, "Events", {
 			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
 			{"#expedition event list", "List Events"},
@@ -227,7 +248,7 @@ namespace {
 		SendActionGroup(c, "Publish", {
 			{"#expedition enable", "Enable"},
 			{"#expedition disable", "Disable"},
-			{fmt::format("#expedition delete {} confirm", template_data.id), "Delete Confirm"}
+			{fmt::format("#expedition delete {}", template_data.id), "Delete..."}
 		});
 	}
 
@@ -381,7 +402,8 @@ namespace {
 		c->Message(Chat::White, "#expedition event loot on|off - Toggle loot-event protection for your targeted NPC.");
 		c->Message(Chat::White, "#expedition event completeondeath on|off - Toggle whether your targeted NPC completes the selected event on death.");
 		c->Message(Chat::White, "#expedition action add lock|unlock|lockout|replay|depop|message|remaining [value] - Add selected-event runtime actions.");
-		c->Message(Chat::White, "#expedition action list - List selected-event runtime actions. #expedition action clear confirm - Remove them.");
+		c->Message(Chat::White, "#expedition action list - List selected-event runtime actions.");
+		c->Message(Chat::White, "#expedition action clear - Prompt for selected-event action removal. #expedition action clear confirm - Remove them.");
 		SendActionGroup(c, "Event setup", {
 			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
 			{"#expedition event list", "List Events"},
@@ -414,6 +436,13 @@ namespace {
 		c->Message(Chat::White, "#expedition preset raid - 6-54 players, 6 hour duration, 2 hour replay.");
 		c->Message(Chat::White, "#expedition preset boss - Selected event gets 6 hour lockout, 2 hour replay, and targeted NPC as boss when targeted.");
 		c->Message(Chat::White, "#expedition preset chest - Targeted NPC is added as loot-protected chest for selected event.");
+		SendActionGroup(c, "Presets", {
+			{"#expedition preset solo", "Solo"},
+			{"#expedition preset group", "Group"},
+			{"#expedition preset raid", "Raid"},
+			{"#expedition preset boss", "Boss Event"},
+			{"#expedition preset chest", "Loot Chest"}
+		});
 	}
 
 	void ShowActionHelp(Client* c)
@@ -427,14 +456,14 @@ namespace {
 		c->Message(Chat::White, "#expedition action add message <text> - Message expedition members in the zone.");
 		c->Message(Chat::White, "#expedition action add remaining <duration> - Set expedition remaining time.");
 		c->Message(Chat::White, "#expedition action list - List actions for the selected event.");
-		c->Message(Chat::White, "#expedition action clear confirm - Remove selected-event actions.");
+		c->Message(Chat::White, "#expedition action clear - Prompt for selected-event action removal. #expedition action clear confirm - Remove selected-event actions.");
 		SendActionGroup(c, "Runtime actions", {
 			{"#expedition action add lock", "Lock"},
 			{"#expedition action add unlock", "Unlock"},
 			{"#expedition action add replay 2h", "2h Replay"},
 			{"#expedition action add lockout 6h", "6h Lockout"},
 			{"#expedition action list", "List Actions"},
-			{"#expedition action clear confirm", "Clear Confirm"}
+			{"#expedition action clear", "Clear Actions..."}
 		});
 	}
 
@@ -935,6 +964,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowFixes(c, *template_data);
 		}
+		SendCurrentBuilderChatUi(c);
 		return;
 	}
 
@@ -948,12 +978,14 @@ void command_expedition(Client* c, const Seperator* sep)
 			if (!validation.IsValid()) {
 				PrintValidation(c, *template_data);
 				c->Message(Chat::Red, "Fix validation errors before enabling this expedition.");
+				SendBuilderChatUi(c, *template_data);
 				return;
 			}
 		}
 		const std::string template_name = template_data->name;
 		ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, sub == "enable");
 		c->Message(Chat::Green, fmt::format("{} expedition [{}].", sub == "enable" ? "Enabled" : "Disabled", template_name).c_str());
+		SendCurrentBuilderChatUi(c);
 		return;
 	}
 
@@ -964,7 +996,10 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 		if (strcasecmp(sep->arg[3], "confirm") != 0 && strcasecmp(sep->arg[4], "confirm") != 0) {
-			c->Message(Chat::Yellow, fmt::format("Confirm delete with: #expedition delete {} confirm", delete_template->id).c_str());
+			c->Message(Chat::Yellow, fmt::format(
+				"Confirm delete with: {}",
+				Saylink::Silent(fmt::format("#expedition delete {} confirm", delete_template->id), fmt::format("#expedition delete {} confirm", delete_template->id))
+			).c_str());
 			return;
 		}
 		ExpeditionDB::DeleteTemplate(content_db, delete_template->id);
@@ -1122,6 +1157,11 @@ void command_expedition(Client* c, const Seperator* sep)
 		}
 
 		if (action == "list") {
+			if (template_data->request_npcs.empty()) {
+				c->Message(Chat::White, "No request NPCs are configured for the selected expedition.");
+				ShowRequestNpcHelp(c);
+				return;
+			}
 			for (const auto& request_npc : template_data->request_npcs) {
 				c->Message(Chat::White, fmt::format(
 					"NPC type [{}] spawn [{}] zone [{}] phrase [{}]",
@@ -1198,6 +1238,11 @@ void command_expedition(Client* c, const Seperator* sep)
 		}
 
 		if (action == "list") {
+			if (template_data->events.empty()) {
+				c->Message(Chat::White, "No events are configured for the selected expedition.");
+				SendSelectedEventChatUi(c, *template_data);
+				return;
+			}
 			for (const auto& event_data : template_data->events) {
 				c->Message(Chat::White, fmt::format(
 					"[{}] {} lockout [{}] replay [{}] npcs [{}] {}",
@@ -1223,7 +1268,10 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		if (action == "remove") {
 			if (strcasecmp(sep->arg[3], "confirm") != 0) {
-				c->Message(Chat::Yellow, "Confirm with: #expedition event remove confirm");
+				c->Message(Chat::Yellow, fmt::format(
+					"Confirm with: {}",
+					Saylink::Silent("#expedition event remove confirm", "#expedition event remove confirm")
+				).c_str());
 				return;
 			}
 			ExpeditionDB::DeleteEvent(content_db, selected_event_id);
@@ -1333,7 +1381,10 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		if (action == "clear") {
 			if (strcasecmp(sep->arg[3], "confirm") != 0) {
-				c->Message(Chat::Yellow, "Confirm with: #expedition action clear confirm");
+				c->Message(Chat::Yellow, fmt::format(
+					"Confirm with: {}",
+					Saylink::Silent("#expedition action clear confirm", "#expedition action clear confirm")
+				).c_str());
 				return;
 			}
 			ExpeditionDB::ClearActions(content_db, selected_event_id);
@@ -1455,11 +1506,13 @@ void command_expedition(Client* c, const Seperator* sep)
 			const auto* event_data = SelectedEvent(c, *template_data);
 			if (!event_data) {
 				c->Message(Chat::Red, "Add or select an event first.");
+				SendCurrentEventChatUi(c);
 				return;
 			}
 			NPC* npc = TargetNpc(c);
 			if (!npc) {
 				NeedTargetNpc(c);
+				SendCurrentEventChatUi(c);
 				return;
 			}
 			ExpeditionDB::SetEventNpc(content_db, event_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "chest");
@@ -1469,6 +1522,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowPresetHelp(c);
 		}
+		SendCurrentBuilderChatUi(c);
 		return;
 	}
 
@@ -1500,17 +1554,36 @@ void command_expedition(Client* c, const Seperator* sep)
 				NeedTargetNpc(c);
 				return;
 			}
+
+			const ExpeditionDB::RequestNpc* matched_request_npc = nullptr;
+			for (const auto& request_npc : template_data->request_npcs) {
+				if (RequestNpcMatches(request_npc, *npc)) {
+					matched_request_npc = &request_npc;
+					break;
+				}
+			}
+
 			DynamicZone dz(DynamicZoneType::Expedition);
 			dz.LoadTemplate(template_data->dz_template);
 			const auto check = CheckExpeditionRequest(*c, dz, true);
 			const bool scripted = parse && parse->HasQuestSub(npc->GetNPCTypeID(), EVENT_SAY);
 			c->Message(Chat::White, fmt::format(
-				"Request test: mode [{}] target NPC type [{}] spawn [{}] scripted [{}]",
+				"Request test: mode [{}] target NPC type [{}] spawn [{}] scripted [{}] configured [{}]",
 				template_data->request_mode,
 				npc->GetNPCTypeID(),
 				npc->GetSpawnPointID(),
-				OnOff(scripted)
+				OnOff(scripted),
+				OnOff(matched_request_npc != nullptr)
 			).c_str());
+			if (matched_request_npc) {
+				c->Message(Chat::White, fmt::format(
+					"Matched request phrase [{}].",
+					ExpeditionDB::NormalizePhrase(matched_request_npc->phrase.empty() ? template_data->request_phrase : matched_request_npc->phrase)
+				).c_str());
+			}
+			else {
+				c->Message(Chat::Yellow, "Target is not configured as a request NPC for this expedition.");
+			}
 			c->Message(Chat::White, fmt::format(
 				"Request validation: success [{}] reason [{}] members [{}] players [{}-{}] raid [{}]",
 				OnOff(check.success),
@@ -1526,8 +1599,11 @@ void command_expedition(Client* c, const Seperator* sep)
 			else if (template_data->request_mode != "db_only") {
 				c->Message(Chat::Yellow, "Automatic DB request handling is disabled for this request mode; scripts must opt in explicitly.");
 			}
-			if (check.success) {
-				ExpeditionDB::HandleRequestSay(*c, *npc, template_data->request_phrase);
+			if (check.success && matched_request_npc && template_data->request_mode == "db_only" && !scripted) {
+				c->Message(Chat::Green, "Simulation result: this request would create the expedition and move the requester.");
+			}
+			else {
+				c->Message(Chat::Yellow, "Simulation result: this request would not auto-create from DB-only request handling.");
 			}
 		}
 		else if (action == "lockout") {
@@ -1537,12 +1613,22 @@ void command_expedition(Client* c, const Seperator* sep)
 					dz->AddLockout(event_data->event_name, event_data->lockout_seconds);
 					c->Message(Chat::Green, "Applied selected event lockout.");
 				}
+				else {
+					c->Message(Chat::Red, "Add or select an event first.");
+					SendCurrentEventChatUi(c);
+				}
+			}
+			else {
+				c->Message(Chat::Red, "You are not currently in an expedition.");
 			}
 		}
 		else if (action == "loot") {
 			if (DynamicZone* dz = c->GetExpedition()) {
 				ExpeditionDB::ApplyLootEvents(*dz);
 				c->Message(Chat::Green, "Re-applied DB loot-event protection for your expedition.");
+			}
+			else {
+				c->Message(Chat::Red, "You are not currently in an expedition.");
 			}
 		}
 		else {
