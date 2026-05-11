@@ -335,6 +335,47 @@ namespace {
 		c->Message(Chat::White, fmt::format("  {} - {}", Saylink::Silent(command, command), description).c_str());
 	}
 
+	void ShowRenameHelp(Client* c)
+	{
+		SendSectionHeader(c, "Rename Commands");
+		c->Message(Chat::White, "#expedition rename \"New Name\" - Rename the selected expedition.");
+		c->Message(Chat::White, "#expedition rename <id|name> \"New Name\" - Rename a specific expedition.");
+		c->Message(Chat::White, "#expedition set name \"New Name\" - Alias for renaming the selected expedition.");
+
+		if (const auto* template_data = SelectedTemplate(c)) {
+			c->Message(Chat::Yellow, fmt::format("Selected expedition: [{}] id [{}].", template_data->name, template_data->id).c_str());
+		}
+
+		SendActionGroup(c, "Rename Examples", {
+			{"#expedition rename \"New Expedition Name\"", "Rename Selected Expedition"},
+			{"#expedition set name \"New Expedition Name\"", "Rename Selected With Set"}
+		});
+	}
+
+	void ShowEventRenameHelp(Client* c)
+	{
+		SendSectionHeader(c, "Event Rename Commands");
+		c->Message(Chat::White, "#expedition event rename \"New Event Name\" - Rename the explicitly selected event, or the only event if there is just one.");
+		c->Message(Chat::White, "#expedition event rename selected \"New Event Name\" - Rename the explicitly selected event.");
+		c->Message(Chat::White, "#expedition event rename <id> \"New Event Name\" - Rename a specific event by id.");
+
+		if (const auto* template_data = SelectedTemplate(c)) {
+			if (const auto* event_data = SelectedEvent(c, *template_data)) {
+				c->Message(Chat::Yellow, fmt::format("Active event: [{}] id [{}].", event_data->event_name, event_data->id).c_str());
+				SendActionGroup(c, "Rename Examples", {
+					{"#expedition event rename \"New Event Name\"", "Rename Active Event"},
+					{fmt::format("#expedition event rename {} \"New Event Name\"", event_data->id), "Rename Active Event By ID"}
+				});
+				return;
+			}
+		}
+
+		SendActionGroup(c, "Event Setup", {
+			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
+			{"#expedition event list", "List Events"}
+		});
+	}
+
 	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		const auto* event_data = SelectedEvent(c, template_data);
@@ -440,11 +481,12 @@ namespace {
 		});
 
 		SendActionGroup(c, "4 Options", {
+			{"#expedition rename", "Rename Expedition"},
+			{"#expedition event rename", "Rename Event"},
 			{"#expedition set silent on", "Silent On"},
 			{"#expedition set silent off", "Silent Off"},
 			{"#expedition set replay 2h", "2h Replay"},
 			{"#expedition set switchid target", "Use Target Switch"},
-			{"#expedition rename", "Rename Help"},
 			{"#expedition set", "Setup Catalog"}
 		});
 
@@ -572,6 +614,7 @@ namespace {
 		SendSectionHeader(c, "Create and Select");
 		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
 		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
+		SendHelpLink(c, "#expedition rename", "show expedition rename commands");
 		c->Message(Chat::White, "#expedition rename \"New Name\" - Rename the selected expedition.");
 		c->Message(Chat::White, "#expedition rename <id|name> \"New Name\" - Rename a specific expedition.");
 		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup.");
@@ -650,6 +693,7 @@ namespace {
 		c->Message(Chat::White, "#expedition event add \"Event Name\" - Add a DB event and select it.");
 		c->Message(Chat::White, "#expedition event select <id|name> - Select an event for short follow-up commands.");
 		c->Message(Chat::White, "#expedition event list - List events on the selected expedition.");
+		SendHelpLink(c, "#expedition event rename", "show event rename commands");
 		c->Message(Chat::White, "#expedition event rename \"New Name\" - Rename the explicitly selected event, or the only event if there is just one.");
 		c->Message(Chat::White, "#expedition event rename <id> \"New Name\" - Rename a specific event by id.");
 		c->Message(Chat::White, "#expedition event remove <id|name> - Review the event deletion target.");
@@ -1162,6 +1206,11 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 
 	if (sub == "rename") {
+		if (sep->arg[2][0] == '\0' || strcasecmp(sep->arg[2], "help") == 0) {
+			ShowRenameHelp(c);
+			return;
+		}
+
 		const bool has_target = sep->arg[3][0] != '\0';
 		const auto* rename_template = has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c);
 		const std::string new_name = has_target ? CommandTail(sep, 3) : CommandTail(sep, 2);
@@ -1582,6 +1631,10 @@ void command_expedition(Client* c, const Seperator* sep)
 		const std::string action = Strings::ToLower(sep->arg[2]);
 		if (action.empty() || action == "help") {
 			ShowEventHelp(c);
+			return;
+		}
+		if (action == "rename" && (sep->arg[3][0] == '\0' || strcasecmp(sep->arg[3], "help") == 0)) {
+			ShowEventRenameHelp(c);
 			return;
 		}
 		template_data = SelectedTemplate(c);
