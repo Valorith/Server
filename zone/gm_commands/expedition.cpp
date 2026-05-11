@@ -50,6 +50,19 @@ namespace {
 		return template_data.events.empty() ? nullptr : &template_data.events.front();
 	}
 
+	const ExpeditionDB::Event* ExplicitSelectedEvent(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		const auto& state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		if (!state.selected_event_id) {
+			return nullptr;
+		}
+
+		auto it = std::ranges::find_if(template_data.events, [&](const ExpeditionDB::Event& event_data) {
+			return event_data.id == state.selected_event_id;
+		});
+		return it != template_data.events.end() ? &*it : nullptr;
+	}
+
 	NPC* TargetNpc(Client* c)
 	{
 		if (!c || !c->GetTarget() || !c->GetTarget()->IsNPC()) {
@@ -363,7 +376,7 @@ namespace {
 			{"#expedition event replay 2h", "2h Replay"},
 			{"#expedition action", "Action Catalog"},
 			{"#expedition action list", "List Actions"},
-			{"#expedition event remove", "Delete Event..."}
+			{fmt::format("#expedition event remove {}", event_data->id), "Delete This Event..."}
 		});
 
 		SendActionGroup(c, "Next", {
@@ -623,7 +636,9 @@ namespace {
 		c->Message(Chat::White, "#expedition event add \"Event Name\" - Add a DB event and select it.");
 		c->Message(Chat::White, "#expedition event select <id|name> - Select an event for short follow-up commands.");
 		c->Message(Chat::White, "#expedition event list - List events on the selected expedition.");
-		c->Message(Chat::White, "#expedition event remove confirm - Delete the selected event and its NPC/action mappings.");
+		c->Message(Chat::White, "#expedition event remove <id|name> - Review the event deletion target.");
+		c->Message(Chat::White, "#expedition event remove <id|name> confirm - Delete that event and its NPC/action mappings.");
+		c->Message(Chat::White, "#expedition event remove confirm - Delete the explicitly selected event.");
 		c->Message(Chat::White, "#expedition event lockout <duration> - Set the selected event lockout duration.");
 		c->Message(Chat::White, "#expedition event replay none|<duration> - Set or clear replay lockout awarded when the selected event completes.");
 		c->Message(Chat::White, "#expedition event npc - Add your targeted NPC to the selected event and infer a role.");
@@ -1554,14 +1569,15 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			for (const auto& event_data : template_data->events) {
 				c->Message(Chat::White, fmt::format(
-					"[{}] {} lockout [{}] replay [{}] npcs [{}] {}",
+					"[{}] {} lockout [{}] replay [{}] npcs [{}]",
 					event_data.id,
 					event_data.event_name,
 					Duration(event_data.lockout_seconds),
 					Duration(event_data.replay_lockout_seconds),
-					event_data.npcs.size(),
-					Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "select")
+					event_data.npcs.size()
 				).c_str());
+				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "select")).c_str());
+				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event remove {}", event_data.id), "delete...")).c_str());
 			}
 			SendCurrentEventChatUi(c);
 			return;
@@ -1575,16 +1591,49 @@ void command_expedition(Client* c, const Seperator* sep)
 		const uint32_t selected_event_id = event_data->id;
 		const std::string selected_event_name = event_data->event_name;
 
-		if (action == "remove") {
-			if (strcasecmp(sep->arg[3], "confirm") != 0) {
-				c->Message(Chat::Yellow, "Type #expedition event remove confirm to delete the selected event and its NPC/action mappings.");
+		if (action == "remove" || action == "delete") {
+			const bool bare_confirm = strcasecmp(sep->arg[3], "confirm") == 0;
+			const bool target_confirm = strcasecmp(sep->arg[4], "confirm") == 0;
+			const bool has_target = sep->arg[3][0] != '\0' && !bare_confirm;
+			const auto* delete_event = has_target ? ExpeditionDB::FindEvent(*template_data, CommandTail(sep, 3)) : ExplicitSelectedEvent(c, *template_data);
+
+			if (!delete_event) {
+				if (!has_target) {
+					c->Message(Chat::Red, "No explicitly selected event is available to delete. Use #expedition event list, then #expedition event remove <id>.");
+				}
+				else {
+					c->Message(Chat::Red, "Event not found. Use #expedition event list, then #expedition event remove <id>.");
+				}
+				SendSelectedEventChatUi(c, *template_data);
 				return;
 			}
-			if (!ExpeditionDB::DeleteEvent(content_db, selected_event_id)) {
-				c->Message(Chat::Red, fmt::format("Failed to remove selected event [{}].", selected_event_name).c_str());
+
+			if (!bare_confirm && !target_confirm) {
+				c->Message(Chat::Yellow, ChatSeparator());
+				c->Message(Chat::Yellow, "Confirm Event Deletion");
+				c->Message(Chat::Yellow, fmt::format(
+					"Event [{}] id [{}] has [{}] NPC mapping(s) and [{}] action(s).",
+					delete_event->event_name,
+					delete_event->id,
+					delete_event->npcs.size(),
+					delete_event->actions.size()
+				).c_str());
+				c->Message(Chat::Yellow, "This will remove the event, mapped NPCs, and runtime actions from the DB template.");
+				c->Message(Chat::Yellow, fmt::format("Type #expedition event remove {} confirm to delete it.", delete_event->id).c_str());
 				return;
 			}
-			c->Message(Chat::Green, fmt::format("Saved: removed selected event [{}].", selected_event_name).c_str());
+
+			const uint32_t deleted_event_id = delete_event->id;
+			const std::string deleted_event_name = delete_event->event_name;
+			if (!ExpeditionDB::DeleteEvent(content_db, deleted_event_id)) {
+				c->Message(Chat::Red, fmt::format("Failed to remove event [{}].", deleted_event_name).c_str());
+				return;
+			}
+			if (const auto* refreshed_template = SelectedTemplate(c)) {
+				const uint32_t next_event_id = refreshed_template->events.empty() ? 0 : refreshed_template->events.front().id;
+				ExpeditionDB::SetSelectedEvent(c->CharacterID(), next_event_id);
+			}
+			c->Message(Chat::Green, fmt::format("Saved: removed event [{}] id [{}].", deleted_event_name, deleted_event_id).c_str());
 			ShowMenu(c);
 			return;
 		}
