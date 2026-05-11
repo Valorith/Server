@@ -310,6 +310,11 @@ namespace {
 		}
 	}
 
+	void SendHelpLink(Client* c, const std::string& command, const std::string& description)
+	{
+		c->Message(Chat::White, fmt::format("  {} - {}", Saylink::Silent(command, command), description).c_str());
+	}
+
 	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		const auto* event_data = SelectedEvent(c, template_data);
@@ -536,38 +541,35 @@ namespace {
 
 	void ShowHelp(Client* c)
 	{
-		c->Message(Chat::White, fmt::format("{} - Show this command catalog.", Saylink::Silent("#expedition help", "#expedition help")).c_str());
-		c->Message(Chat::White, fmt::format(
-			"{} - Open the expedition builder menu. {} - List templates. {} - Reload DB templates.",
-			Saylink::Silent("#expedition menu", "#expedition menu"),
-			Saylink::Silent("#expedition list", "#expedition list"),
-			Saylink::Silent("#expedition reload", "#expedition reload")
-		).c_str());
+		c->Message(Chat::White, ChatRule("Expedition Builder").c_str());
+		SendHelpLink(c, "#expedition help", "show this command catalog");
+		SendHelpLink(c, "#expedition menu", "open the builder menu");
+		SendHelpLink(c, "#expedition list", "list templates");
+		SendHelpLink(c, "#expedition reload", "reload DB templates");
+
+		c->Message(Chat::White, ChatRule("Create and Select").c_str());
 		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
 		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
-		c->Message(Chat::White, fmt::format(
-			"{} - Show all setup fields. {} - Show request NPC commands. {} - Show event commands. {} - Show test commands.",
-			Saylink::Silent("#expedition set", "#expedition set"),
-			Saylink::Silent("#expedition requestnpc help", "#expedition requestnpc"),
-			Saylink::Silent("#expedition event", "#expedition event"),
-			Saylink::Silent("#expedition test", "#expedition test")
-		).c_str());
-		c->Message(Chat::White, fmt::format("{} - Check for missing or risky setup.", Saylink::Silent("#expedition validate", "#expedition validate")).c_str());
-		c->Message(Chat::White, fmt::format(
-			"{} - Guided setup popup. {} - Show validation fixes. {} - Preview runtime behavior.",
-			Saylink::Silent("#expedition wizard", "#expedition wizard"),
-			Saylink::Silent("#expedition fix", "#expedition fix"),
-			Saylink::Silent("#expedition preview", "#expedition preview")
-		).c_str());
-		c->Message(Chat::White, fmt::format(
-			"#expedition clone <id|name> \"Name\" - Copy an existing setup. {} - Apply common group defaults.",
-			Saylink::Silent("#expedition preset group", "#expedition preset group")
-		).c_str());
-		c->Message(Chat::White, fmt::format(
-			"{} - Publish the selected expedition. {} - Unpublish it.",
-			Saylink::Silent("#expedition enable", "#expedition enable"),
-			Saylink::Silent("#expedition disable", "#expedition disable")
-		).c_str());
+		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup.");
+
+		c->Message(Chat::White, ChatRule("Setup Catalogs").c_str());
+		SendHelpLink(c, "#expedition set", "show all setup fields");
+		SendHelpLink(c, "#expedition requestnpc help", "show request NPC commands");
+		SendHelpLink(c, "#expedition event", "show event commands");
+		SendHelpLink(c, "#expedition test", "show test commands");
+		SendHelpLink(c, "#expedition preset group", "apply group defaults");
+
+		c->Message(Chat::White, ChatRule("Review").c_str());
+		SendHelpLink(c, "#expedition validate", "check for missing or risky setup");
+		SendHelpLink(c, "#expedition wizard", "open guided setup popup");
+		SendHelpLink(c, "#expedition fix", "show validation fixes");
+		SendHelpLink(c, "#expedition preview", "preview runtime behavior");
+
+		c->Message(Chat::White, ChatRule("Publish").c_str());
+		SendHelpLink(c, "#expedition enable", "publish the selected expedition");
+		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
+
+		c->Message(Chat::White, ChatRule("Destructive").c_str());
 		c->Message(Chat::White, "#expedition delete <id|name> confirm - Delete an unpublished/editing template and its linked setup rows.");
 	}
 
