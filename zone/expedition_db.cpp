@@ -65,6 +65,19 @@ namespace {
 		return "db_only";
 	}
 
+	bool IsKnownRequestMode(const std::string& value)
+	{
+		return (
+			Strings::EqualFold(value, "db_only") ||
+			Strings::EqualFold(value, "db") ||
+			Strings::EqualFold(value, "script_only") ||
+			Strings::EqualFold(value, "script") ||
+			Strings::EqualFold(value, "script_can_opt_in") ||
+			Strings::EqualFold(value, "script_opt_in") ||
+			Strings::EqualFold(value, "opt_in")
+		);
+	}
+
 	std::string Slugify(std::string value)
 	{
 		std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -557,6 +570,10 @@ bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent)
 
 bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode)
 {
+	if (!IsKnownRequestMode(request_mode)) {
+		return false;
+	}
+
 	const bool ok = QueryOK(db, fmt::format(
 		"UPDATE expedition_templates SET request_mode = '{}' WHERE id = {}",
 		Escape(NormalizeRequestMode(request_mode)),
@@ -744,9 +761,11 @@ bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t
 
 	if (results.Success() && results.RowCount() == 1) {
 		auto row = results.begin();
+		const bool completes_on_death = Strings::EqualFold(role, "boss");
 		const bool ok = QueryOK(db, fmt::format(
-			"UPDATE expedition_template_event_npcs SET role = '{}' WHERE id = {}",
+			"UPDATE expedition_template_event_npcs SET role = '{}', complete_on_death = {} WHERE id = {}",
 			Escape(role),
+			completes_on_death ? 1 : 0,
 			UInt(row[0])
 		));
 		Reload(db);
@@ -834,7 +853,6 @@ void Reload(Database& db)
 	);
 
 	if (!results.Success()) {
-		g_templates.clear();
 		return;
 	}
 
@@ -849,7 +867,8 @@ void Reload(Database& db)
 		e.replay_on_join = Truthy(row[6]);
 		e.silent = Truthy(row[7]);
 		e.request_phrase = NormalizePhrase(Text(row[8]));
-		e.request_mode = NormalizeRequestMode(Text(row[9]));
+		const std::string request_mode = Text(row[9]);
+		e.request_mode = IsKnownRequestMode(request_mode) ? NormalizeRequestMode(request_mode) : request_mode;
 		e.notes = Text(row[10]);
 		e.dz_template = DynamicZoneTemplatesRepository::FindOne(db, e.dz_template_id);
 		templates[e.id] = e;
@@ -919,17 +938,24 @@ const Template* FindTemplate(const std::string& id_or_name)
 		return FindTemplate(Strings::ToUnsignedInt(id_or_name));
 	}
 
+	const Template* best_match = nullptr;
 	for (const auto& [id, template_data] : g_templates) {
 		if (
 			Strings::EqualFold(template_data.name, id_or_name) ||
 			Strings::EqualFold(template_data.slug, id_or_name) ||
 			Strings::EqualFold(template_data.dz_template.name, id_or_name)
 		) {
-			return &template_data;
+			if (
+				!best_match ||
+				(!best_match->enabled && template_data.enabled) ||
+				(best_match->enabled == template_data.enabled && template_data.id < best_match->id)
+			) {
+				best_match = &template_data;
+			}
 		}
 	}
 
-	return nullptr;
+	return best_match;
 }
 
 const Event* FindEvent(uint32_t event_id)
@@ -992,8 +1018,8 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.errors.push_back("Request mode must be db_only, script_can_opt_in, or script_only.");
 	}
 
-	if (template_data.enabled && template_data.request_mode == "db_only" && template_data.request_npcs.empty()) {
-		result.errors.push_back("Enabled templates require at least one request NPC.");
+	if (template_data.request_mode == "db_only" && template_data.request_npcs.empty()) {
+		result.errors.push_back("DB-only templates require at least one request NPC before publishing.");
 	}
 
 	for (const auto& request_npc : template_data.request_npcs) {
@@ -1001,7 +1027,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 			result.errors.push_back("Request NPC entry is missing an NPC type.");
 		}
 
-		if (parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY)) {
+		if (template_data.request_mode == "db_only" && parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY)) {
 			result.warnings.push_back(fmt::format("Request NPC [{}] already has an EVENT_SAY quest script.", request_npc.npc_type_id));
 		}
 	}
@@ -1012,6 +1038,27 @@ ValidationResult ValidateTemplate(const Template& template_data)
 
 	if (template_data.request_mode == "script_can_opt_in" && !template_data.request_npcs.empty()) {
 		result.warnings.push_back("Request mode is script_can_opt_in, so request NPC mappings are documentation only unless scripts call DB template APIs.");
+	}
+
+	for (const auto& [other_id, other_template] : g_templates) {
+		if (
+			other_id != template_data.id &&
+			other_template.enabled &&
+			other_template.dz_template.zone_id == template_data.dz_template.zone_id &&
+			other_template.dz_template.zone_version == template_data.dz_template.zone_version &&
+			Strings::EqualFold(other_template.dz_template.name, template_data.dz_template.name)
+		) {
+			const auto message = fmt::format(
+				"Another enabled DB expedition template [{}] shares this dynamic-zone name and zone/version; runtime hooks may attach to the wrong template.",
+				other_template.name
+			);
+			if (template_data.enabled) {
+				result.errors.push_back(message);
+			}
+			else {
+				result.warnings.push_back(message);
+			}
+		}
 	}
 
 	for (const auto& event_data : template_data.events) {
@@ -1036,7 +1083,26 @@ ValidationResult ValidateTemplate(const Template& template_data)
 			if (event_npc.spawn2_id == 0) {
 				result.warnings.push_back(fmt::format("Event [{}] maps NPC type [{}] without a spawn-specific id.", event_data.event_name, event_npc.npc_type_id));
 			}
+
+			if (event_npc.loot_protected && event_npc.spawn2_id != 0) {
+				result.warnings.push_back(fmt::format(
+					"Event [{}] has spawn-specific loot protection for spawn [{}]; automatic DB loot protection currently applies only NPC-type mappings.",
+					event_data.event_name,
+					event_npc.spawn2_id
+				));
+			}
+
+			if (
+				parse &&
+				(parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH) || parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH_COMPLETE))
+			) {
+				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", event_npc.npc_type_id));
+			}
 		}
+	}
+
+	if (parse && (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_DEATH_ZONE) || parse->ZoneHasQuestSub(EVENT_DEATH_ZONE))) {
+		result.warnings.push_back("This zone has death event scripts; verify DB event actions do not duplicate scripted behavior.");
 	}
 
 	if (template_data.dz_template.return_zone_id == template_data.dz_template.zone_id && template_data.dz_template.return_zone_id != 0) {
@@ -1058,8 +1124,12 @@ ValidationResult ValidateTemplate(const Template& template_data)
 	return result;
 }
 
-DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& template_data)
+DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled)
 {
+	if (!allow_disabled && !template_data.enabled) {
+		return nullptr;
+	}
+
 	DynamicZone dz = BuildDynamicZone(template_data);
 	ExpeditionCreationOptions options;
 	options.silent = template_data.silent;
@@ -1076,6 +1146,11 @@ DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& templa
 	return expedition;
 }
 
+DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& template_data)
+{
+	return CreateExpeditionFromTemplate(client, template_data, false);
+}
+
 DynamicZone* CreateExpeditionFromTemplate(Client& client, const std::string& id_or_name)
 {
 	const Template* template_data = FindTemplate(id_or_name);
@@ -1086,10 +1161,19 @@ DynamicZone* CreateExpeditionFromTemplate(Client& client, const std::string& id_
 	return CreateExpeditionFromTemplate(client, *template_data);
 }
 
-bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data)
+bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled)
 {
+	if (!allow_disabled && !template_data.enabled) {
+		return false;
+	}
+
 	DynamicZone dz = BuildDynamicZone(template_data);
 	return CheckExpeditionRequest(client, dz, true).success;
+}
+
+bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data)
+{
+	return CanCreateExpeditionFromTemplate(client, template_data, false);
 }
 
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
@@ -1128,7 +1212,7 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 			}
 
 			client.Message(Chat::Red, "You are not eligible for that expedition right now.");
-			return false;
+			return true;
 		}
 	}
 
@@ -1158,7 +1242,11 @@ bool HandleNpcDeath(NPC& npc, Client* killer)
 				continue;
 			}
 
-			if (event_data.lock_on_success && event_data.lockout_seconds > 0 && !expedition->HasLockout(event_data.event_name)) {
+			if (expedition->HasLockout(event_data.event_name)) {
+				continue;
+			}
+
+			if (event_data.lock_on_success && event_data.lockout_seconds > 0) {
 				expedition->AddLockout(event_data.event_name, event_data.lockout_seconds);
 				handled = true;
 			}
@@ -1196,11 +1284,7 @@ void ApplyLootEvents(DynamicZone& expedition)
 				continue;
 			}
 
-			if (event_npc.spawn2_id != 0) {
-				expedition.SetLootEvent(event_npc.spawn2_id, event_data.event_name, DzLootEvent::Type::Entity);
-			}
-
-			if (event_npc.npc_type_id != 0) {
+			if (event_npc.spawn2_id == 0 && event_npc.npc_type_id != 0) {
 				expedition.SetLootEvent(event_npc.npc_type_id, event_data.event_name, DzLootEvent::Type::NpcType);
 			}
 		}
