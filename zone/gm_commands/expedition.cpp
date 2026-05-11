@@ -285,17 +285,15 @@ namespace {
 		return request_npc.npc_type_id == npc.GetNPCTypeID();
 	}
 
-	std::string ChatRule(const std::string& title)
+	constexpr const char* ChatSeparator()
 	{
-		static constexpr size_t line_width = 56;
-		const std::string label = fmt::format(" {} ", title);
-		if (label.size() >= line_width) {
-			return label;
-		}
+		return "--------------------------------------";
+	}
 
-		const size_t left = (line_width - label.size()) / 2;
-		const size_t right = line_width - label.size() - left;
-		return fmt::format("{}{}{}", std::string(left, '-'), label, std::string(right, '-'));
+	void SendSectionHeader(Client* c, const std::string& title)
+	{
+		c->Message(Chat::White, ChatSeparator());
+		c->Message(Chat::Yellow, title.c_str());
 	}
 
 	void SendActionGroup(Client* c, const std::string& title, const std::vector<std::pair<std::string, std::string>>& actions)
@@ -304,7 +302,7 @@ namespace {
 			return;
 		}
 
-		c->Message(Chat::White, ChatRule(title).c_str());
+		SendSectionHeader(c, title);
 		for (const auto& action : actions) {
 			c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(action.first, action.second)).c_str());
 		}
@@ -446,7 +444,7 @@ namespace {
 			{"#expedition preview", "Preview"},
 			{"#expedition test request", "Simulate Request"}
 		});
-		c->Message(Chat::White, ChatRule("Live Tests").c_str());
+		SendSectionHeader(c, "Live Tests");
 		c->Message(Chat::White, "  Type confirm for live state changes:");
 		c->Message(Chat::White, "  #expedition test create confirm");
 		c->Message(Chat::White, "  #expedition test move confirm");
@@ -541,35 +539,35 @@ namespace {
 
 	void ShowHelp(Client* c)
 	{
-		c->Message(Chat::White, ChatRule("Expedition Builder").c_str());
+		SendSectionHeader(c, "Expedition Builder");
 		SendHelpLink(c, "#expedition help", "show this command catalog");
 		SendHelpLink(c, "#expedition menu", "open the builder menu");
 		SendHelpLink(c, "#expedition list", "list templates");
 		SendHelpLink(c, "#expedition reload", "reload DB templates");
 
-		c->Message(Chat::White, ChatRule("Create and Select").c_str());
+		SendSectionHeader(c, "Create and Select");
 		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
 		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
 		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup.");
 
-		c->Message(Chat::White, ChatRule("Setup Catalogs").c_str());
+		SendSectionHeader(c, "Setup Catalogs");
 		SendHelpLink(c, "#expedition set", "show all setup fields");
 		SendHelpLink(c, "#expedition requestnpc help", "show request NPC commands");
 		SendHelpLink(c, "#expedition event", "show event commands");
 		SendHelpLink(c, "#expedition test", "show test commands");
 		SendHelpLink(c, "#expedition preset group", "apply group defaults");
 
-		c->Message(Chat::White, ChatRule("Review").c_str());
+		SendSectionHeader(c, "Review");
 		SendHelpLink(c, "#expedition validate", "check for missing or risky setup");
 		SendHelpLink(c, "#expedition wizard", "open guided setup popup");
 		SendHelpLink(c, "#expedition fix", "show validation fixes");
 		SendHelpLink(c, "#expedition preview", "preview runtime behavior");
 
-		c->Message(Chat::White, ChatRule("Publish").c_str());
+		SendSectionHeader(c, "Publish");
 		SendHelpLink(c, "#expedition enable", "publish the selected expedition");
 		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
 
-		c->Message(Chat::White, ChatRule("Destructive").c_str());
+		SendSectionHeader(c, "Destructive");
 		c->Message(Chat::White, "#expedition delete <id|name> confirm - Delete an unpublished/editing template and its linked setup rows.");
 	}
 
