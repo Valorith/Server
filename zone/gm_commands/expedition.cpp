@@ -93,6 +93,25 @@ namespace {
 		return out;
 	}
 
+	bool HasQuoteArtifact(const std::string& value)
+	{
+		std::string out = value;
+		Strings::Trim(out);
+		return !out.empty() && (out.front() == '"' || out.front() == '\'' || out.back() == '"' || out.back() == '\'');
+	}
+
+	std::string CommandTail(const Seperator* sep, int index)
+	{
+		const std::string raw = TailArg(sep->argplus[index]);
+		const std::string parsed = TailArg(sep->arg[index]);
+
+		if (!parsed.empty() && HasQuoteArtifact(sep->argplus[index])) {
+			return parsed;
+		}
+
+		return raw;
+	}
+
 	bool IsStrictUnsigned(const char* value)
 	{
 		if (!value || value[0] == '\0') {
@@ -1019,7 +1038,7 @@ void command_expedition(Client* c, const Seperator* sep)
 
 	if (sub == "menu") {
 		if (sep->arg[2][0] != '\0') {
-			const auto* template_data = ExpeditionDB::FindTemplate(TailArg(sep->argplus[2]));
+			const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
 			if (!template_data) {
 				c->Message(Chat::Red, "Expedition template not found.");
 				return;
@@ -1050,7 +1069,7 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 
 	if (sub == "create") {
-		std::string name = TailArg(sep->argplus[2]);
+		std::string name = CommandTail(sep, 2);
 		if (name.empty()) {
 			c->Message(Chat::Red, "Usage: #expedition create \"Name\"");
 			return;
@@ -1070,7 +1089,7 @@ void command_expedition(Client* c, const Seperator* sep)
 
 	if (sub == "clone") {
 		const auto* source = strcasecmp(sep->arg[2], "current") == 0 ? SelectedTemplate(c) : ExpeditionDB::FindTemplate(sep->arg[2]);
-		std::string name = TailArg(sep->argplus[3]);
+		std::string name = CommandTail(sep, 3);
 		if (!source || name.empty()) {
 			c->Message(Chat::Red, "Usage: #expedition clone <id|name|current> \"New Name\"");
 			return;
@@ -1090,7 +1109,7 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 
 	if (sub == "select") {
-		const auto* template_data = ExpeditionDB::FindTemplate(TailArg(sep->argplus[2]));
+		const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
 		if (!template_data) {
 			c->Message(Chat::Red, "Expedition template not found.");
 			return;
@@ -1448,7 +1467,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 
-		std::string phrase = TailArg(sep->argplus[2]);
+		std::string phrase = CommandTail(sep, 2);
 		if (phrase.empty()) {
 			phrase = "expedition";
 		}
@@ -1470,7 +1489,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 		if (action == "add") {
-			std::string event_name = TailArg(sep->argplus[3]);
+			std::string event_name = CommandTail(sep, 3);
 			if (event_name.empty()) {
 				c->Message(Chat::Red, "Usage: #expedition event add \"Event Name\"");
 				return;
@@ -1483,7 +1502,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		}
 
 		if (action == "select") {
-			const auto* event_data = ExpeditionDB::FindEvent(*template_data, TailArg(sep->argplus[3]));
+			const auto* event_data = ExpeditionDB::FindEvent(*template_data, CommandTail(sep, 3));
 			if (!event_data) {
 				c->Message(Chat::Red, "Event not found.");
 				return;
@@ -1712,7 +1731,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Green, fmt::format("Added depop action for NPC type [{}] to event [{}].", sep->arg[4], selected_event_name).c_str());
 		}
 		else if (type == "message") {
-			std::string message = TailArg(sep->argplus[4]);
+			std::string message = CommandTail(sep, 4);
 			if (message.empty()) {
 				c->Message(Chat::Red, "Usage: #expedition action add message <text>");
 				return;
