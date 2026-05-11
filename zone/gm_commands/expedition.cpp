@@ -376,6 +376,22 @@ namespace {
 		});
 	}
 
+	void ShowCreateHelp(Client* c)
+	{
+		SendSectionHeader(c, "Create Expedition");
+		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone and location.");
+		c->Message(Chat::White, "Choose the final expedition name up front. The builder will use your current zone, version, and location as setup defaults.");
+		c->Message(Chat::Yellow, "Examples:");
+		c->Message(Chat::White, "  #expedition create \"Nagafen's Lair\"");
+		c->Message(Chat::White, "  #expedition create \"Cazic Thule Trial\"");
+		c->Message(Chat::White, "  #expedition create \"Plane of Hate Raid\"");
+
+		SendActionGroup(c, "After Create", {
+			{"#expedition list", "List Expeditions"},
+			{"#expedition menu", "Builder Snapshot"}
+		});
+	}
+
 	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		const auto* event_data = SelectedEvent(c, template_data);
@@ -612,6 +628,7 @@ namespace {
 		SendHelpLink(c, "#expedition reload", "reload DB templates");
 
 		SendSectionHeader(c, "Create and Select");
+		SendHelpLink(c, "#expedition create", "show create/naming instructions");
 		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
 		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
 		SendHelpLink(c, "#expedition rename", "show expedition rename commands");
@@ -892,10 +909,10 @@ namespace {
 		if (!template_data) {
 			body += "Start by creating an expedition from your current zone and location.";
 			body += DialogueWindow::Break(2);
-			body += "Use the action link in chat to create a new expedition.";
+			body += "Use the action link in chat to show the create command and choose a name.";
 			c->SendPopupToClient("Expedition Wizard", body.c_str());
 			SendActionGroup(c, "Expedition Wizard", {
-				{"#expedition create \"New Expedition\"", "Create New Expedition"}
+				{"#expedition create", "Create Expedition..."}
 			});
 			return;
 		}
@@ -956,10 +973,10 @@ namespace {
 		if (!template_data) {
 			body += "No expedition selected.";
 			body += DialogueWindow::Break(2);
-			body += "Use the action link in chat to list expeditions.";
+			body += "Use the action links in chat to create or select an expedition.";
 			c->SendPopupToClient("Expedition Builder", body.c_str());
 			SendActionGroup(c, "Expedition Builder", {
-				{"#expedition create \"New Expedition\"", "Create New Expedition"},
+				{"#expedition create", "Create Expedition..."},
 				{"#expedition list", "List Expeditions"}
 			});
 			return;
@@ -1168,7 +1185,7 @@ void command_expedition(Client* c, const Seperator* sep)
 	if (sub == "create") {
 		std::string name = CommandTail(sep, 2);
 		if (name.empty()) {
-			c->Message(Chat::Red, "Usage: #expedition create \"Name\"");
+			ShowCreateHelp(c);
 			return;
 		}
 
