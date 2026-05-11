@@ -63,6 +63,15 @@ namespace {
 		return it != template_data.events.end() ? &*it : nullptr;
 	}
 
+	const ExpeditionDB::Event* RenameDefaultEvent(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		if (const auto* event_data = ExplicitSelectedEvent(c, template_data)) {
+			return event_data;
+		}
+
+		return template_data.events.size() == 1 ? &template_data.events.front() : nullptr;
+	}
+
 	NPC* TargetNpc(Client* c)
 	{
 		if (!c || !c->GetTarget() || !c->GetTarget()->IsNPC()) {
@@ -376,6 +385,7 @@ namespace {
 			{"#expedition event replay 2h", "2h Replay"},
 			{"#expedition action", "Action Catalog"},
 			{"#expedition action list", "List Actions"},
+			{"#expedition event rename", "Rename Help"},
 			{fmt::format("#expedition event remove {}", event_data->id), "Delete This Event..."}
 		});
 
@@ -434,6 +444,7 @@ namespace {
 			{"#expedition set silent off", "Silent Off"},
 			{"#expedition set replay 2h", "2h Replay"},
 			{"#expedition set switchid target", "Use Target Switch"},
+			{"#expedition rename", "Rename Help"},
 			{"#expedition set", "Setup Catalog"}
 		});
 
@@ -561,6 +572,8 @@ namespace {
 		SendSectionHeader(c, "Create and Select");
 		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
 		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
+		c->Message(Chat::White, "#expedition rename \"New Name\" - Rename the selected expedition.");
+		c->Message(Chat::White, "#expedition rename <id|name> \"New Name\" - Rename a specific expedition.");
 		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup.");
 
 		SendSectionHeader(c, "Setup Catalogs");
@@ -588,6 +601,7 @@ namespace {
 	{
 		c->Message(Chat::White, "#expedition set command catalog:");
 		c->Message(Chat::White, "#expedition set zone - Set the selected expedition to your current zone and version.");
+		c->Message(Chat::White, "#expedition set name \"New Name\" - Rename the selected expedition.");
 		c->Message(Chat::White, "#expedition set zone <zone_short_name|zone_id> [version] - Set an explicit expedition zone; version defaults to 0 unless it is your current zone.");
 		c->Message(Chat::White, "#expedition set duration <duration> - Set expedition duration. Examples: 6h, 90m, 21600.");
 		c->Message(Chat::White, "#expedition set players <min> <max> - Set player-count request limits.");
@@ -636,6 +650,8 @@ namespace {
 		c->Message(Chat::White, "#expedition event add \"Event Name\" - Add a DB event and select it.");
 		c->Message(Chat::White, "#expedition event select <id|name> - Select an event for short follow-up commands.");
 		c->Message(Chat::White, "#expedition event list - List events on the selected expedition.");
+		c->Message(Chat::White, "#expedition event rename \"New Name\" - Rename the explicitly selected event, or the only event if there is just one.");
+		c->Message(Chat::White, "#expedition event rename <id> \"New Name\" - Rename a specific event by id.");
 		c->Message(Chat::White, "#expedition event remove <id|name> - Review the event deletion target.");
 		c->Message(Chat::White, "#expedition event remove <id|name> confirm - Delete that event and its NPC/action mappings.");
 		c->Message(Chat::White, "#expedition event remove confirm - Delete the explicitly selected event.");
@@ -651,6 +667,7 @@ namespace {
 		SendActionGroup(c, "Event setup", {
 			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
 			{"#expedition event list", "List Events"},
+			{"#expedition event rename", "Rename Help"},
 			{"#expedition event npc", "Add Target as Event NPC"},
 			{"#expedition event npc boss", "Mark Target Boss"},
 			{"#expedition event npc chest", "Mark Target Chest"},
@@ -1144,6 +1161,31 @@ void command_expedition(Client* c, const Seperator* sep)
 		return;
 	}
 
+	if (sub == "rename") {
+		const bool has_target = sep->arg[3][0] != '\0';
+		const auto* rename_template = has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c);
+		const std::string new_name = has_target ? CommandTail(sep, 3) : CommandTail(sep, 2);
+		if (!rename_template || new_name.empty()) {
+			c->Message(Chat::Red, "Usage: #expedition rename \"New Name\" OR #expedition rename <id|name> \"New Name\"");
+			if (!rename_template) {
+				NeedSelection(c);
+			}
+			return;
+		}
+
+		const uint32_t template_id = rename_template->id;
+		const std::string old_name = rename_template->name;
+		if (!ExpeditionDB::SetTemplateName(content_db, template_id, new_name)) {
+			c->Message(Chat::Red, fmt::format("Failed to rename expedition [{}].", old_name).c_str());
+			return;
+		}
+
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
+		c->Message(Chat::Green, fmt::format("Saved: renamed expedition [{}] to [{}].", old_name, new_name).c_str());
+		ShowMenu(c);
+		return;
+	}
+
 	if (sub == "select") {
 		const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
 		if (!template_data) {
@@ -1286,7 +1328,22 @@ void command_expedition(Client* c, const Seperator* sep)
 			NeedSelection(c);
 			return;
 		}
-		if (field == "zone") {
+		if (field == "name") {
+			const std::string new_name = CommandTail(sep, 3);
+			if (new_name.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition set name \"New Name\"");
+				return;
+			}
+			const uint32_t template_id = template_data->id;
+			const std::string old_name = template_data->name;
+			if (!ExpeditionDB::SetTemplateName(content_db, template_id, new_name)) {
+				c->Message(Chat::Red, fmt::format("Failed to rename expedition [{}].", old_name).c_str());
+				return;
+			}
+			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
+			c->Message(Chat::Green, fmt::format("Saved: renamed expedition [{}] to [{}].", old_name, new_name).c_str());
+		}
+		else if (field == "zone") {
 			const uint32_t zone_id = ParseZoneArg(sep->arg[3]);
 			if (sep->arg[4][0] != '\0' && !IsStrictUnsigned(sep->arg[4])) {
 				c->Message(Chat::Red, "Usage: #expedition set zone <zone_short_name|zone_id> [version]");
@@ -1577,9 +1634,45 @@ void command_expedition(Client* c, const Seperator* sep)
 					event_data.npcs.size()
 				).c_str());
 				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "select")).c_str());
+				c->Message(Chat::White, fmt::format("  rename: #expedition event rename {} \"New Event Name\"", event_data.id).c_str());
 				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event remove {}", event_data.id), "delete...")).c_str());
 			}
 			SendCurrentEventChatUi(c);
+			return;
+		}
+
+		if (action == "rename") {
+			const bool has_new_name_for_target = sep->arg[4][0] != '\0';
+			const bool use_selected_target =
+				!has_new_name_for_target ||
+				Strings::EqualFold(sep->arg[3], "selected") ||
+				Strings::EqualFold(sep->arg[3], "current");
+			const auto* rename_event = use_selected_target ?
+				RenameDefaultEvent(c, *template_data) :
+				ExpeditionDB::FindEvent(*template_data, sep->arg[3]);
+			const std::string new_name = use_selected_target ? CommandTail(sep, 3) : CommandTail(sep, 4);
+
+			if (sep->arg[3][0] == '\0' || new_name.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition event rename \"New Name\" OR #expedition event rename <id> \"New Name\"");
+				SendSelectedEventChatUi(c, *template_data);
+				return;
+			}
+
+			if (!rename_event) {
+				c->Message(Chat::Red, "Select exactly one event first, or use #expedition event rename <id> \"New Name\".");
+				SendSelectedEventChatUi(c, *template_data);
+				return;
+			}
+
+			const uint32_t event_id = rename_event->id;
+			const std::string old_name = rename_event->event_name;
+			if (!ExpeditionDB::SetEventName(content_db, event_id, new_name)) {
+				c->Message(Chat::Red, fmt::format("Failed to rename event [{}].", old_name).c_str());
+				return;
+			}
+			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+			c->Message(Chat::Green, fmt::format("Saved: renamed event [{}] to [{}].", old_name, new_name).c_str());
+			ShowMenu(c);
 			return;
 		}
 

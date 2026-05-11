@@ -97,6 +97,7 @@ struct BuilderState {
 uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::string& name);
 uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::string& name);
 bool DeleteTemplate(Database& db, uint32_t template_id);
+bool SetTemplateName(Database& db, uint32_t template_id, const std::string& name);
 bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent);
@@ -112,6 +113,7 @@ uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, 
 bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id);
 uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name);
 bool DeleteEvent(Database& db, uint32_t event_id);
+bool SetEventName(Database& db, uint32_t event_id, const std::string& event_name);
 bool SetEventLockout(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventReplay(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& role);

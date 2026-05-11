@@ -547,6 +547,43 @@ bool DeleteTemplate(Database& db, uint32_t template_id)
 	return true;
 }
 
+bool SetTemplateName(Database& db, uint32_t template_id, const std::string& name)
+{
+	const Template* template_data = FindTemplate(template_id);
+	if (!template_data || name.empty()) {
+		return false;
+	}
+
+	const std::string base_slug = Slugify(name);
+	std::string slug = base_slug;
+	uint32_t suffix = template_id;
+	bool conflict = true;
+	while (conflict) {
+		conflict = false;
+		for (const auto& [other_id, other_template] : g_templates) {
+			if (other_id != template_id && Strings::EqualFold(other_template.slug, slug)) {
+				slug = fmt::format("{}_{}", base_slug, suffix++);
+				conflict = true;
+				break;
+			}
+		}
+	}
+
+	const bool template_ok = QueryOK(db, fmt::format(
+		"UPDATE expedition_templates SET name = '{}', slug = '{}' WHERE id = {}",
+		Escape(name),
+		Escape(slug),
+		template_id
+	));
+	const bool dz_ok = QueryOK(db, fmt::format(
+		"UPDATE dynamic_zone_templates SET name = '{}' WHERE id = {}",
+		Escape(name),
+		template_data->dz_template_id
+	));
+	Reload(db);
+	return template_ok && dz_ok;
+}
+
 bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled)
 {
 	const bool ok = QueryOK(db, fmt::format("UPDATE expedition_templates SET enabled = {} WHERE id = {}", enabled ? 1 : 0, template_id));
@@ -732,6 +769,21 @@ bool DeleteEvent(Database& db, uint32_t event_id)
 	QueryOK(db, fmt::format("DELETE FROM expedition_template_actions WHERE event_id = {}", event_id));
 	QueryOK(db, fmt::format("DELETE FROM expedition_template_event_npcs WHERE event_id = {}", event_id));
 	const bool ok = QueryOK(db, fmt::format("DELETE FROM expedition_template_events WHERE id = {}", event_id));
+	Reload(db);
+	return ok;
+}
+
+bool SetEventName(Database& db, uint32_t event_id, const std::string& event_name)
+{
+	if (event_name.empty()) {
+		return false;
+	}
+
+	const bool ok = QueryOK(db, fmt::format(
+		"UPDATE expedition_template_events SET event_name = '{}' WHERE id = {}",
+		Escape(event_name),
+		event_id
+	));
 	Reload(db);
 	return ok;
 }
