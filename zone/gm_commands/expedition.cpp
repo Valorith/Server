@@ -285,19 +285,29 @@ namespace {
 		return request_npc.npc_type_id == npc.GetNPCTypeID();
 	}
 
+	std::string ChatRule(const std::string& title)
+	{
+		static constexpr size_t line_width = 56;
+		const std::string label = fmt::format(" {} ", title);
+		if (label.size() >= line_width) {
+			return label;
+		}
+
+		const size_t left = (line_width - label.size()) / 2;
+		const size_t right = line_width - label.size() - left;
+		return fmt::format("{}{}{}", std::string(left, '-'), label, std::string(right, '-'));
+	}
+
 	void SendActionGroup(Client* c, const std::string& title, const std::vector<std::pair<std::string, std::string>>& actions)
 	{
 		if (!c || actions.empty()) {
 			return;
 		}
 
-		std::vector<std::string> links;
-		links.reserve(actions.size());
+		c->Message(Chat::White, ChatRule(title).c_str());
 		for (const auto& action : actions) {
-			links.emplace_back(Saylink::Silent(action.first, action.second));
+			c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(action.first, action.second)).c_str());
 		}
-
-		c->Message(Chat::White, fmt::format("{}: {}", title, Strings::Join(links, " | ")).c_str());
 	}
 
 	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
@@ -411,10 +421,15 @@ namespace {
 			{"#expedition set", "Setup Catalog"}
 		});
 
+		std::vector<std::pair<std::string, std::string>> event_actions;
 		for (const auto& event_data : template_data.events) {
-			SendActionGroup(c, fmt::format("Event [{}]", event_data.event_name), {
-				{fmt::format("#expedition event select {}", event_data.id), "Select"}
-			});
+			event_actions.emplace_back(
+				fmt::format("#expedition event select {}", event_data.id),
+				fmt::format("Select [{}] ({})", event_data.event_name, event_data.id)
+			);
+		}
+		if (!event_actions.empty()) {
+			SendActionGroup(c, "Configured Events", event_actions);
 		}
 
 		SendSelectedEventChatUi(c, template_data);
@@ -426,7 +441,12 @@ namespace {
 			{"#expedition preview", "Preview"},
 			{"#expedition test request", "Simulate Request"}
 		});
-		c->Message(Chat::White, "Live test commands require typing confirm: #expedition test create confirm, #expedition test move confirm, #expedition test lockout confirm, #expedition test loot confirm.");
+		c->Message(Chat::White, ChatRule("Live Tests").c_str());
+		c->Message(Chat::White, "  Type confirm for live state changes:");
+		c->Message(Chat::White, "  #expedition test create confirm");
+		c->Message(Chat::White, "  #expedition test move confirm");
+		c->Message(Chat::White, "  #expedition test lockout confirm");
+		c->Message(Chat::White, "  #expedition test loot confirm");
 
 		SendActionGroup(c, "6 Publish", {
 			{"#expedition enable", "Enable"},
@@ -1033,6 +1053,7 @@ void command_expedition(Client* c, const Seperator* sep)
 	if (sub == "reload") {
 		zone->LoadDynamicZoneTemplates();
 		c->Message(Chat::Green, fmt::format("Reloaded [{}] DB expedition template(s).", ExpeditionDB::Templates().size()).c_str());
+		ShowMenu(c);
 		return;
 	}
 
@@ -1117,7 +1138,7 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
 		c->Message(Chat::Green, fmt::format("Selected expedition [{}] ({}).", template_data->id, template_data->name).c_str());
-		SendBuilderChatUi(c, *template_data);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1194,7 +1215,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowFixes(c, *template_data);
 		}
-		SendCurrentBuilderChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1215,7 +1236,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		const std::string template_name = template_data->name;
 		ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, sub == "enable");
 		c->Message(Chat::Green, fmt::format("{} expedition [{}].", sub == "enable" ? "Enabled" : "Disabled", template_name).c_str());
-		SendCurrentBuilderChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1235,6 +1256,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		}
 		ExpeditionDB::DeleteTemplate(content_db, delete_template->id);
 		c->Message(Chat::Green, "Deleted DB expedition template.");
+		ShowMenu(c);
 		return;
 	}
 
@@ -1410,7 +1432,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Red, "Unknown #expedition set option.");
 			ShowSetHelp(c);
 		}
-		SendCurrentBuilderChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1466,7 +1488,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: removed request NPC [{}] from expedition [{}].", NpcLabel(*npc), template_data->name).c_str());
-			SendCurrentBuilderChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1480,7 +1502,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 		c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}] for expedition [{}].", NpcLabel(*npc), phrase, template_data->name).c_str());
-		SendCurrentBuilderChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1508,7 +1530,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
 			c->Message(Chat::Green, fmt::format("Saved: added and selected event [{}] id [{}].", event_name, event_id).c_str());
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1520,7 +1542,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_data->id);
 			c->Message(Chat::Green, fmt::format("Selected event [{}].", event_data->event_name).c_str());
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1563,7 +1585,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: removed selected event [{}].", selected_event_name).c_str());
-			SendCurrentBuilderChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1578,7 +1600,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: event [{}] lockout is now [{}].", selected_event_name, Duration(seconds)).c_str());
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1597,7 +1619,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: event [{}] replay lockout is now [{}].", selected_event_name, Duration(seconds)).c_str());
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1675,7 +1697,7 @@ void command_expedition(Client* c, const Seperator* sep)
 					OnOff(enabled)
 				).c_str());
 			}
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1726,7 +1748,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: cleared runtime actions for event [{}].", selected_event_name).c_str());
-			SendCurrentEventChatUi(c);
+			ShowMenu(c);
 			return;
 		}
 
@@ -1817,7 +1839,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowActionHelp(c);
 		}
-		SendCurrentEventChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
@@ -1906,7 +1928,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowPresetHelp(c);
 		}
-		SendCurrentBuilderChatUi(c);
+		ShowMenu(c);
 		return;
 	}
 
