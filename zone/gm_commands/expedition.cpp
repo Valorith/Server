@@ -335,6 +335,11 @@ namespace {
 		c->Message(Chat::White, fmt::format("  {} - {}", Saylink::Silent(command, command), description).c_str());
 	}
 
+	void SendInfoLine(Client* c, const std::string& label, const std::string& value)
+	{
+		c->Message(Chat::White, fmt::format("  {:<16} {}", label, value).c_str());
+	}
+
 	void ShowRenameHelp(Client* c)
 	{
 		SendSectionHeader(c, "Rename Commands");
@@ -392,11 +397,21 @@ namespace {
 		});
 	}
 
+	struct WizardGuidance {
+		std::string focus;
+		std::string why;
+		std::string next_command;
+		std::string next_label;
+		std::vector<std::pair<std::string, std::string>> actions;
+	};
+
+	WizardGuidance BuildWizardGuidance(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation);
+
 	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		const auto* event_data = SelectedEvent(c, template_data);
 		if (!event_data) {
-			SendActionGroup(c, "Event setup", {
+			SendActionGroup(c, "Event Setup", {
 				{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
 				{"#expedition event list", "List Events"}
 			});
@@ -426,122 +441,85 @@ namespace {
 			}
 		}
 
-		SendActionGroup(c, "Selected event", {
+		SendActionGroup(c, "Event Core Actions", {
 			{"#expedition event npc", "Add Target as Event NPC"},
-			{"#expedition event npc boss", "Mark Target Boss"},
-			{"#expedition event npc add", "Mark Target Encounter Add"},
-			{"#expedition event npc chest", "Mark Target Loot Chest"},
-			{"#expedition event loot on", "Target Loot On"},
-			{"#expedition event loot off", "Target Loot Off"},
-			{"#expedition event completeondeath on", "Target Death On"},
-			{"#expedition event completeondeath off", "Target Death Off"}
-		});
-
-		SendActionGroup(c, "Event timing", {
 			{"#expedition event lockout 6h", "6h Lockout"},
-			{"#expedition event replay 2h", "2h Replay"},
-			{"#expedition action", "Action Catalog"},
-			{"#expedition action list", "List Actions"},
-			{"#expedition event rename", "Rename Help"},
-			{fmt::format("#expedition event remove {}", event_data->id), "Delete This Event..."}
+			{"#expedition event completeondeath on", "Target Completes Event"},
+			{"#expedition event loot on", "Protect Target Loot"}
 		});
 
-		SendActionGroup(c, "Next", {
-			{"#expedition menu", "Snapshot"},
-			{"#expedition validate", "Validate"},
-			{"#expedition preview", "Preview"},
-			{"#expedition enable", "Publish"}
+		SendActionGroup(c, "Event Drill-Down", {
+			{"#expedition event", "Event Command Catalog"},
+			{"#expedition action", "Runtime Action Catalog"},
+			{fmt::format("#expedition event remove {}", event_data->id), "Delete This Event..."}
 		});
 	}
 
 	void SendBuilderChatUi(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		const auto validation = ExpeditionDB::ValidateTemplate(template_data);
-		c->Message(Chat::Yellow, fmt::format(
-			"Expedition Builder: [{}] status [{}] enabled [{}].",
-			template_data.name,
-			validation.StatusName(),
-			OnOff(template_data.enabled)
-		).c_str());
+		const auto guidance = BuildWizardGuidance(c, template_data, validation);
+		SendSectionHeader(c, "Expedition Menu");
+		SendInfoLine(c, "Selected", fmt::format("{} [{}]", template_data.name, template_data.id));
+		SendInfoLine(c, "Status", fmt::format("{} | enabled {}", validation.StatusName(), OnOff(template_data.enabled)));
+		SendInfoLine(c, "Zone", fmt::format("{}:{} | duration {} | players {}-{}",
+			ZoneName(template_data.dz_template.zone_id, true),
+			template_data.dz_template.zone_version,
+			Duration(template_data.dz_template.duration_seconds),
+			template_data.dz_template.min_players,
+			template_data.dz_template.max_players
+		));
+		SendInfoLine(c, "Next Step", guidance.focus);
+
 		if (NPC* npc = TargetNpc(c)) {
-			c->Message(Chat::Yellow, fmt::format("Current target NPC: {}.", NpcLabel(*npc)).c_str());
+			SendInfoLine(c, "Target", NpcLabel(*npc));
 		}
 		else {
-			c->Message(Chat::Yellow, "Current target NPC: none. Target an NPC before using request/event target actions.");
+			SendInfoLine(c, "Target", "none");
 		}
 
-		SendActionGroup(c, "1 Base setup", {
-			{"#expedition set zone", "Use Current Zone"},
-			{"#expedition set zonein", "Use Current Zone-In"},
-			{"#expedition set safereturn", "Use Current Safe Return"},
-			{"#expedition set compass", "Use Current Compass"},
-			{"#expedition preset solo", "Solo Preset"},
-			{"#expedition preset group", "Group Preset"},
-			{"#expedition preset raid", "Raid Preset"}
+		SendActionGroup(c, "Core Workflow", {
+			{"#expedition wizard", "Guided Next Step"},
+			{"#expedition menu", "State Snapshot"},
+			{"#expedition validate", "Validate Setup"},
+			{"#expedition preview", "Runtime Preview"}
 		});
 
-		SendActionGroup(c, "2 Request NPCs", {
-			{"#expedition requestnpc", "Add Target as Request NPC"},
-			{"#expedition requestnpc list", "List"},
-			{"#expedition requestnpc remove", "Remove Target..."},
-			{"#expedition set requestmode db_only", "DB Only"},
-			{"#expedition set requestmode script_can_opt_in", "Script Opt-In"},
-			{"#expedition set requestmode script_only", "Script Only"}
+		SendActionGroup(c, "Build Steps", {
+			{"#expedition set", "Base Setup Catalog"},
+			{"#expedition requestnpc help", "Request NPC Catalog"},
+			{"#expedition event", "Event Catalog"},
+			{"#expedition test", "Testing Catalog"}
 		});
 
-		SendActionGroup(c, "3 Events", {
-			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
-			{"#expedition event list", "List Events"},
-			{"#expedition preset boss", "Boss Preset"},
-			{"#expedition preset chest", "Chest Preset"}
+		SendActionGroup(c, "Most Likely Next", {
+			{guidance.next_command, guidance.next_label}
 		});
 
-		SendActionGroup(c, "4 Options", {
-			{"#expedition rename", "Rename Expedition"},
-			{"#expedition event rename", "Rename Event"},
-			{"#expedition set silent on", "Silent On"},
-			{"#expedition set silent off", "Silent Off"},
-			{"#expedition set replay 2h", "2h Replay"},
-			{"#expedition set switchid target", "Use Target Switch"},
-			{"#expedition set", "Setup Catalog"}
-		});
-
-		std::vector<std::pair<std::string, std::string>> event_actions;
-		for (const auto& event_data : template_data.events) {
-			event_actions.emplace_back(
-				fmt::format("#expedition event select {}", event_data.id),
-				fmt::format("Select [{}] ({})", event_data.event_name, event_data.id)
-			);
-		}
-		if (!event_actions.empty()) {
+		if (!template_data.events.empty()) {
+			std::vector<std::pair<std::string, std::string>> event_actions;
+			for (const auto& event_data : template_data.events) {
+				event_actions.emplace_back(
+					fmt::format("#expedition event select {}", event_data.id),
+					fmt::format("Select [{}] ({})", event_data.event_name, event_data.id)
+				);
+			}
 			SendActionGroup(c, "Configured Events", event_actions);
 		}
 
-		SendSelectedEventChatUi(c, template_data);
+		if (SelectedEvent(c, template_data)) {
+			SendSelectedEventChatUi(c, template_data);
+		}
 
-		SendActionGroup(c, "5 Validate/Test", {
-			{"#expedition menu", "Snapshot"},
-			{"#expedition validate", "Validate"},
-			{"#expedition fix", "Fixes"},
-			{"#expedition preview", "Preview"},
-			{"#expedition test request", "Simulate Request"}
-		});
-		SendSectionHeader(c, "Live Tests");
-		c->Message(Chat::White, "  Type confirm for live state changes:");
-		c->Message(Chat::White, "  #expedition test create confirm");
-		c->Message(Chat::White, "  #expedition test move confirm");
-		c->Message(Chat::White, "  #expedition test lockout confirm");
-		c->Message(Chat::White, "  #expedition test loot confirm");
-
-		SendActionGroup(c, "6 Publish", {
+		SendActionGroup(c, "Publish", {
 			{"#expedition enable", "Enable"},
-			{"#expedition disable", "Disable"},
-			{fmt::format("#expedition delete {}", template_data.id), "Delete..."}
+			{"#expedition disable", "Disable"}
 		});
 
-		SendActionGroup(c, "Advanced", {
-			{"#expedition wizard", "Wizard"},
-			{"#expedition reload", "Reload DB Templates"}
+		SendActionGroup(c, "Advanced Drill-Down", {
+			{"#expedition advanced", "Advanced Catalog"},
+			{"#expedition action", "Runtime Actions"},
+			{"#expedition preset", "Presets"}
 		});
 	}
 
@@ -618,14 +596,6 @@ namespace {
 
 		return "Published. Clone or disable before making risky live changes.";
 	}
-
-	struct WizardGuidance {
-		std::string focus;
-		std::string why;
-		std::string next_command;
-		std::string next_label;
-		std::vector<std::pair<std::string, std::string>> actions;
-	};
 
 	bool HasMappedNpc(const ExpeditionDB::Event& event_data)
 	{
@@ -853,118 +823,126 @@ namespace {
 	void ShowHelp(Client* c)
 	{
 		SendSectionHeader(c, "Expedition Builder");
-		SendHelpLink(c, "#expedition help", "show this command catalog");
-		SendHelpLink(c, "#expedition menu", "open the builder menu");
-		SendHelpLink(c, "#expedition list", "list templates");
-		SendHelpLink(c, "#expedition reload", "reload DB templates");
+		c->Message(Chat::White, "Top-level commands stay focused on normal authoring flow. Use drill-down catalogs for detailed setup.");
 
-		SendSectionHeader(c, "Create and Select");
+		SendSectionHeader(c, "Core Commands");
 		SendHelpLink(c, "#expedition create", "show create/naming instructions");
-		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone/location.");
-		c->Message(Chat::White, "#expedition select <id|name> - Select a template for short follow-up commands.");
-		SendHelpLink(c, "#expedition rename", "show expedition rename commands");
-		c->Message(Chat::White, "#expedition rename \"New Name\" - Rename the selected expedition.");
-		c->Message(Chat::White, "#expedition rename <id|name> \"New Name\" - Rename a specific expedition.");
-		c->Message(Chat::White, "#expedition clone <id|name> \"Name\" - Copy an existing setup.");
+		SendHelpLink(c, "#expedition list", "list templates in this zone");
+		SendHelpLink(c, "#expedition select <id|name>", "select a template");
+		SendHelpLink(c, "#expedition wizard", "open state-aware guided setup");
+		SendHelpLink(c, "#expedition menu", "show selected expedition snapshot and core actions");
 
-		SendSectionHeader(c, "Setup Catalogs");
-		SendHelpLink(c, "#expedition set", "show all setup fields");
-		SendHelpLink(c, "#expedition requestnpc help", "show request NPC commands");
-		SendHelpLink(c, "#expedition event", "show event commands");
-		SendHelpLink(c, "#expedition test", "show test commands");
-		SendHelpLink(c, "#expedition preset group", "apply group defaults");
-
-		SendSectionHeader(c, "Review");
-		SendHelpLink(c, "#expedition validate", "check for missing or risky setup");
-		SendHelpLink(c, "#expedition wizard", "open guided setup popup");
-		SendHelpLink(c, "#expedition fix", "show validation fixes");
+		SendSectionHeader(c, "Review And Publish");
+		SendHelpLink(c, "#expedition validate", "check errors and warnings");
 		SendHelpLink(c, "#expedition preview", "preview runtime behavior");
-
-		SendSectionHeader(c, "Publish");
 		SendHelpLink(c, "#expedition enable", "publish the selected expedition");
 		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
 
-		SendSectionHeader(c, "Destructive");
-		c->Message(Chat::White, "#expedition delete <id|name> confirm - Delete an unpublished/editing template and its linked setup rows.");
+		SendSectionHeader(c, "Drill-Down Catalogs");
+		SendHelpLink(c, "#expedition set", "base setup, locations, player counts, replay, request mode");
+		SendHelpLink(c, "#expedition requestnpc help", "request NPC setup");
+		SendHelpLink(c, "#expedition event", "event, NPC, lockout, loot, and completion setup");
+		SendHelpLink(c, "#expedition action", "runtime actions fired by events");
+		SendHelpLink(c, "#expedition test", "testing commands");
+		SendHelpLink(c, "#expedition advanced", "rename, clone, reload, delete, and other advanced actions");
 	}
 
 	void ShowSetHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition set command catalog:");
-		c->Message(Chat::White, "#expedition set zone - Set the selected expedition to your current zone and version.");
-		c->Message(Chat::White, "#expedition set name \"New Name\" - Rename the selected expedition.");
-		c->Message(Chat::White, "#expedition set zone <zone_short_name|zone_id> [version] - Set an explicit expedition zone; version defaults to 0 unless it is your current zone.");
-		c->Message(Chat::White, "#expedition set duration <duration> - Set expedition duration. Examples: 6h, 90m, 21600.");
-		c->Message(Chat::White, "#expedition set players <min> <max> - Set player-count request limits.");
-		c->Message(Chat::White, "#expedition set zonein - Set zone-in to your current location and heading.");
-		c->Message(Chat::White, "#expedition set zonein <x> <y> <z> [h] - Set explicit zone-in coordinates.");
-		c->Message(Chat::White, "#expedition set safereturn - Set safe return to your current zone/location/heading.");
-		c->Message(Chat::White, "#expedition set safereturn <zone_short_name|zone_id> <x> <y> <z> [h] - Set explicit safe return.");
-		c->Message(Chat::White, "#expedition set compass - Set the compass marker to your current zone/location.");
-		c->Message(Chat::White, "#expedition set compass <zone_short_name|zone_id> <x> <y> <z> - Set an explicit compass marker.");
-		c->Message(Chat::White, "#expedition set switchid target - Use your current target entity id as the dynamic-zone switch id.");
-		c->Message(Chat::White, "#expedition set switchid <id> - Set a specific dynamic-zone switch id.");
-		c->Message(Chat::White, "#expedition set replay none|<duration> - Set or clear the replay lockout awarded on creation.");
-		c->Message(Chat::White, "#expedition set silent on|off - Toggle normal creation failure/success messages.");
-		c->Message(Chat::White, "#expedition set requestmode db_only|script_can_opt_in|script_only - Choose how DB request NPCs interact with quest scripts.");
-		SendActionGroup(c, "Common setup", {
+		SendSectionHeader(c, "Setup Catalog");
+		c->Message(Chat::White, "Use bare commands to capture your current context; use explicit arguments when you need precision.");
+
+		SendSectionHeader(c, "Identity And Zone");
+		SendHelpLink(c, "#expedition set name \"New Name\"", "rename selected expedition");
+		SendHelpLink(c, "#expedition set zone", "use current zone and instance version");
+		SendHelpLink(c, "#expedition set zone <zone|id> [version]", "use an explicit expedition zone");
+
+		SendSectionHeader(c, "Player And Time Limits");
+		SendHelpLink(c, "#expedition set duration <duration>", "set expedition duration, like 90m or 6h");
+		SendHelpLink(c, "#expedition set players <min> <max>", "set request min/max player counts");
+		SendHelpLink(c, "#expedition set replay none|<duration>", "set or clear replay lockout awarded on creation");
+
+		SendSectionHeader(c, "Locations");
+		SendHelpLink(c, "#expedition set zonein", "use current location and heading");
+		SendHelpLink(c, "#expedition set zonein <x> <y> <z> [h]", "set explicit zone-in coordinates");
+		SendHelpLink(c, "#expedition set safereturn", "use current zone/location/heading");
+		SendHelpLink(c, "#expedition set safereturn <zone|id> <x> <y> <z> [h]", "set explicit safe return");
+		SendHelpLink(c, "#expedition set compass", "use current zone/location as compass marker");
+		SendHelpLink(c, "#expedition set compass <zone|id> <x> <y> <z>", "set explicit compass marker");
+
+		SendSectionHeader(c, "Behavior");
+		SendHelpLink(c, "#expedition set requestmode db_only|script_can_opt_in|script_only", "choose DB/script request handling");
+		SendHelpLink(c, "#expedition set silent on|off", "toggle normal create/failure messages");
+		SendHelpLink(c, "#expedition set switchid target|<id>", "set dynamic-zone switch entity id");
+
+		SendActionGroup(c, "Common Setup Actions", {
 			{"#expedition set zone", "Current Zone"},
 			{"#expedition set zonein", "Current Zone-In"},
 			{"#expedition set safereturn", "Current Safe Return"},
 			{"#expedition set compass", "Current Compass"},
 			{"#expedition preset group", "Group Preset"},
-			{"#expedition menu", "Snapshot"}
+			{"#expedition wizard", "Guided Next Step"}
 		});
 	}
 
 	void ShowRequestNpcHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition requestnpc command catalog:");
-		c->Message(Chat::White, "#expedition requestnpc - Use your targeted NPC as the request NPC with phrase 'expedition'.");
-		c->Message(Chat::White, "#expedition requestnpc <phrase> - Use your targeted NPC with a custom request phrase.");
-		c->Message(Chat::White, "#expedition requestnpc list - List configured request NPCs for the selected expedition.");
-		c->Message(Chat::White, "#expedition requestnpc remove - Prompt before removing your targeted NPC from request NPCs.");
+		SendSectionHeader(c, "Request NPC Catalog");
 		c->Message(Chat::White, "Request NPC commands use your selected expedition and current NPC target unless the command is list/help.");
-		SendActionGroup(c, "Request NPCs", {
+
+		SendSectionHeader(c, "Targeted Setup");
+		SendHelpLink(c, "#expedition requestnpc", "use targeted NPC with phrase 'expedition'");
+		SendHelpLink(c, "#expedition requestnpc <phrase>", "use targeted NPC with a custom request phrase");
+		SendHelpLink(c, "#expedition requestnpc remove", "prompt before removing targeted request NPC mapping");
+
+		SendSectionHeader(c, "Review");
+		SendHelpLink(c, "#expedition requestnpc list", "list configured request NPCs");
+
+		SendSectionHeader(c, "Request Mode");
+		SendHelpLink(c, "#expedition set requestmode db_only", "DB handles request dialogue automatically");
+		SendHelpLink(c, "#expedition set requestmode script_can_opt_in", "scripts handle dialogue and may call DB APIs");
+		SendHelpLink(c, "#expedition set requestmode script_only", "scripts fully own request handling");
+
+		SendActionGroup(c, "Request NPC Actions", {
 			{"#expedition requestnpc", "Add Target as Request NPC"},
-			{"#expedition requestnpc list", "List"},
-			{"#expedition requestnpc remove", "Remove Target..."},
+			{"#expedition requestnpc list", "List Request NPCs"},
 			{"#expedition set requestmode db_only", "DB Only"},
-			{"#expedition set requestmode script_can_opt_in", "Script Opt-In"},
-			{"#expedition set requestmode script_only", "Script Only"}
+			{"#expedition wizard", "Guided Next Step"}
 		});
 	}
 
 	void ShowEventHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition event command catalog:");
-		c->Message(Chat::White, "#expedition event add \"Event Name\" - Add a DB event and select it.");
-		c->Message(Chat::White, "#expedition event select <id|name> - Select an event for short follow-up commands.");
-		c->Message(Chat::White, "#expedition event list - List events on the selected expedition.");
+		SendSectionHeader(c, "Event Catalog");
+		c->Message(Chat::White, "Events model encounter milestones such as boss deaths, chest unlocks, and lockout awards.");
+
+		SendSectionHeader(c, "Event Basics");
+		SendHelpLink(c, "#expedition event add \"Event Name\"", "add and select a DB event");
+		SendHelpLink(c, "#expedition event select <id|name>", "select event for short follow-up commands");
+		SendHelpLink(c, "#expedition event list", "list events on selected expedition");
 		SendHelpLink(c, "#expedition event rename", "show event rename commands");
-		c->Message(Chat::White, "#expedition event rename \"New Name\" - Rename the explicitly selected event, or the only event if there is just one.");
-		c->Message(Chat::White, "#expedition event rename <id> \"New Name\" - Rename a specific event by id.");
-		c->Message(Chat::White, "#expedition event remove <id|name> - Review the event deletion target.");
-		c->Message(Chat::White, "#expedition event remove <id|name> confirm - Delete that event and its NPC/action mappings.");
-		c->Message(Chat::White, "#expedition event remove confirm - Delete the explicitly selected event.");
-		c->Message(Chat::White, "#expedition event lockout <duration> - Set the selected event lockout duration.");
-		c->Message(Chat::White, "#expedition event replay none|<duration> - Set or clear replay lockout awarded when the selected event completes.");
-		c->Message(Chat::White, "#expedition event npc - Add your targeted NPC to the selected event and infer a role.");
-		c->Message(Chat::White, "#expedition event npc boss|add|chest - Add your targeted NPC with an explicit role.");
-		c->Message(Chat::White, "#expedition event loot on|off - Toggle loot-event protection for your targeted NPC.");
-		c->Message(Chat::White, "#expedition event completeondeath on|off - Toggle whether your targeted NPC completes the selected event on death.");
-		c->Message(Chat::White, "#expedition action add lock|unlock|lockout|replay|depop|message|remaining [value] - Add selected-event runtime actions.");
-		c->Message(Chat::White, "#expedition action list - List selected-event runtime actions.");
-		c->Message(Chat::White, "#expedition action clear - Prompt for selected-event action removal. #expedition action clear confirm - Remove them.");
-		SendActionGroup(c, "Event setup", {
+
+		SendSectionHeader(c, "Target NPC Mapping");
+		SendHelpLink(c, "#expedition event npc", "add targeted NPC and infer role");
+		SendHelpLink(c, "#expedition event npc boss|add|chest", "add targeted NPC with explicit role");
+		SendHelpLink(c, "#expedition event completeondeath on|off", "toggle target death completion");
+		SendHelpLink(c, "#expedition event loot on|off", "toggle target loot protection");
+
+		SendSectionHeader(c, "Timing");
+		SendHelpLink(c, "#expedition event lockout <duration>", "set selected event lockout");
+		SendHelpLink(c, "#expedition event replay none|<duration>", "set or clear replay lockout on completion");
+
+		SendSectionHeader(c, "Advanced Event Operations");
+		SendHelpLink(c, "#expedition action", "runtime action catalog");
+		SendHelpLink(c, "#expedition event remove <id|name>", "review event deletion target");
+		SendHelpLink(c, "#expedition event remove <id|name> confirm", "delete event and its mappings");
+
+		SendActionGroup(c, "Event Actions", {
 			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
 			{"#expedition event list", "List Events"},
-			{"#expedition event rename", "Rename Help"},
 			{"#expedition event npc", "Add Target as Event NPC"},
-			{"#expedition event npc boss", "Mark Target Boss"},
-			{"#expedition event npc chest", "Mark Target Chest"},
-			{"#expedition event loot on", "Protect Target Loot"},
-			{"#expedition event completeondeath on", "Complete On Death"}
+			{"#expedition event lockout 6h", "6h Lockout"},
+			{"#expedition wizard", "Guided Next Step"}
 		});
 		if (const auto* template_data = SelectedTemplate(c)) {
 			SendSelectedEventChatUi(c, *template_data);
@@ -973,22 +951,28 @@ namespace {
 
 	void ShowTestHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition test command catalog:");
-		c->Message(Chat::White, "#expedition test create confirm - Create the selected DB expedition for your current group/raid/self.");
-		c->Message(Chat::White, "#expedition test move confirm - Move you into your current expedition.");
-		c->Message(Chat::White, fmt::format("{} - Simulate the targeted request NPC phrase flow.", Saylink::Silent("#expedition test request", "#expedition test request")).c_str());
-		c->Message(Chat::White, "#expedition test lockout confirm - Apply the selected event lockout to your current expedition.");
-		c->Message(Chat::White, "#expedition test loot confirm - Re-apply DB loot-event protection for your expedition.");
+		SendSectionHeader(c, "Testing Catalog");
+		c->Message(Chat::White, "Simulation commands are safe. Commands that create/move/apply live state require confirm.");
+		SendHelpLink(c, "#expedition test request", "simulate targeted request NPC phrase flow");
+		SendHelpLink(c, "#expedition test create confirm", "create selected DB expedition for your group/raid/self");
+		SendHelpLink(c, "#expedition test move confirm", "move you into your current expedition");
+		SendHelpLink(c, "#expedition test lockout confirm", "apply selected event lockout to current expedition");
+		SendHelpLink(c, "#expedition test loot confirm", "re-apply DB loot-event protection for your expedition");
+		SendActionGroup(c, "Testing Actions", {
+			{"#expedition test request", "Simulate Request"},
+			{"#expedition validate", "Validate"},
+			{"#expedition preview", "Preview Runtime"}
+		});
 	}
 
 	void ShowPresetHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition preset command catalog:");
-		c->Message(Chat::White, "#expedition preset solo - 1 player, 90 minute duration, 30 minute replay.");
-		c->Message(Chat::White, "#expedition preset group - 1-6 players, 6 hour duration, 2 hour replay.");
-		c->Message(Chat::White, "#expedition preset raid - 6-54 players, 6 hour duration, 2 hour replay.");
-		c->Message(Chat::White, "#expedition preset boss - Selected event gets 6 hour lockout, 2 hour replay, and targeted NPC as boss when targeted.");
-		c->Message(Chat::White, "#expedition preset chest - Targeted NPC is added as loot-protected chest for selected event.");
+		SendSectionHeader(c, "Preset Catalog");
+		SendHelpLink(c, "#expedition preset solo", "1 player, 90 minute duration, 30 minute replay");
+		SendHelpLink(c, "#expedition preset group", "1-6 players, 6 hour duration, 2 hour replay");
+		SendHelpLink(c, "#expedition preset raid", "6-54 players, 6 hour duration, 2 hour replay");
+		SendHelpLink(c, "#expedition preset boss", "selected event gets timing and targeted NPC as boss");
+		SendHelpLink(c, "#expedition preset chest", "targeted NPC becomes loot-protected chest for selected event");
 		SendActionGroup(c, "Presets", {
 			{"#expedition preset solo", "Solo"},
 			{"#expedition preset group", "Group"},
@@ -1000,18 +984,27 @@ namespace {
 
 	void ShowActionHelp(Client* c)
 	{
-		c->Message(Chat::White, "#expedition action command catalog:");
-		c->Message(Chat::White, "#expedition action add lock - Lock the expedition when the selected event completes.");
-		c->Message(Chat::White, "#expedition action add unlock - Unlock the expedition when the selected event completes.");
-		c->Message(Chat::White, "#expedition action add lockout <duration> - Add a lockout for the selected event.");
-		c->Message(Chat::White, "#expedition action add lockout <event_name_or_id> <duration> - Add a lockout for another event.");
-		c->Message(Chat::White, "#expedition action add replay <duration> - Add or refresh the Replay Timer.");
-		c->Message(Chat::White, "#expedition action add depop <npc_type_id> - Depop all NPCs of that type in the current zone.");
-		c->Message(Chat::White, "#expedition action add message <text> - Message expedition members in the zone.");
-		c->Message(Chat::White, "#expedition action add remaining <duration> - Set expedition remaining time.");
-		c->Message(Chat::White, "#expedition action list - List actions for the selected event.");
-		c->Message(Chat::White, "#expedition action clear - Prompt for selected-event action removal. #expedition action clear confirm - Remove selected-event actions.");
-		SendActionGroup(c, "Runtime actions", {
+		SendSectionHeader(c, "Runtime Action Catalog");
+		c->Message(Chat::White, "Runtime actions fire when the selected event is resolved by DB expedition handling.");
+
+		SendSectionHeader(c, "Lock And Time");
+		SendHelpLink(c, "#expedition action add lock", "lock the expedition when selected event completes");
+		SendHelpLink(c, "#expedition action add unlock", "unlock the expedition when selected event completes");
+		SendHelpLink(c, "#expedition action add lockout <duration>", "add lockout for selected event");
+		SendHelpLink(c, "#expedition action add lockout <event> <duration>", "add lockout for another event");
+		SendHelpLink(c, "#expedition action add replay <duration>", "add or refresh Replay Timer");
+		SendHelpLink(c, "#expedition action add remaining <duration>", "set expedition remaining time");
+
+		SendSectionHeader(c, "Zone Effects");
+		SendHelpLink(c, "#expedition action add depop <npc_type_id>", "depop all NPCs of that type in current zone");
+		SendHelpLink(c, "#expedition action add message <text>", "message expedition members in zone");
+
+		SendSectionHeader(c, "Review And Clear");
+		SendHelpLink(c, "#expedition action list", "list actions for selected event");
+		SendHelpLink(c, "#expedition action clear", "prompt before removing selected-event actions");
+		SendHelpLink(c, "#expedition action clear confirm", "remove selected-event actions");
+
+		SendActionGroup(c, "Runtime Actions", {
 			{"#expedition action add lock", "Lock"},
 			{"#expedition action add unlock", "Unlock"},
 			{"#expedition action add replay 2h", "2h Replay"},
@@ -1019,6 +1012,31 @@ namespace {
 			{"#expedition action add remaining 1h", "1h Remaining"},
 			{"#expedition action list", "List Actions"},
 			{"#expedition action clear", "Clear Actions..."}
+		});
+	}
+
+	void ShowAdvancedHelp(Client* c)
+	{
+		SendSectionHeader(c, "Advanced Expedition Catalog");
+		c->Message(Chat::White, "Advanced commands are intentionally outside the top-level menu to keep normal setup focused.");
+
+		SendSectionHeader(c, "Identity And Copies");
+		SendHelpLink(c, "#expedition rename", "rename command catalog");
+		SendHelpLink(c, "#expedition clone <id|name|current> \"New Name\"", "copy an existing setup");
+
+		SendSectionHeader(c, "Database And Runtime Cache");
+		SendHelpLink(c, "#expedition reload", "reload DB templates into zone memory");
+		SendHelpLink(c, "#expedition list all", "list templates across all zones");
+		SendHelpLink(c, "#expedition show", "show selected template details in chat");
+
+		SendSectionHeader(c, "Danger Zone");
+		SendHelpLink(c, "#expedition delete <id|name> confirm", "delete unpublished template and linked setup rows");
+
+		SendActionGroup(c, "Advanced Actions", {
+			{"#expedition rename", "Rename Catalog"},
+			{"#expedition list all", "List All Templates"},
+			{"#expedition reload", "Reload DB Templates"},
+			{"#expedition menu", "Back To Core Menu"}
 		});
 	}
 
@@ -1188,7 +1206,8 @@ namespace {
 			body += "Use the action link in chat to show the create command and choose a name.";
 			c->SendPopupToClient("Expedition Wizard", body.c_str());
 			SendActionGroup(c, "Expedition Wizard", {
-				{"#expedition create", "Create Expedition..."}
+				{"#expedition create", "Create Expedition..."},
+				{"#expedition list", "Select Existing Expedition"}
 			});
 			return;
 		}
@@ -1259,7 +1278,8 @@ namespace {
 			c->SendPopupToClient("Expedition Builder", body.c_str());
 			SendActionGroup(c, "Expedition Builder", {
 				{"#expedition create", "Create Expedition..."},
-				{"#expedition list", "List Expeditions"}
+				{"#expedition list", "List Expeditions"},
+				{"#expedition help", "Command Menu"}
 			});
 			return;
 		}
@@ -1446,21 +1466,24 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 
 	if (sub == "list") {
+		SendSectionHeader(c, strcasecmp(sep->arg[2], "all") == 0 ? "All Expedition Templates" : "Zone Expedition Templates");
 		c->Message(Chat::White, fmt::format("DB expedition templates: [{}]", ExpeditionDB::Templates().size()).c_str());
 		for (const auto& [id, template_data] : ExpeditionDB::Templates()) {
 			if (strcasecmp(sep->arg[2], "all") != 0 && template_data.dz_template.zone_id != zone->GetZoneID()) {
 				continue;
 			}
-			c->Message(Chat::White, fmt::format(
-				"[{}] {} [{}:{}] {} {}",
-				id,
-				Saylink::Silent(fmt::format("#expedition select {}", id), template_data.name),
-				ZoneName(template_data.dz_template.zone_id, true),
-				template_data.dz_template.zone_version,
-				template_data.enabled ? "enabled" : "disabled",
-				Saylink::Silent(fmt::format("#expedition menu {}", id), "menu")
-			).c_str());
+			c->Message(Chat::White, ChatSeparator());
+			SendInfoLine(c, "Template", fmt::format("{} [{}]", template_data.name, id));
+			SendInfoLine(c, "Zone", fmt::format("{}:{}", ZoneName(template_data.dz_template.zone_id, true), template_data.dz_template.zone_version));
+			SendInfoLine(c, "Status", template_data.enabled ? "enabled" : "disabled");
+			SendHelpLink(c, fmt::format("#expedition select {}", id), "select this template");
+			SendHelpLink(c, fmt::format("#expedition menu {}", id), "open menu for this template");
 		}
+		return;
+	}
+
+	if (sub == "advanced") {
+		ShowAdvancedHelp(c);
 		return;
 	}
 
@@ -1878,14 +1901,12 @@ void command_expedition(Client* c, const Seperator* sep)
 				ShowRequestNpcHelp(c);
 				return;
 			}
+			SendSectionHeader(c, "Configured Request NPCs");
 			for (const auto& request_npc : template_data->request_npcs) {
-				c->Message(Chat::White, fmt::format(
-					"NPC type [{}] spawn [{}] zone [{}] phrase [{}]",
-					request_npc.npc_type_id,
-					request_npc.spawn2_id,
-					request_npc.zone_id,
-					request_npc.phrase
-				).c_str());
+				c->Message(Chat::White, ChatSeparator());
+				SendInfoLine(c, "NPC", fmt::format("type {} | spawn {} | zone {}", request_npc.npc_type_id, request_npc.spawn2_id, ZoneLabel(request_npc.zone_id)));
+				SendInfoLine(c, "Phrase", request_npc.phrase);
+				SendInfoLine(c, "Enabled", OnOff(request_npc.enabled));
 			}
 			ShowRequestNpcHelp(c);
 			return;
@@ -1976,24 +1997,26 @@ void command_expedition(Client* c, const Seperator* sep)
 				SendSelectedEventChatUi(c, *template_data);
 				return;
 			}
+			SendSectionHeader(c, "Configured Events");
 			for (const auto& event_data : template_data->events) {
-				c->Message(Chat::White, fmt::format(
-					"[{}] {} lockout [{}] replay [{}] npcs [{}]",
-					event_data.id,
-					event_data.event_name,
-					Duration(event_data.lockout_seconds),
-					Duration(event_data.replay_lockout_seconds),
-					event_data.npcs.size()
-				).c_str());
-				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "select")).c_str());
-				c->Message(Chat::White, fmt::format("  rename: #expedition event rename {} \"New Event Name\"", event_data.id).c_str());
-				c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(fmt::format("#expedition event remove {}", event_data.id), "delete...")).c_str());
+				c->Message(Chat::White, ChatSeparator());
+				SendInfoLine(c, "Event", fmt::format("{} [{}]", event_data.event_name, event_data.id));
+				SendInfoLine(c, "Timing", fmt::format("lockout {} | replay {}", Duration(event_data.lockout_seconds), Duration(event_data.replay_lockout_seconds)));
+				SendInfoLine(c, "Mappings", fmt::format("NPCs {} | actions {}", event_data.npcs.size(), event_data.actions.size()));
+				SendHelpLink(c, fmt::format("#expedition event select {}", event_data.id), "select event");
+				SendHelpLink(c, "#expedition event rename", "show rename commands");
+				SendHelpLink(c, fmt::format("#expedition event remove {}", event_data.id), "review delete");
 			}
 			SendCurrentEventChatUi(c);
 			return;
 		}
 
 		if (action == "rename") {
+			if (sep->arg[4][0] == '\0' && ExpeditionDB::FindEvent(*template_data, sep->arg[3])) {
+				c->Message(Chat::Yellow, "Add the new event name after the event id.");
+				ShowEventRenameHelp(c);
+				return;
+			}
 			const bool has_new_name_for_target = sep->arg[4][0] != '\0';
 			const bool use_selected_target =
 				!has_new_name_for_target ||
