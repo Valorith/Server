@@ -4520,9 +4520,9 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses, bool suppress, uint32 su
 			case SpellEffect::Familiar:
 			{
 				Mob *mypet = GetPet();
-				if (mypet && !suppress){
-					if(mypet->IsNPC())
-						mypet->CastToNPC()->Depop();
+				if (mypet && !suppress && mypet->IsNPC() &&
+				    mypet->CastToNPC()->GetPetSpellID() == buffs[slot].spellid) {
+					mypet->CastToNPC()->Depop();
 					SetPetID(0);
 				}
 				break;
