@@ -236,6 +236,15 @@ namespace {
 		);
 	}
 
+	bool IsChestArg(const char* value)
+	{
+		return value && (
+			Strings::EqualFold(value, "chest") ||
+			Strings::EqualFold(value, "loot_chest") ||
+			Strings::EqualFold(value, "spawn_chest")
+		);
+	}
+
 	std::string Duration(uint32_t seconds)
 	{
 		if (!seconds) {
@@ -319,6 +328,10 @@ namespace {
 	bool RequestNpcMatches(const ExpeditionDB::RequestNpc& request_npc, NPC& npc)
 	{
 		if (!request_npc.enabled || !zone || request_npc.zone_id != zone->GetZoneID()) {
+			return false;
+		}
+
+		if (request_npc.zone_version != -1 && request_npc.zone_version != static_cast<int32_t>(zone->GetInstanceVersion())) {
 			return false;
 		}
 
@@ -505,10 +518,11 @@ namespace {
 			c->Message(Chat::Yellow, fmt::format("Event target candidate: {}.", NpcLabel(*npc)).c_str());
 			if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
 				c->Message(Chat::Yellow, fmt::format(
-					"Target event mapping: role [{}] loot [{}] complete-on-death [{}].",
+					"Target event mapping: role [{}] loot [{}] complete-on-death [{}] complete-on-spawn [{}].",
 					mapped_npc->role,
 					OnOff(mapped_npc->loot_protected),
-					OnOff(mapped_npc->complete_on_death)
+					OnOff(mapped_npc->complete_on_death),
+					OnOff(mapped_npc->complete_on_spawn)
 				).c_str());
 			}
 			else {
@@ -578,6 +592,8 @@ namespace {
 		SendActionGroup(c, "Core Actions", {
 			{"#expedition request", "Use Target Request NPC"},
 			{"#expedition boss 6h loot", "Add/Update Target Boss With Loot"},
+			{"#expedition boss 6h chest", "Add/Update Target Boss With Dynamic Chest"},
+			{"#expedition chest loot", "Use Target Dynamic Chest"},
 			{"#expedition boss 6h", "Add/Update Target Boss"},
 			{"#expedition publish", "Publish"},
 			{"#expedition menu", "Refresh Checklist"}
@@ -650,6 +666,13 @@ namespace {
 		return zone_id ? fmt::format("{} ({})", ZoneName(zone_id, true), zone_id) : "unset";
 	}
 
+	std::string ZoneVersionLabel(uint32_t zone_id, int32_t zone_version)
+	{
+		return zone_version == -1 ?
+			fmt::format("{}:*", ZoneLabel(zone_id)) :
+			fmt::format("{}:{}", ZoneLabel(zone_id), zone_version);
+	}
+
 	std::string NpcTypeName(uint32_t npc_type_id)
 	{
 		if (npc_type_id == 0) {
@@ -709,7 +732,7 @@ namespace {
 	bool HasCompletionNpc(const ExpeditionDB::Event& event_data)
 	{
 		return std::ranges::any_of(event_data.npcs, [](const ExpeditionDB::EventNpc& event_npc) {
-			return event_npc.npc_type_id != 0 && event_npc.complete_on_death;
+			return event_npc.npc_type_id != 0 && (event_npc.complete_on_death || event_npc.complete_on_spawn);
 		});
 	}
 
@@ -737,7 +760,10 @@ namespace {
 			if (IsBossCompletionEvent(event_data)) {
 				for (const auto& event_npc : event_data.npcs) {
 					if (event_npc.npc_type_id != 0 && event_npc.complete_on_death) {
-						names.push_back(BossEventName(event_data, event_npc));
+						names.push_back(fmt::format("{} (death)", BossEventName(event_data, event_npc)));
+					}
+					else if (event_npc.npc_type_id != 0 && event_npc.complete_on_spawn) {
+						names.push_back(fmt::format("{} (chest spawn)", event_data.event_name));
 					}
 				}
 			}
@@ -764,8 +790,7 @@ namespace {
 			const auto* event_npc = FindEventNpc(event_data, npc);
 			if (
 				event_npc &&
-				event_npc->complete_on_death &&
-				(Strings::EqualFold(event_npc->role, "boss") || event_data.lockout_seconds > 0)
+				(Strings::EqualFold(event_npc->role, "boss") || event_npc->complete_on_death || event_npc->complete_on_spawn || event_data.lockout_seconds > 0)
 			) {
 				return &event_data;
 			}
@@ -896,12 +921,16 @@ namespace {
 			}
 
 			for (const auto& event_npc : event_data.npcs) {
-				if (event_npc.npc_type_id == 0 || !event_npc.complete_on_death) {
+				if (event_npc.npc_type_id == 0 || (!event_npc.complete_on_death && !event_npc.complete_on_spawn && !Strings::EqualFold(event_npc.role, "boss"))) {
 					continue;
 				}
 
-				SendInfoLine(c, BossEventName(event_data, event_npc), fmt::format("{} | lockout {} | replay {}",
+				const std::string trigger =
+					event_npc.complete_on_spawn ? "spawn" :
+					(event_npc.complete_on_death ? "death" : "manual");
+				SendInfoLine(c, BossEventName(event_data, event_npc), fmt::format("{} | trigger {} | lockout {} | replay {}",
 					NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
+					trigger,
 					Duration(event_data.lockout_seconds),
 					Duration(event_data.replay_lockout_seconds)
 				));
@@ -932,7 +961,7 @@ namespace {
 				fmt::format(
 					"{} | zone {} | phrase {}",
 					NpcMappingLabel(request_npc.npc_type_id, request_npc.spawn2_id),
-					ZoneLabel(request_npc.zone_id),
+					ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version),
 					request_npc.phrase.empty() ? "(none)" : request_npc.phrase
 				)
 			);
@@ -952,17 +981,21 @@ namespace {
 			}
 
 			for (const auto& event_npc : event_data.npcs) {
-				if (event_npc.npc_type_id == 0 || !event_npc.complete_on_death) {
+				if (event_npc.npc_type_id == 0 || (!event_npc.complete_on_death && !event_npc.complete_on_spawn && !Strings::EqualFold(event_npc.role, "boss"))) {
 					continue;
 				}
 
 				const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
+				const std::string trigger =
+					event_npc.complete_on_spawn ? "spawn" :
+					(event_npc.complete_on_death ? "death" : "manual");
 				table += SnapshotRow(
 					fmt::format("Boss {}", boss_index++),
 					fmt::format(
-						"{} | event {} | lockout {} | replay {} | loot {}",
+						"{} | event {} | trigger {} | lockout {} | replay {} | loot {}",
 						NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
 						BossEventName(event_data, event_npc),
+						trigger,
 						Duration(event_data.lockout_seconds),
 						Duration(event_data.replay_lockout_seconds),
 						loot_protected ? "protected" : "not protected"
@@ -1187,7 +1220,9 @@ namespace {
 		SendSectionHeader(c, "Happy Path");
 		SendHelpLink(c, "#expedition setup \"Name\"", "create or select a disabled draft from your current zone/location");
 		SendHelpLink(c, "#expedition request [phrase]", "use targeted NPC as the request NPC");
-		SendHelpLink(c, "#expedition boss [lockout] [loot]", "add/update targeted NPC as a boss-specific completion and lockout");
+		SendHelpLink(c, "#expedition boss [lockout] [loot|chest]", "add/update targeted NPC as a boss-specific completion and lockout");
+		SendHelpLink(c, "#expedition chest [loot]", "use targeted dynamic chest as spawn-completion and loot NPC for selected event");
+		SendHelpLink(c, "#expedition chest type <npc_type_id> [loot]", "preconfigure a dynamic chest before it spawns");
 		SendHelpLink(c, "#expedition publish", "validate and enable when setup is ready");
 
 		SendSectionHeader(c, "Review");
@@ -1294,7 +1329,9 @@ namespace {
 		SendSectionHeader(c, "Target NPC Mapping");
 		SendHelpLink(c, "#expedition event npc", "add targeted NPC and infer role");
 		SendHelpLink(c, "#expedition event npc boss|add|chest", "add targeted NPC with explicit role");
+		SendHelpLink(c, "#expedition event npc remove confirm", "remove targeted NPC mapping from selected event");
 		SendHelpLink(c, "#expedition event completeondeath on|off", "toggle target death completion");
+		SendHelpLink(c, "#expedition event completeonspawn on|off", "toggle target spawn completion");
 		SendHelpLink(c, "#expedition event loot on|off", "toggle target loot protection");
 
 		SendSectionHeader(c, "Timing");
@@ -1493,7 +1530,7 @@ namespace {
 				"Request NPC type [{}] spawn [{}] zone [{}] phrase [{}] {}",
 				request_npc.npc_type_id,
 				request_npc.spawn2_id,
-				ZoneName(request_npc.zone_id, true),
+				ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version),
 				request_npc.phrase,
 				scripted ? "(has EVENT_SAY script; DB menu is additive)" : ""
 			).c_str());
@@ -1758,7 +1795,24 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 
-		if (const auto* existing_template = ExpeditionDB::FindTemplate(name)) {
+		const ExpeditionDB::Template* existing_template = nullptr;
+		for (const auto& [id, candidate] : ExpeditionDB::Templates()) {
+			if (
+				candidate.dz_template.zone_id == zone->GetZoneID() &&
+				candidate.dz_template.zone_version == zone->GetInstanceVersion() &&
+				(
+					Strings::EqualFold(candidate.name, name) ||
+					Strings::EqualFold(candidate.slug, name) ||
+					Strings::EqualFold(candidate.dz_template.name, name)
+				)
+			) {
+				if (!existing_template || (!existing_template->enabled && candidate.enabled) || (existing_template->enabled == candidate.enabled && candidate.id < existing_template->id)) {
+					existing_template = &candidate;
+				}
+			}
+		}
+
+		if (existing_template) {
 			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), existing_template->id);
 			c->Message(Chat::Green, fmt::format("Selected existing expedition [{}] ({}).", existing_template->id, existing_template->name).c_str());
 			ShowMenu(c);
@@ -1888,7 +1942,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			phrase = ExpeditionDB::kSimpleRequestPhrase;
 		}
 
-		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase);
+		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase, zone->GetInstanceVersion());
 		if (!request_npc_id) {
 			c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
 			return;
@@ -1902,8 +1956,9 @@ void command_expedition(Client* c, const Seperator* sep)
 
 	if (sub == "boss") {
 		if (strcasecmp(sep->arg[2], "help") == 0) {
-			c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot]");
+			c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot|chest]");
 			c->Message(Chat::White, "Example: #expedition boss 6h loot");
+			c->Message(Chat::White, "Example: #expedition boss 6h chest");
 			return;
 		}
 
@@ -1922,6 +1977,7 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		uint32_t lockout_seconds = ExpeditionDB::kSimpleBossLockoutSeconds;
 		int loot_mode = -1;
+		bool chest_completion = false;
 		for (int i = 2; i < 10 && sep->arg[i][0] != '\0'; ++i) {
 			if (IsLootArg(sep->arg[i])) {
 				loot_mode = 1;
@@ -1933,13 +1989,18 @@ void command_expedition(Client* c, const Seperator* sep)
 				continue;
 			}
 
+			if (IsChestArg(sep->arg[i])) {
+				chest_completion = true;
+				continue;
+			}
+
 			const uint32_t parsed_duration = ParseExpeditionDuration(sep->arg[i]);
 			if (parsed_duration) {
 				lockout_seconds = parsed_duration;
 				continue;
 			}
 
-			c->Message(Chat::Red, "Usage: #expedition boss [lockout] [loot|noloot]");
+			c->Message(Chat::Red, "Usage: #expedition boss [lockout] [loot|noloot|chest]");
 			return;
 		}
 
@@ -1968,24 +2029,109 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 
+		if (chest_completion && !ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), false)) {
+			c->Message(Chat::Red, fmt::format("Failed to set chest completion flow for event [{}].", event_name).c_str());
+			return;
+		}
+
 		if (loot_mode != -1 && !ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), loot_mode == 1)) {
 			c->Message(Chat::Red, fmt::format("Failed to set boss loot protection for event [{}].", event_name).c_str());
 			return;
 		}
 
 		c->Message(Chat::Green, fmt::format(
-			"Saved: boss [{}] completes [{}] with lockout [{}] and replay [{}].",
+			"Saved: boss [{}] uses event [{}] with lockout [{}] and replay [{}].",
 			NpcLabel(*npc),
 			event_name,
 			Duration(lockout_seconds),
 			Duration(ExpeditionDB::kSimpleBossReplaySeconds)
 		).c_str());
+		if (chest_completion) {
+			c->Message(Chat::Yellow, "Chest completion flow is enabled. Target the dynamic chest when it exists and use #expedition chest loot, or preconfigure it with #expedition chest type <npc_type_id>.");
+		}
 		if (loot_mode == 1) {
 			c->Message(Chat::Yellow, "Loot protection is enabled for this NPC type in the DB builder flow.");
 		}
 		else if (loot_mode == 0) {
 			c->Message(Chat::Yellow, "Loot protection is disabled for this boss mapping.");
 		}
+		ShowMenu(c);
+		return;
+	}
+
+	if (sub == "chest") {
+		if (strcasecmp(sep->arg[2], "help") == 0) {
+			c->Message(Chat::White, "Usage: #expedition chest [loot|noloot]");
+			c->Message(Chat::White, "Usage: #expedition chest type <npc_type_id> [loot|noloot]");
+			return;
+		}
+
+		const auto* template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		const auto* event_data = SelectedEvent(c, *template_data);
+		if (!event_data) {
+			c->Message(Chat::Red, "Add or select the boss event first. Use #expedition boss 6h chest after targeting the boss.");
+			return;
+		}
+
+		uint32_t npc_type_id = 0;
+		std::string npc_label;
+		int arg_index = 2;
+		if (Strings::EqualFold(sep->arg[2], "type")) {
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition chest type <npc_type_id> [loot|noloot]");
+				return;
+			}
+			npc_type_id = Strings::ToUnsignedInt(sep->arg[3]);
+			npc_label = NpcTypeLabel(npc_type_id);
+			arg_index = 4;
+		}
+		else {
+			NPC* npc = TargetNpc(c);
+			if (!npc) {
+				NeedTargetNpc(c);
+				c->Message(Chat::Yellow, "Target the dynamic loot chest, or use #expedition chest type <npc_type_id> before it spawns.");
+				return;
+			}
+			npc_type_id = npc->GetNPCTypeID();
+			npc_label = NpcLabel(*npc);
+		}
+
+		int loot_mode = 1;
+		for (int i = arg_index; i < 10 && sep->arg[i][0] != '\0'; ++i) {
+			if (IsLootArg(sep->arg[i])) {
+				loot_mode = 1;
+				continue;
+			}
+			if (IsNoLootArg(sep->arg[i])) {
+				loot_mode = 0;
+				continue;
+			}
+			c->Message(Chat::Red, "Usage: #expedition chest [loot|noloot] OR #expedition chest type <npc_type_id> [loot|noloot]");
+			return;
+		}
+
+		const uint32_t event_id = event_data->id;
+		if (
+			!ExpeditionDB::SetEventNpc(content_db, event_id, npc_type_id, 0, "chest") ||
+			!ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, event_id, npc_type_id, 0, false) ||
+			!ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, event_id, npc_type_id, 0, true) ||
+			!ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc_type_id, 0, loot_mode == 1)
+		) {
+			c->Message(Chat::Red, fmt::format("Failed to save loot chest setup for event [{}].", event_data->event_name).c_str());
+			return;
+		}
+
+		c->Message(Chat::Green, fmt::format(
+			"Saved: dynamic chest [{}] completes [{}] on spawn; loot protection [{}].",
+			npc_label,
+			event_data->event_name,
+			loot_mode == 1 ? "on" : "off"
+		).c_str());
 		ShowMenu(c);
 		return;
 	}
@@ -2086,7 +2232,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				NeedTargetNpc(c);
 				return;
 			}
-			ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), ExpeditionDB::kSimpleRequestPhrase);
+			ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), ExpeditionDB::kSimpleRequestPhrase, zone->GetInstanceVersion());
 			c->Message(Chat::Green, "Added targeted NPC as request NPC.");
 			SendScriptedRequestNpcWarning(c, *template_data, *npc);
 		}
@@ -2359,7 +2505,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			SendSectionHeader(c, "Configured Request NPCs");
 			for (const auto& request_npc : template_data->request_npcs) {
 				c->Message(Chat::White, ChatSeparator());
-				SendInfoLine(c, "NPC", fmt::format("type {} | spawn {} | zone {}", request_npc.npc_type_id, request_npc.spawn2_id, ZoneLabel(request_npc.zone_id)));
+				SendInfoLine(c, "NPC", fmt::format("type {} | spawn {} | zone {}", request_npc.npc_type_id, request_npc.spawn2_id, ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version)));
 				SendInfoLine(c, "Phrase", request_npc.phrase);
 				SendInfoLine(c, "Enabled", OnOff(request_npc.enabled));
 			}
@@ -2392,7 +2538,7 @@ void command_expedition(Client* c, const Seperator* sep)
 		if (phrase.empty()) {
 			phrase = ExpeditionDB::kSimpleRequestPhrase;
 		}
-		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase);
+		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase, zone->GetInstanceVersion());
 		if (!request_npc_id) {
 			c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
 			return;
@@ -2596,7 +2742,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 
-		if (action == "npc" || action == "loot" || action == "completeondeath") {
+		if (action == "npc" || action == "loot" || action == "completeondeath" || action == "completeonspawn") {
 			NPC* npc = TargetNpc(c);
 			if (!npc) {
 				NeedTargetNpc(c);
@@ -2604,6 +2750,25 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 
 			if (action == "npc") {
+				if (Strings::EqualFold(sep->arg[3], "remove")) {
+					if (strcasecmp(sep->arg[4], "confirm") != 0) {
+						c->Message(Chat::Yellow, "Type #expedition event npc remove confirm to remove the targeted NPC mapping from the selected event.");
+						return;
+					}
+					const auto* mapped_npc = FindEventNpc(*event_data, *npc);
+					if (!mapped_npc) {
+						c->Message(Chat::Yellow, "Target is not mapped to the selected event.");
+						return;
+					}
+					if (!ExpeditionDB::DeleteEventNpc(content_db, selected_event_id, mapped_npc->npc_type_id, mapped_npc->spawn2_id)) {
+						c->Message(Chat::Red, fmt::format("Failed to remove target NPC mapping for event [{}].", selected_event_name).c_str());
+						return;
+					}
+					c->Message(Chat::Green, fmt::format("Saved: removed target NPC mapping from event [{}].", selected_event_name).c_str());
+					ShowMenu(c);
+					return;
+				}
+
 				std::string role = sep->arg[3][0] ? sep->arg[3] : ExpeditionDB::RoleFromTarget(*npc);
 				if (!Strings::EqualFold(role, "boss") && !Strings::EqualFold(role, "add") && !Strings::EqualFold(role, "chest")) {
 					c->Message(Chat::Red, "Usage: #expedition event npc boss|add|chest");
@@ -2626,15 +2791,21 @@ void command_expedition(Client* c, const Seperator* sep)
 					c->Message(Chat::Red, "Usage: #expedition event loot on|off");
 					return;
 				}
-				if (!FindEventNpc(*event_data, *npc)) {
+				uint32_t mapping_npc_type_id = npc->GetNPCTypeID();
+				uint32_t mapping_spawn2_id = npc->GetSpawnPointID();
+				if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
+					mapping_npc_type_id = mapped_npc->npc_type_id;
+					mapping_spawn2_id = mapped_npc->spawn2_id;
+				}
+				else {
 					const std::string inferred_role = ExpeditionDB::RoleFromTarget(*npc);
-					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), inferred_role)) {
+					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, inferred_role)) {
 						c->Message(Chat::Red, fmt::format("Failed to create target NPC mapping for event [{}].", selected_event_name).c_str());
 						return;
 					}
 					c->Message(Chat::Green, fmt::format("Saved: created event NPC mapping for [{}] as [{}].", NpcLabel(*npc), inferred_role).c_str());
 				}
-				if (!ExpeditionDB::SetEventNpcLoot(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled)) {
+				if (!ExpeditionDB::SetEventNpcLoot(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled)) {
 					c->Message(Chat::Red, fmt::format("Failed to set loot protection for event [{}].", selected_event_name).c_str());
 					return;
 				}
@@ -2648,25 +2819,35 @@ void command_expedition(Client* c, const Seperator* sep)
 			else {
 				bool enabled = true;
 				if (sep->arg[3][0] != '\0' && !ParseOnOffArg(sep->arg[3], enabled)) {
-					c->Message(Chat::Red, "Usage: #expedition event completeondeath on|off");
+					c->Message(Chat::Red, action == "completeonspawn" ? "Usage: #expedition event completeonspawn on|off" : "Usage: #expedition event completeondeath on|off");
 					return;
 				}
-				if (!FindEventNpc(*event_data, *npc)) {
+				uint32_t mapping_npc_type_id = npc->GetNPCTypeID();
+				uint32_t mapping_spawn2_id = npc->GetSpawnPointID();
+				if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
+					mapping_npc_type_id = mapped_npc->npc_type_id;
+					mapping_spawn2_id = mapped_npc->spawn2_id;
+				}
+				else {
 					const std::string inferred_role = ExpeditionDB::RoleFromTarget(*npc);
-					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), inferred_role)) {
+					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, inferred_role)) {
 						c->Message(Chat::Red, fmt::format("Failed to create target NPC mapping for event [{}].", selected_event_name).c_str());
 						return;
 					}
 					c->Message(Chat::Green, fmt::format("Saved: created event NPC mapping for [{}] as [{}].", NpcLabel(*npc), inferred_role).c_str());
 				}
-				if (!ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, selected_event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), enabled)) {
-					c->Message(Chat::Red, fmt::format("Failed to set complete-on-death for event [{}].", selected_event_name).c_str());
+				const bool ok = action == "completeonspawn" ?
+					ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled) :
+					ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled);
+				if (!ok) {
+					c->Message(Chat::Red, fmt::format("Failed to set completion trigger for event [{}].", selected_event_name).c_str());
 					return;
 				}
 				c->Message(Chat::Green, fmt::format(
-					"Saved: event [{}] target NPC [{}] complete-on-death is [{}].",
+					"Saved: event [{}] target NPC [{}] {} is [{}].",
 					selected_event_name,
 					NpcLabel(*npc),
+					action == "completeonspawn" ? "complete-on-spawn" : "complete-on-death",
 					OnOff(enabled)
 				).c_str());
 			}
@@ -2890,8 +3071,9 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			if (
-				!ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "chest") ||
-				!ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), true)
+				!ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), 0, "chest") ||
+				!ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, event_id, npc->GetNPCTypeID(), 0, true) ||
+				!ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc->GetNPCTypeID(), 0, true)
 			) {
 				c->Message(Chat::Red, fmt::format("Failed to apply loot chest preset to event [{}].", event_data->event_name).c_str());
 				return;

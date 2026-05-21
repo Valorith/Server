@@ -7433,13 +7433,14 @@ CREATE TABLE IF NOT EXISTS `expedition_template_request_npcs` (
 	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`expedition_template_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`zone_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`zone_version` INT(11) NOT NULL DEFAULT '-1',
 	`npc_type_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`spawn2_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
 	`enabled` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	PRIMARY KEY (`id`),
 	KEY `idx_expedition_request_template` (`expedition_template_id`),
-	KEY `idx_expedition_request_lookup` (`zone_id`, `npc_type_id`, `spawn2_id`)
+	KEY `idx_expedition_request_lookup` (`zone_id`, `zone_version`, `npc_type_id`, `spawn2_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 CREATE TABLE IF NOT EXISTS `expedition_template_events` (
@@ -7463,6 +7464,7 @@ CREATE TABLE IF NOT EXISTS `expedition_template_event_npcs` (
 	`spawn2_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`role` VARCHAR(32) NOT NULL DEFAULT '',
 	`complete_on_death` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`complete_on_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`loot_protected` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	PRIMARY KEY (`id`),
 	KEY `idx_expedition_event_npcs_event` (`event_id`),
@@ -7490,6 +7492,30 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 		.sql = R"(
 ALTER TABLE `expedition_templates`
 	ADD COLUMN IF NOT EXISTS `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only' AFTER `request_phrase`;
+)",
+	.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9344,
+		.description = "2026_05_21_expedition_versioned_requests_and_spawn_completion.sql",
+		.check = "SELECT 1 FROM information_schema.COLUMNS request_version "
+			"JOIN information_schema.COLUMNS spawn_completion ON spawn_completion.TABLE_SCHEMA = request_version.TABLE_SCHEMA "
+			"WHERE request_version.TABLE_SCHEMA = DATABASE() "
+			"AND request_version.TABLE_NAME = 'expedition_template_request_npcs' "
+			"AND request_version.COLUMN_NAME = 'zone_version' "
+			"AND spawn_completion.TABLE_NAME = 'expedition_template_event_npcs' "
+			"AND spawn_completion.COLUMN_NAME = 'complete_on_spawn'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_template_request_npcs`
+	ADD COLUMN IF NOT EXISTS `zone_version` INT(11) NOT NULL DEFAULT '-1' AFTER `zone_id`;
+
+DROP INDEX IF EXISTS `idx_expedition_request_lookup` ON `expedition_template_request_npcs`;
+CREATE INDEX `idx_expedition_request_lookup` ON `expedition_template_request_npcs` (`zone_id`, `zone_version`, `npc_type_id`, `spawn2_id`);
+
+ALTER TABLE `expedition_template_event_npcs`
+	ADD COLUMN IF NOT EXISTS `complete_on_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `complete_on_death`;
 )",
 		.content_schema_update = true
 	},

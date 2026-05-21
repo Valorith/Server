@@ -24,6 +24,7 @@
 #include "zone/bot.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
+#include "zone/expedition_db.h"
 #include "zone/guild_mgr.h"
 #include "zone/npc_scale_manager.h"
 #include "zone/petitions.h"
@@ -732,6 +733,8 @@ void EntityList::AddNPC(NPC *npc, bool send_spawn_packet, bool dont_queue)
 		std::vector<std::any> args = { npc };
 		parse->EventZone(EVENT_SPAWN_ZONE, zone, "", 0, &args);
 	}
+
+	ExpeditionDB::HandleNpcSpawn(*npc);
 
 	if (zone->HasMap() && zone->HasWaterMap()) {
 		npc->SetSpawnedInWater(false);

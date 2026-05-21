@@ -22,6 +22,7 @@ namespace ExpeditionDB {
 namespace {
 	std::unordered_map<uint32_t, Template> g_templates;
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
+	std::unordered_map<uint32_t, uint16_t> g_last_gm_target_menu_entity;
 
 	bool Truthy(const char* value)
 	{
@@ -128,6 +129,26 @@ namespace {
 		return value.empty() ? "expedition" : value;
 	}
 
+	std::string UniqueSlug(const std::string& name, uint32_t ignore_template_id = 0)
+	{
+		const std::string base_slug = Slugify(name);
+		std::string slug = base_slug;
+		uint32_t suffix = ignore_template_id ? ignore_template_id : 2;
+		bool conflict = true;
+		while (conflict) {
+			conflict = false;
+			for (const auto& [other_id, other_template] : g_templates) {
+				if (other_id != ignore_template_id && Strings::EqualFold(other_template.slug, slug)) {
+					slug = fmt::format("{}_{}", base_slug, suffix++);
+					conflict = true;
+					break;
+				}
+			}
+		}
+
+		return slug;
+	}
+
 	bool QueryOK(Database& db, const std::string& query)
 	{
 		auto results = db.QueryDatabase(query);
@@ -148,7 +169,7 @@ namespace {
 	{
 		std::vector<RequestNpc> out;
 		auto results = db.QueryDatabase(
-			"SELECT id, expedition_template_id, zone_id, npc_type_id, spawn2_id, phrase, enabled "
+			"SELECT id, expedition_template_id, zone_id, zone_version, npc_type_id, spawn2_id, phrase, enabled "
 			"FROM expedition_template_request_npcs"
 		);
 
@@ -161,10 +182,11 @@ namespace {
 			e.id = UInt(row[0]);
 			e.expedition_template_id = UInt(row[1]);
 			e.zone_id = UInt(row[2]);
-			e.npc_type_id = UInt(row[3]);
-			e.spawn2_id = UInt(row[4]);
-			e.phrase = NormalizePhrase(Text(row[5]));
-			e.enabled = Truthy(row[6]);
+			e.zone_version = Int(row[3]);
+			e.npc_type_id = UInt(row[4]);
+			e.spawn2_id = UInt(row[5]);
+			e.phrase = NormalizePhrase(Text(row[6]));
+			e.enabled = Truthy(row[7]);
 			out.push_back(e);
 		}
 
@@ -205,7 +227,7 @@ namespace {
 	{
 		std::vector<EventNpc> out;
 		auto results = db.QueryDatabase(
-			"SELECT id, event_id, npc_type_id, spawn2_id, role, complete_on_death, loot_protected "
+			"SELECT id, event_id, npc_type_id, spawn2_id, role, complete_on_death, complete_on_spawn, loot_protected "
 			"FROM expedition_template_event_npcs"
 		);
 
@@ -221,7 +243,8 @@ namespace {
 			e.spawn2_id = UInt(row[3]);
 			e.role = Text(row[4]);
 			e.complete_on_death = Truthy(row[5]);
-			e.loot_protected = Truthy(row[6]);
+			e.complete_on_spawn = Truthy(row[6]);
+			e.loot_protected = Truthy(row[7]);
 			out.push_back(e);
 		}
 
@@ -294,11 +317,32 @@ namespace {
 			return false;
 		}
 
+		if (configured.zone_version != -1 && configured.zone_version != static_cast<int32_t>(zone->GetInstanceVersion())) {
+			return false;
+		}
+
 		if (configured.spawn2_id != 0 && configured.spawn2_id != npc.GetSpawnPointID()) {
 			return false;
 		}
 
 		return configured.npc_type_id == npc.GetNPCTypeID();
+	}
+
+	int RequestNpcSpecificity(const RequestNpc& configured, NPC& npc)
+	{
+		if (!MatchRequestNpc(configured, npc)) {
+			return -1;
+		}
+
+		int score = 0;
+		if (configured.zone_version == static_cast<int32_t>(zone->GetInstanceVersion())) {
+			score += 2;
+		}
+		if (configured.spawn2_id != 0) {
+			score += 1;
+		}
+
+		return score;
 	}
 
 	std::string CommandWord(const std::string& message)
@@ -332,6 +376,11 @@ namespace {
 		return fmt::format("dbexpedition enter {}", template_id);
 	}
 
+	std::string LeaveMenuPhrase(uint32_t template_id)
+	{
+		return fmt::format("dbexpedition leave {}", template_id);
+	}
+
 	uint32_t RequestMenuTemplateId(const std::string& phrase)
 	{
 		static const std::string prefix = "dbexpedition request ";
@@ -345,6 +394,16 @@ namespace {
 	uint32_t EnterMenuTemplateId(const std::string& phrase)
 	{
 		static const std::string prefix = "dbexpedition enter ";
+		if (!phrase.starts_with(prefix)) {
+			return 0;
+		}
+
+		return Strings::ToUnsignedInt(phrase.substr(prefix.size()));
+	}
+
+	uint32_t LeaveMenuTemplateId(const std::string& phrase)
+	{
+		static const std::string prefix = "dbexpedition leave ";
 		if (!phrase.starts_with(prefix)) {
 			return 0;
 		}
@@ -436,6 +495,35 @@ namespace {
 		return true;
 	}
 
+	bool TryLeaveTemplateRequest(Client& client, const Template& template_data)
+	{
+		DynamicZone* expedition = client.GetExpedition();
+		if (!expedition) {
+			client.Message(Chat::Red, "No active expedition.");
+			return true;
+		}
+
+		if (!IsMatchingExpedition(*expedition, template_data)) {
+			client.Message(Chat::Red, "Already in another expedition.");
+			return true;
+		}
+
+		if (!expedition->IsCurrentZoneDz()) {
+			client.Message(Chat::Yellow, "Already outside instance.");
+			return true;
+		}
+
+		const auto& safe_return = expedition->GetSafeReturnLocation();
+		if (safe_return.zone_id == expedition->GetZoneID()) {
+			client.MovePC(expedition->GetZoneID(), 0, safe_return.x, safe_return.y, safe_return.z, safe_return.heading);
+			return true;
+		}
+
+		const glm::vec4 safe = ZoneStore::Instance()->GetZoneSafeCoordinates(expedition->GetZoneID(), expedition->GetZoneVersion());
+		client.MovePC(expedition->GetZoneID(), 0, safe.x, safe.y, safe.z, safe.w, 0, ZoneMode::ZoneToSafeCoords);
+		return true;
+	}
+
 	void OfferRequestMenu(Client& client, NPC& npc, const std::vector<std::pair<const Template*, const RequestNpc*>>& matches)
 	{
 		if (matches.empty()) {
@@ -455,7 +543,7 @@ namespace {
 			if (active_expedition) {
 				if (IsMatchingExpedition(*active_expedition, *template_data)) {
 					options.push_back(active_expedition->IsCurrentZoneDz() ?
-						fmt::format("-> Already inside{}", name_suffix) :
+						fmt::format("-> {}", Saylink::Silent(LeaveMenuPhrase(template_data->id), fmt::format("Leave Instance{}", name_suffix))) :
 						fmt::format("-> {}", Saylink::Silent(EnterMenuPhrase(template_data->id), fmt::format("Enter Expedition{}", name_suffix))));
 				}
 				else {
@@ -552,6 +640,33 @@ namespace {
 			}
 		}
 	}
+
+	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
+	{
+		const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
+		if (expedition.HasLockout(runtime_event_name)) {
+			return false;
+		}
+
+		bool handled = false;
+		if (event_data.lock_on_success && event_data.lockout_seconds > 0) {
+			expedition.AddLockout(runtime_event_name, event_data.lockout_seconds);
+			handled = true;
+		}
+
+		if (event_data.replay_lockout_seconds > 0) {
+			expedition.AddLockout(DzLockout::ReplayTimer, event_data.replay_lockout_seconds);
+			handled = true;
+		}
+
+		ExecuteActions(expedition, event_data, runtime_event_name);
+
+		if (notifier) {
+			notifier->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", runtime_event_name).c_str());
+		}
+
+		return handled;
+	}
 }
 
 std::string ValidationResult::StatusName() const
@@ -622,7 +737,7 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 		"VALUES ({}, '{}', '{}', 0, {}, 1, 0, '{}', '{}', '')",
 		dz_template_id,
 		escaped_name,
-		Escape(Slugify(name)),
+		Escape(UniqueSlug(name)),
 		kSimpleSetupReplaySeconds,
 		kSimpleRequestPhrase,
 		kSimpleRequestMode
@@ -681,8 +796,8 @@ uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::str
 
 	QueryOK(db, fmt::format(
 		"INSERT INTO expedition_template_request_npcs "
-		"(expedition_template_id, zone_id, npc_type_id, spawn2_id, phrase, enabled) "
-		"SELECT {}, zone_id, npc_type_id, spawn2_id, phrase, enabled FROM expedition_template_request_npcs WHERE expedition_template_id = {}",
+		"(expedition_template_id, zone_id, zone_version, npc_type_id, spawn2_id, phrase, enabled) "
+		"SELECT {}, zone_id, zone_version, npc_type_id, spawn2_id, phrase, enabled FROM expedition_template_request_npcs WHERE expedition_template_id = {}",
 		template_id,
 		source_template_id
 	));
@@ -709,13 +824,14 @@ uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::str
 		for (const auto& event_npc : event_data.npcs) {
 			QueryOK(db, fmt::format(
 				"INSERT INTO expedition_template_event_npcs "
-				"(event_id, npc_type_id, spawn2_id, role, complete_on_death, loot_protected) "
-				"VALUES ({}, {}, {}, '{}', {}, {})",
+				"(event_id, npc_type_id, spawn2_id, role, complete_on_death, complete_on_spawn, loot_protected) "
+				"VALUES ({}, {}, {}, '{}', {}, {}, {})",
 				event_id,
 				event_npc.npc_type_id,
 				event_npc.spawn2_id,
 				Escape(event_npc.role),
 				event_npc.complete_on_death ? 1 : 0,
+				event_npc.complete_on_spawn ? 1 : 0,
 				event_npc.loot_protected ? 1 : 0
 			));
 		}
@@ -770,20 +886,7 @@ bool SetTemplateName(Database& db, uint32_t template_id, const std::string& name
 		return false;
 	}
 
-	const std::string base_slug = Slugify(name);
-	std::string slug = base_slug;
-	uint32_t suffix = template_id;
-	bool conflict = true;
-	while (conflict) {
-		conflict = false;
-		for (const auto& [other_id, other_template] : g_templates) {
-			if (other_id != template_id && Strings::EqualFold(other_template.slug, slug)) {
-				slug = fmt::format("{}_{}", base_slug, suffix++);
-				conflict = true;
-				break;
-			}
-		}
-	}
+	const std::string slug = UniqueSlug(name, template_id);
 
 	const bool template_ok = QueryOK(db, fmt::format(
 		"UPDATE expedition_templates SET name = '{}', slug = '{}' WHERE id = {}",
@@ -917,14 +1020,15 @@ bool SetDzTemplateSwitchID(Database& db, uint32_t dz_template_id, uint32_t switc
 	return ok;
 }
 
-uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase)
+uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase, int32_t zone_version)
 {
 	const std::string normalized = NormalizePhrase(phrase);
 	auto results = db.QueryDatabase(fmt::format(
 		"SELECT id FROM expedition_template_request_npcs "
-		"WHERE expedition_template_id = {} AND zone_id = {} AND npc_type_id = {} AND spawn2_id = {} LIMIT 1",
+		"WHERE expedition_template_id = {} AND zone_id = {} AND zone_version = {} AND npc_type_id = {} AND spawn2_id = {} LIMIT 1",
 		template_id,
 		zone_id,
+		zone_version,
 		npc_type_id,
 		spawn2_id
 	));
@@ -943,10 +1047,11 @@ uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, 
 
 	const uint32_t id = InsertID(db, fmt::format(
 		"INSERT INTO expedition_template_request_npcs "
-		"(expedition_template_id, zone_id, npc_type_id, spawn2_id, phrase, enabled) "
-		"VALUES ({}, {}, {}, {}, '{}', 1)",
+		"(expedition_template_id, zone_id, zone_version, npc_type_id, spawn2_id, phrase, enabled) "
+		"VALUES ({}, {}, {}, {}, {}, '{}', 1)",
 		template_id,
 		zone_id,
+		zone_version,
 		npc_type_id,
 		spawn2_id,
 		Escape(normalized)
@@ -1031,7 +1136,7 @@ bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t
 		auto row = results.begin();
 		const bool completes_on_death = Strings::EqualFold(role, "boss");
 		const bool ok = QueryOK(db, fmt::format(
-			"UPDATE expedition_template_event_npcs SET role = '{}', complete_on_death = {} WHERE id = {}",
+			"UPDATE expedition_template_event_npcs SET role = '{}', complete_on_death = {}, complete_on_spawn = 0 WHERE id = {}",
 			Escape(role),
 			completes_on_death ? 1 : 0,
 			UInt(row[0])
@@ -1043,8 +1148,8 @@ bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t
 	const bool completes_on_death = Strings::EqualFold(role, "boss");
 	const bool ok = InsertID(db, fmt::format(
 		"INSERT INTO expedition_template_event_npcs "
-		"(event_id, npc_type_id, spawn2_id, role, complete_on_death, loot_protected) "
-		"VALUES ({}, {}, {}, '{}', {}, 0)",
+		"(event_id, npc_type_id, spawn2_id, role, complete_on_death, complete_on_spawn, loot_protected) "
+		"VALUES ({}, {}, {}, '{}', {}, 0, 0)",
 		event_id,
 		npc_type_id,
 		spawn2_id,
@@ -1073,6 +1178,31 @@ bool SetEventNpcCompleteOnDeath(Database& db, uint32_t event_id, uint32_t npc_ty
 	const bool ok = QueryOK(db, fmt::format(
 		"UPDATE expedition_template_event_npcs SET complete_on_death = {} WHERE event_id = {} AND npc_type_id = {} AND spawn2_id = {}",
 		enabled ? 1 : 0,
+		event_id,
+		npc_type_id,
+		spawn2_id
+	));
+	Reload(db);
+	return ok;
+}
+
+bool SetEventNpcCompleteOnSpawn(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled)
+{
+	const bool ok = QueryOK(db, fmt::format(
+		"UPDATE expedition_template_event_npcs SET complete_on_spawn = {} WHERE event_id = {} AND npc_type_id = {} AND spawn2_id = {}",
+		enabled ? 1 : 0,
+		event_id,
+		npc_type_id,
+		spawn2_id
+	));
+	Reload(db);
+	return ok;
+}
+
+bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	const bool ok = QueryOK(db, fmt::format(
+		"DELETE FROM expedition_template_event_npcs WHERE event_id = {} AND npc_type_id = {} AND spawn2_id = {}",
 		event_id,
 		npc_type_id,
 		spawn2_id
@@ -1347,7 +1477,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 				result.errors.push_back(fmt::format("Event [{}] has an NPC mapping without an NPC type.", event_data.event_name));
 			}
 
-			if (event_npc.spawn2_id == 0) {
+			if (event_npc.spawn2_id == 0 && !event_npc.complete_on_spawn) {
 				result.warnings.push_back(fmt::format("Event [{}] maps NPC [{}] without a spawn-specific id.", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
 			}
 
@@ -1356,6 +1486,30 @@ ValidationResult ValidateTemplate(const Template& template_data)
 				(parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH) || parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH_COMPLETE))
 			) {
 				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", NpcTypeLabel(event_npc.npc_type_id)));
+			}
+		}
+	}
+
+	for (const auto& event_data : template_data.events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (!event_npc.complete_on_spawn || event_npc.npc_type_id == 0) {
+				continue;
+			}
+
+			uint32_t duplicate_count = 0;
+			for (const auto& other_event : template_data.events) {
+				for (const auto& other_npc : other_event.npcs) {
+					if (other_npc.complete_on_spawn && other_npc.npc_type_id == event_npc.npc_type_id) {
+						duplicate_count++;
+					}
+				}
+			}
+
+			if (duplicate_count > 1) {
+				result.warnings.push_back(fmt::format(
+					"Dynamic spawn-completion NPC [{}] appears in multiple events; use a unique chest NPC type per event when spawn IDs are unavailable.",
+					NpcTypeLabel(event_npc.npc_type_id)
+				));
 			}
 		}
 	}
@@ -1437,7 +1591,9 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 	const bool is_hail = IsHailMessage(message);
 	const uint32_t menu_template_id = RequestMenuTemplateId(phrase);
 	const uint32_t enter_template_id = EnterMenuTemplateId(phrase);
+	const uint32_t leave_template_id = LeaveMenuTemplateId(phrase);
 	std::vector<std::pair<const Template*, const RequestNpc*>> matches;
+	std::vector<int> match_scores;
 
 	for (const auto& [template_id, template_data] : g_templates) {
 		if (!template_data.enabled) {
@@ -1448,36 +1604,61 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 			continue;
 		}
 
+		const uint32_t current_template_id = template_id;
 		for (const auto& request_npc : template_data.request_npcs) {
-			if (!request_npc.enabled || !MatchRequestNpc(request_npc, npc)) {
+			const int specificity = request_npc.enabled ? RequestNpcSpecificity(request_npc, npc) : -1;
+			if (specificity < 0) {
 				continue;
 			}
 
-			matches.push_back({ &template_data, &request_npc });
+			auto existing = std::ranges::find_if(matches, [&](const auto& match) {
+				return match.first && match.first->id == current_template_id;
+			});
+			if (existing == matches.end()) {
+				matches.push_back({ &template_data, &request_npc });
+				match_scores.push_back(specificity);
+			}
+			else {
+				const auto index = static_cast<size_t>(std::distance(matches.begin(), existing));
+				if (specificity > match_scores[index]) {
+					matches[index] = { &template_data, &request_npc };
+					match_scores[index] = specificity;
+				}
+			}
+		}
+	}
 
-			if (is_hail) {
+	if (!is_hail) {
+		for (const auto& [template_data, request_npc] : matches) {
+			if (!template_data || !request_npc) {
 				continue;
 			}
 
 			if (menu_template_id != 0) {
-				if (menu_template_id == template_id) {
-					return TryCreateTemplateRequest(client, template_data);
+				if (menu_template_id == template_data->id) {
+					return TryCreateTemplateRequest(client, *template_data);
 				}
-
 				continue;
 			}
 
 			if (enter_template_id != 0) {
-				if (enter_template_id == template_id) {
-					return TryEnterTemplateRequest(client, template_data);
+				if (enter_template_id == template_data->id) {
+					return TryEnterTemplateRequest(client, *template_data);
+				}
+				continue;
+			}
+
+			if (leave_template_id != 0) {
+				if (leave_template_id == template_data->id) {
+					return TryLeaveTemplateRequest(client, *template_data);
 				}
 
 				continue;
 			}
 
-			const std::string request_phrase = RequestPhrase(template_data, request_npc);
+			const std::string request_phrase = RequestPhrase(*template_data, *request_npc);
 			if (phrase == request_phrase || phrase == fmt::format("start {}", request_phrase)) {
-				return TryCreateTemplateRequest(client, template_data);
+				return TryCreateTemplateRequest(client, *template_data);
 			}
 		}
 	}
@@ -1513,30 +1694,124 @@ bool HandleNpcDeath(NPC& npc, Client* killer)
 				continue;
 			}
 
-			const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
-			if (expedition->HasLockout(runtime_event_name)) {
-				continue;
-			}
-
-			if (event_data.lock_on_success && event_data.lockout_seconds > 0) {
-				expedition->AddLockout(runtime_event_name, event_data.lockout_seconds);
-				handled = true;
-			}
-
-			if (event_data.replay_lockout_seconds > 0) {
-				expedition->AddLockout(DzLockout::ReplayTimer, event_data.replay_lockout_seconds);
-				handled = true;
-			}
-
-			ExecuteActions(*expedition, event_data, runtime_event_name);
-
-			if (killer) {
-				killer->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", runtime_event_name).c_str());
-			}
+			handled = CompleteEventForNpc(*expedition, event_data, event_npc, killer) || handled;
 		}
 	}
 
 	return handled;
+}
+
+bool HandleNpcSpawn(NPC& npc)
+{
+	if (!zone) {
+		return false;
+	}
+
+	DynamicZone* expedition = zone->GetDynamicZone();
+	if (!expedition || !expedition->IsExpedition()) {
+		return false;
+	}
+
+	const Template* template_data = FindTemplateByDz(*expedition);
+	if (!template_data) {
+		return false;
+	}
+
+	bool handled = false;
+	for (const auto& event_data : template_data->events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (!event_npc.complete_on_spawn || !MatchNpc(event_npc, npc)) {
+				continue;
+			}
+
+			handled = CompleteEventForNpc(*expedition, event_data, event_npc, nullptr) || handled;
+		}
+	}
+
+	return handled;
+}
+
+void MaybeShowGmTargetMenu(Client& client, NPC& npc)
+{
+	if (!client.GetGM()) {
+		return;
+	}
+
+	const uint16_t entity_id = npc.GetID();
+	auto last_it = g_last_gm_target_menu_entity.find(client.CharacterID());
+	if (last_it != g_last_gm_target_menu_entity.end() && last_it->second == entity_id) {
+		return;
+	}
+	g_last_gm_target_menu_entity[client.CharacterID()] = entity_id;
+
+	std::vector<const Template*> candidates;
+	if (const auto* selected_template = FindTemplate(GetBuilderState(client.CharacterID()).selected_template_id)) {
+		candidates.push_back(selected_template);
+	}
+
+	if (DynamicZone* expedition = zone ? zone->GetDynamicZone() : nullptr) {
+		if (expedition->IsExpedition()) {
+			if (const auto* runtime_template = FindTemplateByDz(*expedition)) {
+				if (std::ranges::find(candidates, runtime_template) == candidates.end()) {
+					candidates.push_back(runtime_template);
+				}
+			}
+		}
+	}
+
+	for (const auto* template_data : candidates) {
+		if (!template_data) {
+			continue;
+		}
+
+		for (const auto& event_data : template_data->events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (!MatchNpc(event_npc, npc)) {
+					continue;
+				}
+
+				const bool is_chest = Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn;
+				const std::string header = is_chest ? "[Expedition Chest]" : "[Expedition Boss]";
+				const std::string trigger =
+					event_npc.complete_on_spawn ? "spawn" :
+					(event_npc.complete_on_death ? "death" : "manual");
+				const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
+				SetSelectedTemplate(client.CharacterID(), template_data->id);
+				SetSelectedEvent(client.CharacterID(), event_data.id);
+
+				client.Message(Chat::NPCQuestSay, header.c_str());
+				client.Message(Chat::NPCQuestSay, fmt::format(
+					"{} ({}) | event {} [{}] | trigger {} | lockout {} | replay {} | loot {}",
+					npc.GetCleanName(),
+					npc.GetNPCTypeID(),
+					event_data.event_name,
+					event_data.id,
+					trigger,
+					Strings::SecondsToTime(event_data.lockout_seconds),
+					Strings::SecondsToTime(event_data.replay_lockout_seconds),
+					loot_protected ? "on" : "off"
+				).c_str());
+				client.Message(Chat::NPCQuestSay, fmt::format(
+					"-> {} | {} | {}",
+					Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "Select Event"),
+					Saylink::Silent("#expedition menu", "Builder Menu"),
+					Saylink::Silent("#expedition event lockout 6h", "Set 6h")
+				).c_str());
+				client.Message(Chat::NPCQuestSay, fmt::format(
+					"-> {} | {} | {}",
+					Saylink::Silent(fmt::format("#expedition event loot {}", loot_protected ? "off" : "on"), loot_protected ? "Loot Off" : "Loot On"),
+					Saylink::Silent(fmt::format("#expedition event completeondeath {}", event_npc.complete_on_death ? "off" : "on"), event_npc.complete_on_death ? "Death Off" : "Death On"),
+					Saylink::Silent(fmt::format("#expedition event completeonspawn {}", event_npc.complete_on_spawn ? "off" : "on"), event_npc.complete_on_spawn ? "Spawn Off" : "Spawn On")
+				).c_str());
+				client.Message(Chat::NPCQuestSay, fmt::format(
+					"-> {} | {}",
+					Saylink::Silent("#expedition event rename", "Rename Event"),
+					Saylink::Silent("#expedition event npc remove confirm", "Remove Mapping")
+				).c_str());
+				return;
+			}
+		}
+	}
 }
 
 void ApplyLootEvents(DynamicZone& expedition)

@@ -29,6 +29,7 @@ struct RequestNpc {
 	uint32_t id = 0;
 	uint32_t expedition_template_id = 0;
 	uint32_t zone_id = 0;
+	int32_t zone_version = -1;
 	uint32_t npc_type_id = 0;
 	uint32_t spawn2_id = 0;
 	std::string phrase = "expedition";
@@ -42,6 +43,7 @@ struct EventNpc {
 	uint32_t spawn2_id = 0;
 	std::string role;
 	bool complete_on_death = false;
+	bool complete_on_spawn = false;
 	bool loot_protected = false;
 };
 
@@ -119,7 +121,7 @@ bool SetDzTemplateZoneIn(Database& db, uint32_t dz_template_id, float x, float y
 bool SetDzTemplateSafeReturn(Database& db, uint32_t dz_template_id, uint32_t zone_id, float x, float y, float z, float h);
 bool SetDzTemplateCompass(Database& db, uint32_t dz_template_id, uint32_t zone_id, float x, float y, float z);
 bool SetDzTemplateSwitchID(Database& db, uint32_t dz_template_id, uint32_t switch_id);
-uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase);
+uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase, int32_t zone_version = -1);
 bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id);
 uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name);
 bool DeleteEvent(Database& db, uint32_t event_id);
@@ -129,6 +131,8 @@ bool SetEventReplay(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& role);
 bool SetEventNpcLoot(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
 bool SetEventNpcCompleteOnDeath(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
+bool SetEventNpcCompleteOnSpawn(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
+bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id);
 uint32_t AddAction(Database& db, uint32_t event_id, const std::string& action_type, const std::string& action_value);
 bool ClearActions(Database& db, uint32_t event_id);
 
@@ -146,6 +150,8 @@ bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_da
 bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled);
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
 bool HandleNpcDeath(NPC& npc, Client* killer);
+bool HandleNpcSpawn(NPC& npc);
+void MaybeShowGmTargetMenu(Client& client, NPC& npc);
 void ApplyLootEvents(DynamicZone& expedition);
 
 BuilderState& GetBuilderState(uint32_t character_id);

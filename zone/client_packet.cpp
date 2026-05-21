@@ -44,6 +44,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
 #include "zone/event_codes.h"
+#include "zone/expedition_db.h"
 #include "zone/gm_commands/door_manipulation.h"
 #include "zone/gm_commands/object_manipulation.h"
 #include "zone/guild_mgr.h"
@@ -15139,6 +15140,9 @@ void Client::Handle_OP_TargetMouse(const EQApplicationPacket *app)
 	{
 		if (GetGM())
 		{
+			if (GetTarget()->IsNPC()) {
+				ExpeditionDB::MaybeShowGmTargetMenu(*this, *GetTarget()->CastToNPC());
+			}
 			GetTarget()->IsTargeted(1);
 			return;
 		}
