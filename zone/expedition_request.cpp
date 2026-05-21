@@ -320,7 +320,7 @@ bool ExpeditionRequest::IsPlayerCountValidated()
 		});
 	}
 
-	if (gm_bypass) {
+	if (gm_bypass && !m_silent) {
 		m_requester->Message(Chat::White, "Your GM Status allows you to bypass expedition minimum and maximum player restrictions.");
 	}
 

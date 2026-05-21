@@ -15,6 +15,16 @@ class NPC;
 
 namespace ExpeditionDB {
 
+inline constexpr uint32_t kSimpleSetupMinPlayers = 1;
+inline constexpr uint32_t kSimpleSetupMaxPlayers = 6;
+inline constexpr uint32_t kSimpleSetupDurationSeconds = 21600;
+inline constexpr uint32_t kSimpleSetupReplaySeconds = 7200;
+inline constexpr uint32_t kSimpleBossLockoutSeconds = 21600;
+inline constexpr uint32_t kSimpleBossReplaySeconds = 7200;
+inline constexpr const char* kSimpleRequestPhrase = "expedition";
+inline constexpr const char* kSimpleRequestMode = "db_only";
+inline constexpr const char* kSimpleBossEventName = "Boss Defeated";
+
 struct RequestNpc {
 	uint32_t id = 0;
 	uint32_t expedition_template_id = 0;

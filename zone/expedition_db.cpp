@@ -1,6 +1,7 @@
 #include "expedition_db.h"
 
 #include "common/repositories/dynamic_zone_templates_repository.h"
+#include "common/say_link.h"
 #include "common/strings.h"
 #include "common/zone_store.h"
 #include "zone/client.h"
@@ -45,6 +46,31 @@ namespace {
 	std::string Text(const char* value)
 	{
 		return value ? value : "";
+	}
+
+	std::string NpcTypeName(uint32_t npc_type_id)
+	{
+		if (npc_type_id == 0) {
+			return "";
+		}
+
+		std::string name = content_db.GetCleanNPCNameByID(npc_type_id);
+		if (name.empty()) {
+			name = content_db.GetNPCNameByID(npc_type_id);
+			Strings::FindReplace(name, "_", " ");
+			Strings::Trim(name);
+		}
+
+		return name.empty() ? "unknown NPC" : name;
+	}
+
+	std::string NpcTypeLabel(uint32_t npc_type_id)
+	{
+		if (npc_type_id == 0) {
+			return "unset";
+		}
+
+		return fmt::format("{} ({})", NpcTypeName(npc_type_id), npc_type_id);
 	}
 
 	std::string Escape(const std::string& value)
@@ -285,14 +311,198 @@ namespace {
 		return text;
 	}
 
-	std::pair<std::string, uint32_t> ParseLockoutActionValue(const std::string& value, const Event& event_data)
+	bool IsHailMessage(const std::string& message)
+	{
+		const auto text = NormalizePhrase(message);
+		return text.starts_with("hail");
+	}
+
+	std::string RequestPhrase(const Template& template_data, const RequestNpc& request_npc)
+	{
+		return NormalizePhrase(request_npc.phrase.empty() ? template_data.request_phrase : request_npc.phrase);
+	}
+
+	std::string RequestMenuPhrase(uint32_t template_id)
+	{
+		return fmt::format("dbexpedition request {}", template_id);
+	}
+
+	std::string EnterMenuPhrase(uint32_t template_id)
+	{
+		return fmt::format("dbexpedition enter {}", template_id);
+	}
+
+	uint32_t RequestMenuTemplateId(const std::string& phrase)
+	{
+		static const std::string prefix = "dbexpedition request ";
+		if (!phrase.starts_with(prefix)) {
+			return 0;
+		}
+
+		return Strings::ToUnsignedInt(phrase.substr(prefix.size()));
+	}
+
+	uint32_t EnterMenuTemplateId(const std::string& phrase)
+	{
+		static const std::string prefix = "dbexpedition enter ";
+		if (!phrase.starts_with(prefix)) {
+			return 0;
+		}
+
+		return Strings::ToUnsignedInt(phrase.substr(prefix.size()));
+	}
+
+	bool IsMatchingExpedition(DynamicZone& expedition, const Template& template_data)
+	{
+		DynamicZone dz = BuildDynamicZone(template_data);
+		return Strings::EqualFold(expedition.GetName(), dz.GetName()) &&
+			expedition.GetZoneID() == dz.GetZoneID() &&
+			expedition.GetZoneVersion() == dz.GetZoneVersion();
+	}
+
+	std::string RequestFailureLabel(const ExpeditionCheckResult& check)
+	{
+		if (check.reason == "member_already_in_expedition") {
+			return "already in an expedition";
+		}
+
+		if (check.reason == "replay_lockout") {
+			return "replay timer active";
+		}
+
+		if (check.reason == "event_lockout_conflict") {
+			return "event lockout conflict";
+		}
+
+		if (check.reason == "player_count") {
+			return fmt::format("need {}-{} players", check.min_players, check.max_players);
+		}
+
+		if (check.reason == "no_members") {
+			return "no eligible members";
+		}
+
+		if (check.reason == "member_lookup_failed") {
+			return "member lookup failed";
+		}
+
+		return "request unavailable";
+	}
+
+	bool TryCreateTemplateRequest(Client& client, const Template& template_data)
+	{
+		DynamicZone dz = BuildDynamicZone(template_data);
+		const auto check = CheckExpeditionRequest(client, dz, true);
+		if (!check.success) {
+			if (!template_data.silent) {
+				client.Message(Chat::Red, fmt::format("Cannot create expedition: {}.", RequestFailureLabel(check)).c_str());
+			}
+			return true;
+		}
+
+		if (DynamicZone* expedition = CreateExpeditionFromTemplate(client, template_data)) {
+			expedition->MovePCInto(&client, true);
+			return true;
+		}
+
+		if (!template_data.silent) {
+			client.Message(Chat::Red, "Unable to create that expedition right now.");
+		}
+		return true;
+	}
+
+	bool TryEnterTemplateRequest(Client& client, const Template& template_data)
+	{
+		DynamicZone* expedition = client.GetExpedition();
+		if (!expedition) {
+			client.Message(Chat::Red, "No active expedition.");
+			return true;
+		}
+
+		if (!IsMatchingExpedition(*expedition, template_data)) {
+			client.Message(Chat::Red, "Already in another expedition.");
+			return true;
+		}
+
+		if (expedition->IsCurrentZoneDz()) {
+			client.Message(Chat::Yellow, "Already inside expedition.");
+			return true;
+		}
+
+		if (!client.MovePCExpedition(false)) {
+			client.Message(Chat::Red, "Cannot enter expedition.");
+		}
+
+		return true;
+	}
+
+	void OfferRequestMenu(Client& client, NPC& npc, const std::vector<std::pair<const Template*, const RequestNpc*>>& matches)
+	{
+		if (matches.empty()) {
+			return;
+		}
+
+		const bool include_template_name = matches.size() > 1;
+		DynamicZone* active_expedition = client.GetExpedition();
+		std::vector<std::string> options;
+		options.reserve(matches.size());
+		for (const auto& [template_data, request_npc] : matches) {
+			if (!template_data || !request_npc) {
+				continue;
+			}
+
+			const std::string name_suffix = include_template_name ? fmt::format(" {}", template_data->name) : "";
+			if (active_expedition) {
+				if (IsMatchingExpedition(*active_expedition, *template_data)) {
+					options.push_back(active_expedition->IsCurrentZoneDz() ?
+						fmt::format("-> Already inside{}", name_suffix) :
+						fmt::format("-> {}", Saylink::Silent(EnterMenuPhrase(template_data->id), fmt::format("Enter Expedition{}", name_suffix))));
+				}
+				else {
+					options.push_back(fmt::format("-> Already in another expedition"));
+				}
+				continue;
+			}
+
+			options.push_back(fmt::format(
+				"-> {}",
+				Saylink::Silent(RequestMenuPhrase(template_data->id), fmt::format("Create Expedition{}", name_suffix))
+			));
+		}
+
+		if (options.empty()) {
+			return;
+		}
+
+		client.Message(Chat::NPCQuestSay, "[Expedition Menu]");
+		for (const auto& option : options) {
+			client.Message(Chat::NPCQuestSay, "%s", option.c_str());
+		}
+	}
+
+	std::string BossEventName(const EventNpc& event_npc)
+	{
+		std::string boss_name = NpcTypeName(event_npc.npc_type_id);
+		return boss_name.empty() ? kSimpleBossEventName : fmt::format("{} Defeated", boss_name);
+	}
+
+	std::string RuntimeEventName(const Event& event_data, const EventNpc& event_npc)
+	{
+		if (Strings::EqualFold(event_data.event_name, kSimpleBossEventName)) {
+			return BossEventName(event_npc);
+		}
+
+		return event_data.event_name;
+	}
+
+	std::pair<std::string, uint32_t> ParseLockoutActionValue(const std::string& value, const std::string& default_event_name)
 	{
 		auto parts = Strings::Split(value, "|");
 		if (parts.size() >= 2) {
 			return { parts[0], Strings::ToUnsignedInt(parts[1]) };
 		}
 
-		return { event_data.event_name, Strings::ToUnsignedInt(value) };
+		return { default_event_name, Strings::ToUnsignedInt(value) };
 	}
 
 	void MessageMembers(DynamicZone& expedition, const std::string& message)
@@ -304,7 +514,7 @@ namespace {
 		}
 	}
 
-	void ExecuteActions(DynamicZone& expedition, const Event& event_data)
+	void ExecuteActions(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name)
 	{
 		for (const auto& action : event_data.actions) {
 			if (Strings::EqualFold(action.action_type, "lock")) {
@@ -314,7 +524,7 @@ namespace {
 				expedition.SetLocked(false, true);
 			}
 			else if (Strings::EqualFold(action.action_type, "add_lockout")) {
-				const auto [event_name, seconds] = ParseLockoutActionValue(action.action_value, event_data);
+				const auto [event_name, seconds] = ParseLockoutActionValue(action.action_value, runtime_event_name);
 				if (!event_name.empty() && seconds > 0) {
 					expedition.AddLockout(event_name, seconds);
 				}
@@ -380,10 +590,13 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 		"(zone_id, zone_version, name, min_players, max_players, duration_seconds, dz_switch_id, "
 		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
 		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h) "
-		"VALUES ({}, {}, '{}', 1, 6, 21600, 0, {}, {}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
+		"VALUES ({}, {}, '{}', {}, {}, {}, 0, {}, {}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
 		zone->GetZoneID(),
 		zone->GetInstanceVersion(),
 		escaped_name,
+		kSimpleSetupMinPlayers,
+		kSimpleSetupMaxPlayers,
+		kSimpleSetupDurationSeconds,
 		zone->GetZoneID(),
 		pos.x,
 		pos.y,
@@ -406,10 +619,13 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 	const uint32_t template_id = InsertID(db, fmt::format(
 		"INSERT INTO expedition_templates "
 		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes) "
-		"VALUES ({}, '{}', '{}', 0, 0, 1, 0, 'expedition', 'db_only', '')",
+		"VALUES ({}, '{}', '{}', 0, {}, 1, 0, '{}', '{}', '')",
 		dz_template_id,
 		escaped_name,
-		Escape(Slugify(name))
+		Escape(Slugify(name)),
+		kSimpleSetupReplaySeconds,
+		kSimpleRequestPhrase,
+		kSimpleRequestMode
 	));
 
 	if (!template_id) {
@@ -1058,7 +1274,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.errors.push_back("Duration must be greater than zero.");
 	}
 
-	if (template_data.dz_template.min_players < 0 || template_data.dz_template.max_players < template_data.dz_template.min_players) {
+	if (template_data.dz_template.min_players == 0 || template_data.dz_template.max_players < template_data.dz_template.min_players) {
 		result.errors.push_back("Player minimum and maximum are invalid.");
 	}
 
@@ -1079,9 +1295,8 @@ ValidationResult ValidateTemplate(const Template& template_data)
 			result.errors.push_back("Request NPC entry is missing an NPC type.");
 		}
 
-		if (template_data.request_mode == "db_only" && parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY)) {
-			result.warnings.push_back(fmt::format("Request NPC [{}] already has an EVENT_SAY quest script.", request_npc.npc_type_id));
-		}
+		// DB request menus are additive after EVENT_SAY scripts run, so scripted
+		// request NPCs are valid and keep their existing quest behavior.
 	}
 
 	if (template_data.request_mode == "script_only" && !template_data.request_npcs.empty()) {
@@ -1133,22 +1348,14 @@ ValidationResult ValidateTemplate(const Template& template_data)
 			}
 
 			if (event_npc.spawn2_id == 0) {
-				result.warnings.push_back(fmt::format("Event [{}] maps NPC type [{}] without a spawn-specific id.", event_data.event_name, event_npc.npc_type_id));
-			}
-
-			if (event_npc.loot_protected && event_npc.spawn2_id != 0) {
-				result.warnings.push_back(fmt::format(
-					"Event [{}] has spawn-specific loot protection for spawn [{}]; automatic DB loot protection currently applies only NPC-type mappings.",
-					event_data.event_name,
-					event_npc.spawn2_id
-				));
+				result.warnings.push_back(fmt::format("Event [{}] maps NPC [{}] without a spawn-specific id.", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
 			}
 
 			if (
 				parse &&
 				(parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH) || parse->HasQuestSub(event_npc.npc_type_id, EVENT_DEATH_COMPLETE))
 			) {
-				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", event_npc.npc_type_id));
+				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", NpcTypeLabel(event_npc.npc_type_id)));
 			}
 		}
 	}
@@ -1157,16 +1364,8 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.warnings.push_back("This zone has death event scripts; verify DB event actions do not duplicate scripted behavior.");
 	}
 
-	if (template_data.dz_template.return_zone_id == template_data.dz_template.zone_id && template_data.dz_template.return_zone_id != 0) {
-		result.warnings.push_back("Safe return points at the expedition zone.");
-	}
-
 	if (template_data.replay_lockout_seconds == 0) {
 		result.warnings.push_back("No replay lockout is configured.");
-	}
-
-	if (!template_data.enabled) {
-		result.warnings.push_back("Template is valid but disabled.");
 	}
 
 	result.status = result.errors.empty() ?
@@ -1235,6 +1434,11 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 	}
 
 	const std::string phrase = CommandWord(message);
+	const bool is_hail = IsHailMessage(message);
+	const uint32_t menu_template_id = RequestMenuTemplateId(phrase);
+	const uint32_t enter_template_id = EnterMenuTemplateId(phrase);
+	std::vector<std::pair<const Template*, const RequestNpc*>> matches;
+
 	for (const auto& [template_id, template_data] : g_templates) {
 		if (!template_data.enabled) {
 			continue;
@@ -1249,23 +1453,38 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 				continue;
 			}
 
-			if (parse && parse->HasQuestSub(npc.GetNPCTypeID(), EVENT_SAY)) {
-				return false;
-			}
+			matches.push_back({ &template_data, &request_npc });
 
-			const std::string request_phrase = NormalizePhrase(request_npc.phrase.empty() ? template_data.request_phrase : request_npc.phrase);
-			if (phrase != request_phrase && phrase != fmt::format("start {}", request_phrase)) {
+			if (is_hail) {
 				continue;
 			}
 
-			if (DynamicZone* expedition = CreateExpeditionFromTemplate(client, template_data)) {
-				expedition->MovePCInto(&client, true);
-				return true;
+			if (menu_template_id != 0) {
+				if (menu_template_id == template_id) {
+					return TryCreateTemplateRequest(client, template_data);
+				}
+
+				continue;
 			}
 
-			client.Message(Chat::Red, "You are not eligible for that expedition right now.");
-			return true;
+			if (enter_template_id != 0) {
+				if (enter_template_id == template_id) {
+					return TryEnterTemplateRequest(client, template_data);
+				}
+
+				continue;
+			}
+
+			const std::string request_phrase = RequestPhrase(template_data, request_npc);
+			if (phrase == request_phrase || phrase == fmt::format("start {}", request_phrase)) {
+				return TryCreateTemplateRequest(client, template_data);
+			}
 		}
+	}
+
+	if (is_hail) {
+		OfferRequestMenu(client, npc, matches);
+		return false;
 	}
 
 	return false;
@@ -1294,12 +1513,13 @@ bool HandleNpcDeath(NPC& npc, Client* killer)
 				continue;
 			}
 
-			if (expedition->HasLockout(event_data.event_name)) {
+			const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
+			if (expedition->HasLockout(runtime_event_name)) {
 				continue;
 			}
 
 			if (event_data.lock_on_success && event_data.lockout_seconds > 0) {
-				expedition->AddLockout(event_data.event_name, event_data.lockout_seconds);
+				expedition->AddLockout(runtime_event_name, event_data.lockout_seconds);
 				handled = true;
 			}
 
@@ -1308,10 +1528,10 @@ bool HandleNpcDeath(NPC& npc, Client* killer)
 				handled = true;
 			}
 
-			ExecuteActions(*expedition, event_data);
+			ExecuteActions(*expedition, event_data, runtime_event_name);
 
 			if (killer) {
-				killer->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", event_data.event_name).c_str());
+				killer->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", runtime_event_name).c_str());
 			}
 		}
 	}
@@ -1336,8 +1556,8 @@ void ApplyLootEvents(DynamicZone& expedition)
 				continue;
 			}
 
-			if (event_npc.spawn2_id == 0 && event_npc.npc_type_id != 0) {
-				expedition.SetLootEvent(event_npc.npc_type_id, event_data.event_name, DzLootEvent::Type::NpcType);
+			if (event_npc.npc_type_id != 0) {
+				expedition.SetLootEvent(event_npc.npc_type_id, RuntimeEventName(event_data, event_npc), DzLootEvent::Type::NpcType);
 			}
 		}
 	}

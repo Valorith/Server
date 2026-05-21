@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <cstring>
 
 namespace {
@@ -83,7 +84,7 @@ namespace {
 
 	void NeedSelection(Client* c)
 	{
-		c->Message(Chat::Red, "Select an expedition first: #expedition select <id|name>, or create one with #expedition create \"Name\".");
+		c->Message(Chat::Red, "Select an expedition first: #expedition select <id|name>, or start one with #expedition setup \"Name\".");
 	}
 
 	void NeedTargetNpc(Client* c)
@@ -214,6 +215,27 @@ namespace {
 		return "db_only";
 	}
 
+	bool IsLootArg(const char* value)
+	{
+		return value && (
+			Strings::EqualFold(value, "loot") ||
+			Strings::EqualFold(value, "protect") ||
+			Strings::EqualFold(value, "protected") ||
+			Strings::EqualFold(value, "loot_protect") ||
+			Strings::EqualFold(value, "lootprotect")
+		);
+	}
+
+	bool IsNoLootArg(const char* value)
+	{
+		return value && (
+			Strings::EqualFold(value, "noloot") ||
+			Strings::EqualFold(value, "no_loot") ||
+			Strings::EqualFold(value, "unprotected") ||
+			Strings::EqualFold(value, "no_protect")
+		);
+	}
+
 	std::string Duration(uint32_t seconds)
 	{
 		if (!seconds) {
@@ -238,7 +260,7 @@ namespace {
 			return "script_can_opt_in: scripts own dialogue and may explicitly call DB template APIs.";
 		}
 
-		return "db_only: configured request NPCs automatically create DB expeditions.";
+		return "db_only: configured request NPCs offer DB expedition options on hail and create from request links or phrases.";
 	}
 
 	std::string RequestModeLabel(const std::string& mode)
@@ -307,6 +329,30 @@ namespace {
 		return request_npc.npc_type_id == npc.GetNPCTypeID();
 	}
 
+	std::string NpcTypeName(uint32_t npc_type_id);
+
+	std::string TargetBossName(NPC& npc)
+	{
+		std::string name = npc.GetCleanName();
+		Strings::Trim(name);
+		Strings::FindReplace(name, "_", " ");
+		return name.empty() ? fmt::format("NPC {}", npc.GetNPCTypeID()) : name;
+	}
+
+	std::string BossEventName(NPC& npc)
+	{
+		return fmt::format("{} Defeated", TargetBossName(npc));
+	}
+
+	std::string BossEventName(const ExpeditionDB::Event& event_data, const ExpeditionDB::EventNpc& event_npc)
+	{
+		if (!Strings::EqualFold(event_data.event_name, ExpeditionDB::kSimpleBossEventName)) {
+			return event_data.event_name;
+		}
+
+		return fmt::format("{} Defeated", NpcTypeName(event_npc.npc_type_id));
+	}
+
 	constexpr const char* ChatSeparator()
 	{
 		return "--------------------------------------";
@@ -338,6 +384,23 @@ namespace {
 	void SendInfoLine(Client* c, const std::string& label, const std::string& value)
 	{
 		c->Message(Chat::White, fmt::format("  {:<16} {}", label, value).c_str());
+	}
+
+	void SendScriptedRequestNpcWarning(Client* c, const ExpeditionDB::Template& template_data, NPC& npc)
+	{
+		if (!Strings::EqualFold(template_data.request_mode, "db_only") || !parse || !parse->HasQuestSub(npc.GetNPCTypeID(), EVENT_SAY)) {
+			return;
+		}
+
+		c->Message(Chat::Yellow, fmt::format(
+			"Target [{}] has EVENT_SAY. DB expedition options will be offered after the script runs; script behavior is preserved.",
+			NpcLabel(npc)
+		).c_str());
+		SendActionGroup(c, "Request Behavior", {
+			{"#expedition set requestmode db_only", "Auto Offer DB Menu"},
+			{"#expedition set requestmode script_only", "Script Owns Requests"},
+			{"#expedition request", "Keep Target Request NPC"}
+		});
 	}
 
 	void ShowRenameHelp(Client* c)
@@ -383,19 +446,31 @@ namespace {
 
 	void ShowCreateHelp(Client* c)
 	{
-		SendSectionHeader(c, "Create Expedition");
-		c->Message(Chat::White, "#expedition create \"Name\" - Create and select an expedition using your current zone and location.");
-		c->Message(Chat::White, "Choose the final expedition name up front. The builder will use your current zone, version, and location as setup defaults.");
+		SendSectionHeader(c, "Start Expedition Setup");
+		c->Message(Chat::White, "#expedition setup \"Name\" - Create or select a draft using your current zone and location.");
+		c->Message(Chat::White, "The builder uses your current zone/version, current location as zone-in and compass, zone safe point as return, group defaults, DB-only requests, and a 2 hour replay timer.");
 		c->Message(Chat::Yellow, "Examples:");
-		c->Message(Chat::White, "  #expedition create \"Nagafen's Lair\"");
-		c->Message(Chat::White, "  #expedition create \"Cazic Thule Trial\"");
-		c->Message(Chat::White, "  #expedition create \"Plane of Hate Raid\"");
+		c->Message(Chat::White, "  #expedition setup \"Nagafen's Lair\"");
+		c->Message(Chat::White, "  #expedition setup \"Cazic Thule Trial\"");
+		c->Message(Chat::White, "  #expedition setup \"Plane of Hate Raid\"");
 
 		SendActionGroup(c, "After Create", {
-			{"#expedition list", "List Expeditions"},
-			{"#expedition menu", "Builder Snapshot"}
+			{"#expedition request", "Use Target Request NPC"},
+			{"#expedition boss 6h loot", "Use Target Boss"},
+			{"#expedition menu", "Setup Checklist"}
 		});
 	}
+
+	struct ChecklistItem {
+		std::string label;
+		std::string state;
+		std::string detail;
+	};
+
+	std::vector<ChecklistItem> BuildChecklist(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation);
+	void SendChecklistChat(Client* c, const std::vector<ChecklistItem>& items);
+	void SendBossLockoutChat(Client* c, const ExpeditionDB::Template& template_data);
+	const ExpeditionDB::Event* FindBossEventForNpc(const ExpeditionDB::Template& template_data, NPC& npc);
 
 	struct WizardGuidance {
 		std::string focus;
@@ -459,17 +534,11 @@ namespace {
 	{
 		const auto validation = ExpeditionDB::ValidateTemplate(template_data);
 		const auto guidance = BuildWizardGuidance(c, template_data, validation);
-		SendSectionHeader(c, "Expedition Menu");
+		const auto checklist = BuildChecklist(c, template_data, validation);
+		SendSectionHeader(c, "Expedition Setup");
 		SendInfoLine(c, "Selected", fmt::format("{} [{}]", template_data.name, template_data.id));
-		SendInfoLine(c, "Status", fmt::format("{} | enabled {}", validation.StatusName(), OnOff(template_data.enabled)));
-		SendInfoLine(c, "Zone", fmt::format("{}:{} | duration {} | players {}-{}",
-			ZoneName(template_data.dz_template.zone_id, true),
-			template_data.dz_template.zone_version,
-			Duration(template_data.dz_template.duration_seconds),
-			template_data.dz_template.min_players,
-			template_data.dz_template.max_players
-		));
-		SendInfoLine(c, "Next Step", guidance.focus);
+		SendInfoLine(c, "State", template_data.enabled ? "published" : "draft");
+		SendInfoLine(c, "Next", guidance.focus);
 
 		if (NPC* npc = TargetNpc(c)) {
 			SendInfoLine(c, "Target", NpcLabel(*npc));
@@ -478,48 +547,53 @@ namespace {
 			SendInfoLine(c, "Target", "none");
 		}
 
-		SendActionGroup(c, "Core Workflow", {
-			{"#expedition wizard", "Guided Next Step"},
-			{"#expedition menu", "State Snapshot"},
-			{"#expedition validate", "Validate Setup"},
-			{"#expedition preview", "Runtime Preview"}
-		});
+		SendChecklistChat(c, checklist);
+		SendBossLockoutChat(c, template_data);
 
-		SendActionGroup(c, "Build Steps", {
-			{"#expedition set", "Base Setup Catalog"},
-			{"#expedition requestnpc help", "Request NPC Catalog"},
-			{"#expedition event", "Event Catalog"},
-			{"#expedition test", "Testing Catalog"}
-		});
+		if (NPC* npc = TargetNpc(c)) {
+			const auto* boss_event = FindBossEventForNpc(template_data, *npc);
+			SendInfoLine(c, "Target Boss", boss_event ?
+				fmt::format("updates [{}]", boss_event->event_name) :
+				"not mapped; boss command will add a separate lockout event"
+			);
+		}
 
-		SendActionGroup(c, "Most Likely Next", {
+		SendActionGroup(c, "Primary Next Action", {
 			{guidance.next_command, guidance.next_label}
 		});
 
-		if (!template_data.events.empty()) {
-			std::vector<std::pair<std::string, std::string>> event_actions;
-			for (const auto& event_data : template_data.events) {
-				event_actions.emplace_back(
-					fmt::format("#expedition event select {}", event_data.id),
-					fmt::format("Select [{}] ({})", event_data.event_name, event_data.id)
-				);
+		if (!validation.errors.empty()) {
+			SendSectionHeader(c, "Blocking Issues");
+			for (const auto& error : validation.errors) {
+				c->Message(Chat::Red, fmt::format("  {}", error).c_str());
 			}
-			SendActionGroup(c, "Configured Events", event_actions);
+		}
+		else if (!validation.warnings.empty()) {
+			SendSectionHeader(c, "Warnings");
+			for (const auto& warning : validation.warnings) {
+				c->Message(Chat::Yellow, fmt::format("  {}", warning).c_str());
+			}
 		}
 
-		if (SelectedEvent(c, template_data)) {
-			SendSelectedEventChatUi(c, template_data);
-		}
-
-		SendActionGroup(c, "Publish", {
-			{"#expedition enable", "Enable"},
-			{"#expedition disable", "Disable"}
+		SendActionGroup(c, "Core Actions", {
+			{"#expedition request", "Use Target Request NPC"},
+			{"#expedition boss 6h loot", "Add/Update Target Boss With Loot"},
+			{"#expedition boss 6h", "Add/Update Target Boss"},
+			{"#expedition publish", "Publish"},
+			{"#expedition menu", "Refresh Checklist"}
 		});
 
-		SendActionGroup(c, "Advanced Drill-Down", {
+		SendActionGroup(c, "Manage Expedition", {
+			{"#expedition rename", "Rename Expedition"},
+			{fmt::format("#expedition delete {}", template_data.id), "Delete Expedition..."}
+		});
+
+		SendActionGroup(c, "Secondary Actions", {
+			{"#expedition preview", "Runtime Preview"},
+			{"#expedition validate", "Validate"},
+			{"#expedition test", "Testing Catalog"},
 			{"#expedition advanced", "Advanced Catalog"},
-			{"#expedition action", "Runtime Actions"},
-			{"#expedition preset", "Presets"}
+			{"#expedition disable", "Disable"}
 		});
 	}
 
@@ -576,14 +650,42 @@ namespace {
 		return zone_id ? fmt::format("{} ({})", ZoneName(zone_id, true), zone_id) : "unset";
 	}
 
+	std::string NpcTypeName(uint32_t npc_type_id)
+	{
+		if (npc_type_id == 0) {
+			return "unset";
+		}
+
+		std::string name = content_db.GetCleanNPCNameByID(npc_type_id);
+		if (name.empty()) {
+			name = content_db.GetNPCNameByID(npc_type_id);
+			Strings::FindReplace(name, "_", " ");
+			Strings::Trim(name);
+		}
+
+		return name.empty() ? "unknown NPC" : name;
+	}
+
+	std::string NpcTypeLabel(uint32_t npc_type_id)
+	{
+		return npc_type_id == 0 ? "unset" : fmt::format("{} ({})", NpcTypeName(npc_type_id), npc_type_id);
+	}
+
+	std::string NpcMappingLabel(uint32_t npc_type_id, uint32_t spawn2_id)
+	{
+		return spawn2_id == 0 ?
+			fmt::format("{} | spawn any", NpcTypeLabel(npc_type_id)) :
+			fmt::format("{} | spawn {}", NpcTypeLabel(npc_type_id), spawn2_id);
+	}
+
 	std::string NextStep(const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
 	{
 		if (template_data.request_mode == "db_only" && template_data.request_npcs.empty()) {
-			return "Target the request NPC, then use Add Target as Request NPC in chat.";
+			return "Target the request NPC, then use #expedition request.";
 		}
 
 		if (template_data.events.empty()) {
-			return "Add an event, then target the boss or chest NPC and map it to that event.";
+			return "Target the boss, then use #expedition boss 6h or #expedition boss 6h loot.";
 		}
 
 		if (!validation.errors.empty()) {
@@ -591,7 +693,7 @@ namespace {
 		}
 
 		if (!template_data.enabled) {
-			return "Ready to publish. Use Enable in chat after reviewing warnings.";
+			return "Ready to publish. Use #expedition publish.";
 		}
 
 		return "Published. Clone or disable before making risky live changes.";
@@ -616,6 +718,264 @@ namespace {
 		return std::ranges::any_of(event_data.npcs, [](const ExpeditionDB::EventNpc& event_npc) {
 			return event_npc.npc_type_id != 0 && event_npc.loot_protected;
 		});
+	}
+
+	bool IsBossCompletionEvent(const ExpeditionDB::Event& event_data)
+	{
+		return event_data.lockout_seconds > 0 && HasCompletionNpc(event_data);
+	}
+
+	uint32_t BossCompletionEventCount(const ExpeditionDB::Template& template_data)
+	{
+		return static_cast<uint32_t>(std::ranges::count_if(template_data.events, IsBossCompletionEvent));
+	}
+
+	std::string BossCompletionSummary(const ExpeditionDB::Template& template_data)
+	{
+		std::vector<std::string> names;
+		for (const auto& event_data : template_data.events) {
+			if (IsBossCompletionEvent(event_data)) {
+				for (const auto& event_npc : event_data.npcs) {
+					if (event_npc.npc_type_id != 0 && event_npc.complete_on_death) {
+						names.push_back(BossEventName(event_data, event_npc));
+					}
+				}
+			}
+		}
+
+		if (names.empty()) {
+			return "Target the boss, then use #expedition boss 6h or #expedition boss 6h loot.";
+		}
+
+		if (names.size() == 1) {
+			return fmt::format("{} boss lockout: {}. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names.front());
+		}
+
+		if (names.size() == 2) {
+			return fmt::format("{} boss lockouts: {} and {}. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names[0], names[1]);
+		}
+
+		return fmt::format("{} boss lockouts: {}, {}, and {} more. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names[0], names[1], names.size() - 2);
+	}
+
+	const ExpeditionDB::Event* FindBossEventForNpc(const ExpeditionDB::Template& template_data, NPC& npc)
+	{
+		for (const auto& event_data : template_data.events) {
+			const auto* event_npc = FindEventNpc(event_data, npc);
+			if (
+				event_npc &&
+				event_npc->complete_on_death &&
+				(Strings::EqualFold(event_npc->role, "boss") || event_data.lockout_seconds > 0)
+			) {
+				return &event_data;
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::string UniqueEventName(const ExpeditionDB::Template& template_data, const std::string& desired_name, uint32_t ignore_event_id = 0)
+	{
+		auto is_available = [&](const std::string& candidate) {
+			return std::ranges::none_of(template_data.events, [&](const ExpeditionDB::Event& event_data) {
+				return event_data.id != ignore_event_id && Strings::EqualFold(event_data.event_name, candidate);
+			});
+		};
+
+		if (is_available(desired_name)) {
+			return desired_name;
+		}
+
+		for (uint32_t suffix = 2; suffix < 100; ++suffix) {
+			const std::string candidate = fmt::format("{} {}", desired_name, suffix);
+			if (is_available(candidate)) {
+				return candidate;
+			}
+		}
+
+		return fmt::format("{} {}", desired_name, static_cast<uint32_t>(std::time(nullptr)));
+	}
+
+	bool HasEnabledRequestNpc(const ExpeditionDB::Template& template_data)
+	{
+		return std::ranges::any_of(template_data.request_npcs, [](const ExpeditionDB::RequestNpc& request_npc) {
+			return request_npc.enabled && request_npc.npc_type_id != 0;
+		});
+	}
+
+	bool HasScriptedDbOnlyRequestNpc(const ExpeditionDB::Template& template_data)
+	{
+		return Strings::EqualFold(template_data.request_mode, "db_only") && parse && std::ranges::any_of(
+			template_data.request_npcs,
+			[](const ExpeditionDB::RequestNpc& request_npc) {
+				return request_npc.enabled && request_npc.npc_type_id != 0 && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY);
+			}
+		);
+	}
+
+	std::vector<ChecklistItem> BuildChecklist(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
+	{
+		const bool entrance_ready =
+			template_data.dz_template.zone_id != 0 &&
+			ZoneName(template_data.dz_template.zone_id) &&
+			template_data.dz_template.duration_seconds > 0 &&
+			template_data.dz_template.min_players > 0 &&
+			template_data.dz_template.max_players >= template_data.dz_template.min_players;
+		const bool request_ready = Strings::EqualFold(template_data.request_mode, "db_only") ? HasEnabledRequestNpc(template_data) : true;
+		const uint32_t boss_count = BossCompletionEventCount(template_data);
+		const bool completion_ready = boss_count > 0;
+		const bool has_target = TargetNpc(c) != nullptr;
+
+		std::vector<ChecklistItem> items;
+		items.push_back({
+			"Draft",
+			template_data.enabled ? "done" : "ready",
+			fmt::format("{} [{}] is selected.", template_data.name, template_data.id)
+		});
+		items.push_back({
+			"Entrance",
+			entrance_ready ? "done" : "needs fix",
+			entrance_ready ?
+				fmt::format("{}:{} | {} | {}-{} players",
+					ZoneName(template_data.dz_template.zone_id, true),
+					template_data.dz_template.zone_version,
+					Duration(template_data.dz_template.duration_seconds),
+					template_data.dz_template.min_players,
+					template_data.dz_template.max_players
+				) :
+				"Use #expedition setup again or the advanced set commands to repair base zone, duration, or player bounds."
+		});
+		items.push_back({
+			"Request NPC",
+			request_ready ? "done" : (has_target ? "ready" : "needs target"),
+			request_ready ?
+				fmt::format(
+					"{} request NPC(s), mode {}{}",
+					template_data.request_npcs.size(),
+					template_data.request_mode,
+					HasScriptedDbOnlyRequestNpc(template_data) ? ", scripts preserved" : ""
+				) :
+				"Target the NPC players should talk to, then use #expedition request."
+		});
+		items.push_back({
+			"Completion",
+			completion_ready ? "done" : (has_target ? "ready" : "needs target"),
+			BossCompletionSummary(template_data)
+		});
+		items.push_back({
+			"Publish",
+			template_data.enabled ? "done" : (validation.errors.empty() ? "ready" : "needs fix"),
+			template_data.enabled ?
+				"Published and available to runtime request handling." :
+				(validation.errors.empty() ?
+					"Use #expedition publish when ready." :
+					fmt::format("{} blocking issue(s) must be fixed.", validation.errors.size()))
+		});
+
+		return items;
+	}
+
+	void SendChecklistChat(Client* c, const std::vector<ChecklistItem>& items)
+	{
+		SendSectionHeader(c, "Setup Checklist");
+		for (const auto& item : items) {
+			SendInfoLine(c, item.label, fmt::format("{} - {}", item.state, item.detail));
+		}
+	}
+
+	void SendBossLockoutChat(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		if (BossCompletionEventCount(template_data) == 0) {
+			return;
+		}
+
+		SendSectionHeader(c, "Boss Lockouts");
+		for (const auto& event_data : template_data.events) {
+			if (!IsBossCompletionEvent(event_data)) {
+				continue;
+			}
+
+			for (const auto& event_npc : event_data.npcs) {
+				if (event_npc.npc_type_id == 0 || !event_npc.complete_on_death) {
+					continue;
+				}
+
+				SendInfoLine(c, BossEventName(event_data, event_npc), fmt::format("{} | lockout {} | replay {}",
+					NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
+					Duration(event_data.lockout_seconds),
+					Duration(event_data.replay_lockout_seconds)
+				));
+			}
+		}
+	}
+
+	void AppendChecklistPopup(std::string& body, const std::vector<ChecklistItem>& items)
+	{
+		std::string table;
+		for (const auto& item : items) {
+			table += SnapshotRow(item.label, fmt::format("{} - {}", item.state, item.detail));
+		}
+		AppendPopupText(body, DialogueWindow::Table(table));
+	}
+
+	void AppendRequestNpcPopup(std::string& body, const ExpeditionDB::Template& template_data)
+	{
+		if (template_data.request_npcs.empty()) {
+			return;
+		}
+
+		AppendPopupSection(body, "Request NPCs");
+		std::string table;
+		for (const auto& request_npc : template_data.request_npcs) {
+			table += SnapshotRow(
+				request_npc.enabled ? "Request NPC" : "Request NPC off",
+				fmt::format(
+					"{} | zone {} | phrase {}",
+					NpcMappingLabel(request_npc.npc_type_id, request_npc.spawn2_id),
+					ZoneLabel(request_npc.zone_id),
+					request_npc.phrase.empty() ? "(none)" : request_npc.phrase
+				)
+			);
+		}
+		AppendPopupText(body, DialogueWindow::Table(table));
+	}
+
+	void AppendBossesPopup(std::string& body, const ExpeditionDB::Template& template_data)
+	{
+		AppendPopupSection(body, "Bosses");
+
+		std::string table;
+		uint32_t boss_index = 1;
+		for (const auto& event_data : template_data.events) {
+			if (!IsBossCompletionEvent(event_data)) {
+				continue;
+			}
+
+			for (const auto& event_npc : event_data.npcs) {
+				if (event_npc.npc_type_id == 0 || !event_npc.complete_on_death) {
+					continue;
+				}
+
+				const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
+				table += SnapshotRow(
+					fmt::format("Boss {}", boss_index++),
+					fmt::format(
+						"{} | event {} | lockout {} | replay {} | loot {}",
+						NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
+						BossEventName(event_data, event_npc),
+						Duration(event_data.lockout_seconds),
+						Duration(event_data.replay_lockout_seconds),
+						loot_protected ? "protected" : "not protected"
+					)
+				);
+			}
+		}
+
+		if (table.empty()) {
+			table += SnapshotRow("Bosses", "none configured; target a boss and use #expedition boss 6h loot");
+		}
+
+		AppendPopupText(body, DialogueWindow::Table(table));
 	}
 
 	WizardGuidance BuildWizardGuidance(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
@@ -669,10 +1029,10 @@ namespace {
 			return {
 				"Add request NPC",
 				npc ? fmt::format("Your current target [{}] can be saved as the request NPC.", NpcLabel(*npc)) : "Target the NPC players should talk to when requesting this expedition.",
-				npc ? "#expedition requestnpc" : "#expedition requestnpc help",
-				npc ? "Use Target Request NPC" : "Show Request NPC Commands",
+				"#expedition request",
+				npc ? "Use Target Request NPC" : "Show Request Step",
 				{
-					{"#expedition requestnpc", "Use Target Request NPC"},
+					{"#expedition request", "Use Target Request NPC"},
 					{"#expedition set requestmode script_can_opt_in", "Use Script Opt-In"},
 					{"#expedition set requestmode script_only", "Use Script-Only Requests"}
 				}
@@ -683,11 +1043,11 @@ namespace {
 			return {
 				"Add encounter event",
 				npc ? fmt::format("Your current target [{}] can seed the first boss event.", NpcLabel(*npc)) : "Add at least one event for boss completion, lockouts, and optional loot protection.",
-				npc ? "#expedition preset boss" : "#expedition event add \"Boss Defeated\"",
-				npc ? "Create Boss Event From Target" : "Add Boss Event",
+				npc ? "#expedition boss 6h loot" : "#expedition boss 6h",
+				npc ? "Create Boss Event From Target" : "Show Boss Step",
 				{
-					{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
-					{"#expedition preset boss", "Boss Preset"},
+					{"#expedition boss 6h", "Use Target Boss"},
+					{"#expedition boss 6h loot", "Use Target Boss With Loot"},
 					{"#expedition event list", "List Events"}
 				}
 			};
@@ -697,12 +1057,11 @@ namespace {
 			return {
 				"Map event NPC",
 				npc ? fmt::format("Map target [{}] to event [{}].", NpcLabel(*npc), event_data->event_name) : fmt::format("Event [{}] has no NPC mapping yet. Target the boss, add, chest, or loot NPC for this event.", event_data->event_name),
-				npc ? "#expedition event npc" : "#expedition event list",
-				npc ? "Add Target To Event" : "List Events",
+				"#expedition boss 6h",
+				npc ? "Use Target Boss" : "Show Boss Step",
 				{
-					{"#expedition event npc", "Add Target as Event NPC"},
-					{"#expedition event npc boss", "Mark Target Boss"},
-					{"#expedition event npc chest", "Mark Target Chest"},
+					{"#expedition boss 6h", "Use Target Boss"},
+					{"#expedition boss 6h loot", "Use Target Boss With Loot"},
 					{"#expedition event list", "List Events"}
 				}
 			};
@@ -712,11 +1071,11 @@ namespace {
 			return {
 				"Set event lockout",
 				fmt::format("Event [{}] completes successfully but has no lockout duration.", event_data->event_name),
-				"#expedition event lockout 6h",
+				"#expedition boss 6h",
 				"Set 6 Hour Event Lockout",
 				{
-					{"#expedition event lockout 2h", "2 Hour Lockout"},
-					{"#expedition event lockout 6h", "6 Hour Lockout"},
+					{"#expedition boss 2h", "2 Hour Lockout"},
+					{"#expedition boss 6h", "6 Hour Lockout"},
 					{"#expedition event replay 2h", "2 Hour Replay"}
 				}
 			};
@@ -726,10 +1085,10 @@ namespace {
 			return {
 				"Choose completion trigger",
 				fmt::format("Event [{}] has NPC mappings, but none are marked to complete the event on death.", event_data->event_name),
-				npc ? "#expedition event completeondeath on" : "#expedition event list",
-				npc ? "Complete On Target Death" : "Review Event NPCs",
+				"#expedition boss 6h",
+				npc ? "Use Target Boss" : "Show Boss Step",
 				{
-					{"#expedition event completeondeath on", "Target Completes Event"},
+					{"#expedition boss 6h", "Use Target Boss"},
 					{"#expedition action", "Runtime Actions"},
 					{"#expedition event list", "List Events"}
 				}
@@ -754,11 +1113,11 @@ namespace {
 			return {
 				"Consider loot protection",
 				fmt::format("Target [{}] is mapped to event [{}]. Enable loot protection if this NPC gates boss or chest rewards.", NpcLabel(*npc), event_data->event_name),
-				"#expedition event loot on",
+				"#expedition boss 6h loot",
 				"Protect Target Loot",
 				{
-					{"#expedition event loot on", "Protect Target Loot"},
-					{"#expedition event loot off", "Leave Loot Unprotected"},
+					{"#expedition boss 6h loot", "Protect Target Loot"},
+					{"#expedition boss 6h noloot", "Leave Loot Unprotected"},
 					{"#expedition validate", "Validate"}
 				}
 			};
@@ -787,7 +1146,7 @@ namespace {
 				{
 					{"#expedition validate", "Review Warnings"},
 					{"#expedition preview", "Preview Runtime"},
-					{"#expedition enable", "Enable Anyway"}
+					{"#expedition publish", "Publish"}
 				}
 			};
 		}
@@ -796,12 +1155,12 @@ namespace {
 			return {
 				"Publish expedition",
 				"The setup is valid. Enable it when you are ready for request NPCs and runtime hooks to use it.",
-				"#expedition enable",
-				"Enable Expedition",
+				"#expedition publish",
+				"Publish Expedition",
 				{
 					{"#expedition preview", "Preview Runtime"},
 					{"#expedition test request", "Simulate Request"},
-					{"#expedition enable", "Enable Expedition"}
+					{"#expedition publish", "Publish Expedition"}
 				}
 			};
 		}
@@ -823,28 +1182,36 @@ namespace {
 	void ShowHelp(Client* c)
 	{
 		SendSectionHeader(c, "Expedition Builder");
-		c->Message(Chat::White, "Top-level commands stay focused on normal authoring flow. Use drill-down catalogs for detailed setup.");
+		c->Message(Chat::White, "Normal DB expeditions use a short setup flow. Advanced catalogs are still available for custom layouts.");
 
-		SendSectionHeader(c, "Core Commands");
-		SendHelpLink(c, "#expedition create", "show create/naming instructions");
+		SendSectionHeader(c, "Happy Path");
+		SendHelpLink(c, "#expedition setup \"Name\"", "create or select a disabled draft from your current zone/location");
+		SendHelpLink(c, "#expedition request [phrase]", "use targeted NPC as the request NPC");
+		SendHelpLink(c, "#expedition boss [lockout] [loot]", "add/update targeted NPC as a boss-specific completion and lockout");
+		SendHelpLink(c, "#expedition publish", "validate and enable when setup is ready");
+
+		SendSectionHeader(c, "Review");
 		SendHelpLink(c, "#expedition list", "list templates in this zone");
 		SendHelpLink(c, "#expedition select <id|name>", "select a template");
-		SendHelpLink(c, "#expedition wizard", "open state-aware guided setup");
-		SendHelpLink(c, "#expedition menu", "show selected expedition snapshot and core actions");
-
-		SendSectionHeader(c, "Review And Publish");
+		SendHelpLink(c, "#expedition menu", "show the compact setup checklist");
+		SendHelpLink(c, "#expedition wizard", "same compact checklist plus next action");
 		SendHelpLink(c, "#expedition validate", "check errors and warnings");
 		SendHelpLink(c, "#expedition preview", "preview runtime behavior");
-		SendHelpLink(c, "#expedition enable", "publish the selected expedition");
-		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
 
-		SendSectionHeader(c, "Drill-Down Catalogs");
+		SendSectionHeader(c, "Manage");
+		SendHelpLink(c, "#expedition rename", "rename the selected expedition");
+		SendHelpLink(c, "#expedition rename <id|name> \"New Name\"", "rename a specific expedition");
+		SendHelpLink(c, "#expedition delete <id|name>", "review delete for a disabled expedition");
+		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition before deleting it");
+
+		SendSectionHeader(c, "Advanced Catalogs");
 		SendHelpLink(c, "#expedition set", "base setup, locations, player counts, replay, request mode");
 		SendHelpLink(c, "#expedition requestnpc help", "request NPC setup");
 		SendHelpLink(c, "#expedition event", "event, NPC, lockout, loot, and completion setup");
 		SendHelpLink(c, "#expedition action", "runtime actions fired by events");
 		SendHelpLink(c, "#expedition test", "testing commands");
 		SendHelpLink(c, "#expedition advanced", "rename, clone, reload, delete, and other advanced actions");
+		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
 	}
 
 	void ShowSetHelp(Client* c)
@@ -891,6 +1258,8 @@ namespace {
 		c->Message(Chat::White, "Request NPC commands use your selected expedition and current NPC target unless the command is list/help.");
 
 		SendSectionHeader(c, "Targeted Setup");
+		SendHelpLink(c, "#expedition request", "preferred simple flow: use targeted NPC with phrase 'expedition'");
+		SendHelpLink(c, "#expedition request <phrase>", "preferred simple flow with a custom phrase");
 		SendHelpLink(c, "#expedition requestnpc", "use targeted NPC with phrase 'expedition'");
 		SendHelpLink(c, "#expedition requestnpc <phrase>", "use targeted NPC with a custom request phrase");
 		SendHelpLink(c, "#expedition requestnpc remove", "prompt before removing targeted request NPC mapping");
@@ -899,12 +1268,12 @@ namespace {
 		SendHelpLink(c, "#expedition requestnpc list", "list configured request NPCs");
 
 		SendSectionHeader(c, "Request Mode");
-		SendHelpLink(c, "#expedition set requestmode db_only", "DB handles request dialogue automatically");
+		SendHelpLink(c, "#expedition set requestmode db_only", "DB offers request options on hail and handles request links/phrases");
 		SendHelpLink(c, "#expedition set requestmode script_can_opt_in", "scripts handle dialogue and may call DB APIs");
 		SendHelpLink(c, "#expedition set requestmode script_only", "scripts fully own request handling");
 
 		SendActionGroup(c, "Request NPC Actions", {
-			{"#expedition requestnpc", "Add Target as Request NPC"},
+			{"#expedition request", "Add Target as Request NPC"},
 			{"#expedition requestnpc list", "List Request NPCs"},
 			{"#expedition set requestmode db_only", "DB Only"},
 			{"#expedition wizard", "Guided Next Step"}
@@ -1021,10 +1390,19 @@ namespace {
 		c->Message(Chat::White, "Advanced commands are intentionally outside the top-level menu to keep normal setup focused.");
 
 		SendSectionHeader(c, "Identity And Copies");
+		SendHelpLink(c, "#expedition create \"Name\"", "legacy alias for starting a draft; prefer setup");
 		SendHelpLink(c, "#expedition rename", "rename command catalog");
 		SendHelpLink(c, "#expedition clone <id|name|current> \"New Name\"", "copy an existing setup");
 
+		SendSectionHeader(c, "Detailed Editing");
+		SendHelpLink(c, "#expedition set", "explicit coordinates, player counts, replay, request modes, and switch IDs");
+		SendHelpLink(c, "#expedition requestnpc help", "request NPC list/remove and advanced request mapping");
+		SendHelpLink(c, "#expedition event", "multi-event editing, event NPC roles, lockouts, and completion controls");
+		SendHelpLink(c, "#expedition action", "runtime actions fired by DB events");
+		SendHelpLink(c, "#expedition preset", "solo/group/raid/boss/chest presets");
+
 		SendSectionHeader(c, "Database And Runtime Cache");
+		SendHelpLink(c, "#expedition enable", "legacy publish command; prefer publish");
 		SendHelpLink(c, "#expedition reload", "reload DB templates into zone memory");
 		SendHelpLink(c, "#expedition list all", "list templates across all zones");
 		SendHelpLink(c, "#expedition show", "show selected template details in chat");
@@ -1117,7 +1495,7 @@ namespace {
 				request_npc.spawn2_id,
 				ZoneName(request_npc.zone_id, true),
 				request_npc.phrase,
-				scripted ? "(has EVENT_SAY script)" : ""
+				scripted ? "(has EVENT_SAY script; DB menu is additive)" : ""
 			).c_str());
 		}
 
@@ -1201,12 +1579,12 @@ namespace {
 		body += DialogueWindow::CenterMessage(DialogueWindow::ColorMessage("gold", "Expedition Wizard"));
 		body += DialogueWindow::Break(2);
 		if (!template_data) {
-			body += "Start by creating an expedition from your current zone and location.";
+			body += "Start by creating an expedition draft from your current zone and location.";
 			body += DialogueWindow::Break(2);
-			body += "Use the action link in chat to show the create command and choose a name.";
+			body += "Use #expedition setup \"Name\".";
 			c->SendPopupToClient("Expedition Wizard", body.c_str());
 			SendActionGroup(c, "Expedition Wizard", {
-				{"#expedition create", "Create Expedition..."},
+				{"#expedition setup", "Start Setup..."},
 				{"#expedition list", "Select Existing Expedition"}
 			});
 			return;
@@ -1214,54 +1592,40 @@ namespace {
 
 		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
 		const auto guidance = BuildWizardGuidance(c, *template_data, validation);
-		const auto* event_data = SelectedEvent(c, *template_data);
-		NPC* npc = TargetNpc(c);
+		const auto checklist = BuildChecklist(c, *template_data, validation);
 
 		std::string table;
 		table += SnapshotRow("Expedition", fmt::format("{} [{}]", template_data->name, template_data->id));
-		table += SnapshotRow("Status", StatusLabel(validation));
-		table += SnapshotRow("Enabled", OnOff(template_data->enabled));
-		table += SnapshotRow("Current Target", npc ? NpcLabel(*npc) : "none");
-		table += SnapshotRow("Wizard Focus", guidance.focus);
+		table += SnapshotRow("State", template_data->enabled ? "published" : "draft");
+		table += SnapshotRow("Target", TargetNpc(c) ? NpcLabel(*TargetNpc(c)) : "none");
+		table += SnapshotRow("Next", guidance.focus);
 		table += SnapshotRow("Why", guidance.why);
 		table += SnapshotRow("Next Command", guidance.next_command);
 		AppendPopupText(body, DialogueWindow::Table(table));
 
-		AppendPopupSection(body, "Setup Progress");
-		table.clear();
-		table += SnapshotRow("Base Zone", template_data->dz_template.zone_id ? fmt::format("ready - {}:{}", ZoneLabel(template_data->dz_template.zone_id), template_data->dz_template.zone_version) : "needs zone");
-		table += SnapshotRow("Duration", template_data->dz_template.duration_seconds ? Duration(template_data->dz_template.duration_seconds) : "needs duration");
-		table += SnapshotRow("Players", template_data->dz_template.max_players >= template_data->dz_template.min_players && template_data->dz_template.min_players > 0 ?
-			fmt::format("{}-{}", template_data->dz_template.min_players, template_data->dz_template.max_players) :
-			"needs player limits");
-		table += SnapshotRow("Request", template_data->request_mode == "db_only" ?
-			(template_data->request_npcs.empty() ? "needs request NPC" : fmt::format("{} request NPC(s)", template_data->request_npcs.size())) :
-			RequestModeLabel(template_data->request_mode));
-		table += SnapshotRow("Events", template_data->events.empty() ? "needs event" : fmt::format("{} event(s)", template_data->events.size()));
-		table += SnapshotRow("Active Event", event_data ? fmt::format("{} [{}]", event_data->event_name, event_data->id) : "none");
-		table += SnapshotRow("Event NPCs", event_data ? (event_data->npcs.empty() ? "needs NPC mapping" : fmt::format("{} mapped", event_data->npcs.size())) : "none");
-		table += SnapshotRow("Event Lockout", event_data ? Duration(event_data->lockout_seconds) : "none");
-		table += SnapshotRow("Completion", event_data ? (HasCompletionNpc(*event_data) ? "death trigger configured" : "no death trigger") : "none");
-		table += SnapshotRow("Replay Timer", Duration(template_data->replay_lockout_seconds));
-		table += SnapshotRow("Loot Protection", event_data ? (HasLootProtectedNpc(*event_data) || event_data->loot_protected ? "configured" : "not configured") : "none");
-		AppendPopupText(body, DialogueWindow::Table(table));
+		AppendPopupSection(body, "Checklist");
+		AppendChecklistPopup(body, checklist);
 
-		AppendPopupSection(body, "Validation");
-		table.clear();
-		table += SnapshotRow("Errors", std::to_string(validation.errors.size()));
-		table += SnapshotRow("Warnings", std::to_string(validation.warnings.size()));
+		AppendRequestNpcPopup(body, *template_data);
+		AppendBossesPopup(body, *template_data);
+
 		if (!validation.errors.empty()) {
-			table += SnapshotRow("First Error", validation.errors.front());
+			AppendPopupSection(body, "Blocking Issues");
+			for (const auto& error : validation.errors) {
+				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", PopupSafe(error)));
+			}
 		}
-		if (!validation.warnings.empty()) {
-			table += SnapshotRow("First Warning", validation.warnings.front());
+		else if (!validation.warnings.empty()) {
+			AppendPopupSection(body, "Warnings");
+			for (const auto& warning : validation.warnings) {
+				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", PopupSafe(warning)));
+			}
 		}
-		AppendPopupText(body, DialogueWindow::Table(table));
 
 		AppendPopupSection(body, "Chat Actions");
-		AppendPopupText(body, "Recommended command links were sent to your chat window. Use #expedition wizard again after each change.");
+		AppendPopupText(body, "Recommended command links were sent to your chat window.");
 		c->SendPopupToClient("Expedition Wizard", body.c_str());
-		SendWizardChatUi(c, *template_data, validation, guidance);
+		SendBuilderChatUi(c, *template_data);
 	}
 
 	void ShowMenu(Client* c)
@@ -1274,10 +1638,10 @@ namespace {
 		if (!template_data) {
 			body += "No expedition selected.";
 			body += DialogueWindow::Break(2);
-			body += "Use the action links in chat to create or select an expedition.";
+			body += "Use #expedition setup \"Name\" to start a draft or select an existing expedition.";
 			c->SendPopupToClient("Expedition Builder", body.c_str());
 			SendActionGroup(c, "Expedition Builder", {
-				{"#expedition create", "Create Expedition..."},
+				{"#expedition setup", "Start Setup..."},
 				{"#expedition list", "List Expeditions"},
 				{"#expedition help", "Command Menu"}
 			});
@@ -1285,139 +1649,37 @@ namespace {
 		}
 
 		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
+		const auto guidance = BuildWizardGuidance(c, *template_data, validation);
+		const auto checklist = BuildChecklist(c, *template_data, validation);
 		std::string table;
-		table += SnapshotRow("ID", std::to_string(template_data->id));
-		table += SnapshotRow("Name", template_data->name);
-		table += SnapshotRow("Status", StatusLabel(validation));
-		table += SnapshotRow("Enabled", OnOff(template_data->enabled));
-		table += SnapshotRow("Request Mode", RequestModeLabel(template_data->request_mode));
-		table += SnapshotRow("Dynamic Zone Template", std::to_string(template_data->dz_template_id));
-		table += SnapshotRow("Zone", fmt::format("{}:{}", ZoneLabel(template_data->dz_template.zone_id), template_data->dz_template.zone_version));
-		table += SnapshotRow("Duration", Duration(template_data->dz_template.duration_seconds));
-		table += SnapshotRow("Players", fmt::format("{}-{}", template_data->dz_template.min_players, template_data->dz_template.max_players));
-		table += SnapshotRow("Replay", Duration(template_data->replay_lockout_seconds));
-		table += SnapshotRow("Replay On Join", OnOff(template_data->replay_on_join));
-		table += SnapshotRow("Silent", OnOff(template_data->silent));
-		table += SnapshotRow("Switch Entity ID", std::to_string(template_data->dz_template.dz_switch_id));
-		table += SnapshotRow("Current Target", TargetNpc(c) ? NpcLabel(*TargetNpc(c)) : "none");
-		table += SnapshotRow("Next Step", NextStep(*template_data, validation));
+		table += SnapshotRow("Expedition", fmt::format("{} [{}]", template_data->name, template_data->id));
+		table += SnapshotRow("State", template_data->enabled ? "published" : "draft");
+		table += SnapshotRow("Target", TargetNpc(c) ? NpcLabel(*TargetNpc(c)) : "none");
+		table += SnapshotRow("Next", guidance.focus);
+		table += SnapshotRow("Next Command", guidance.next_command);
 		AppendPopupText(body, DialogueWindow::Table(table));
 
-		AppendPopupSection(body, "Validation");
-		table.clear();
-		table += SnapshotRow("Status", StatusLabel(validation));
-		table += SnapshotRow("Errors", std::to_string(validation.errors.size()));
-		table += SnapshotRow("Warnings", std::to_string(validation.warnings.size()));
-		AppendPopupText(body, DialogueWindow::Table(table));
-		for (const auto& error : validation.errors) {
-			AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", PopupSafe(fmt::format("Error: {}", error))));
-		}
-		for (const auto& warning : validation.warnings) {
-			AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", PopupSafe(fmt::format("Warning: {}", warning))));
-		}
+		AppendPopupSection(body, "Checklist");
+		AppendChecklistPopup(body, checklist);
 
-		AppendPopupSection(body, "Locations");
-		table.clear();
-		table += SnapshotRow("Zone-In", template_data->dz_template.override_zone_in ?
-			Location(template_data->dz_template.zone_id, template_data->dz_template.zone_in_x, template_data->dz_template.zone_in_y, template_data->dz_template.zone_in_z, template_data->dz_template.zone_in_h) :
-			"zone default");
-		table += SnapshotRow("Safe Return", template_data->dz_template.return_zone_id ?
-			Location(template_data->dz_template.return_zone_id, template_data->dz_template.return_x, template_data->dz_template.return_y, template_data->dz_template.return_z, template_data->dz_template.return_h) :
-			"zone safe point/default");
-		table += SnapshotRow("Compass", template_data->dz_template.compass_zone_id ?
-			Location(template_data->dz_template.compass_zone_id, template_data->dz_template.compass_x, template_data->dz_template.compass_y, template_data->dz_template.compass_z) :
-			"unset");
-		AppendPopupText(body, DialogueWindow::Table(table));
+		AppendRequestNpcPopup(body, *template_data);
+		AppendBossesPopup(body, *template_data);
 
-		AppendPopupSection(body, "Request NPCs");
-		if (template_data->request_npcs.empty()) {
-			AppendPopupText(body, "None configured.");
-		}
-		else {
-			table.clear();
-			for (const auto& request_npc : template_data->request_npcs) {
-				const bool scripted = parse && parse->HasQuestSub(request_npc.npc_type_id, EVENT_SAY);
-				const std::string behavior = template_data->request_mode == "db_only" ?
-					(scripted ? "scripted; DB auto defers" : "DB auto") :
-					(template_data->request_mode == "script_can_opt_in" ? "script opt-in only" : "script-only");
-				table += SnapshotRow(
-					fmt::format("NPC {}", request_npc.id),
-					fmt::format(
-						"zone {}, type {}, spawn {}, phrase '{}', {}, {}",
-						ZoneLabel(request_npc.zone_id),
-						request_npc.npc_type_id,
-						request_npc.spawn2_id,
-						ExpeditionDB::NormalizePhrase(request_npc.phrase.empty() ? template_data->request_phrase : request_npc.phrase),
-						request_npc.enabled ? "enabled" : "disabled",
-						behavior
-					)
-				);
+		if (!validation.errors.empty()) {
+			AppendPopupSection(body, "Blocking Issues");
+			for (const auto& error : validation.errors) {
+				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", PopupSafe(error)));
 			}
-			AppendPopupText(body, DialogueWindow::Table(table));
 		}
-
-		AppendPopupSection(body, fmt::format("Events ({})", template_data->events.size()));
-		if (template_data->events.empty()) {
-			AppendPopupText(body, "No events configured.");
-		}
-		else {
-			const auto* active_event = SelectedEvent(c, *template_data);
-			const uint32_t selected_event_id = active_event ? active_event->id : 0;
-			const bool explicit_selection = ExpeditionDB::GetBuilderState(c->CharacterID()).selected_event_id != 0;
-			for (const auto& event_data : template_data->events) {
-				table.clear();
-				table += SnapshotRow(
-					"Event",
-					fmt::format(
-						"{}{} [{}]",
-						event_data.event_name,
-						event_data.id == selected_event_id ? (explicit_selection ? " (selected)" : " (active default)") : "",
-						event_data.id
-					)
-				);
-				table += SnapshotRow("Lockout", Duration(event_data.lockout_seconds));
-				table += SnapshotRow("Replay", Duration(event_data.replay_lockout_seconds));
-				table += SnapshotRow("Lock Success", OnOff(event_data.lock_on_success));
-				table += SnapshotRow("Lock Failure", OnOff(event_data.lock_on_failure));
-				table += SnapshotRow("Loot Protected", OnOff(event_data.loot_protected));
-				table += SnapshotRow("NPCs", std::to_string(event_data.npcs.size()));
-				table += SnapshotRow("Actions", std::to_string(event_data.actions.size()));
-				AppendPopupText(body, DialogueWindow::Table(table));
-
-				if (!event_data.npcs.empty()) {
-					table.clear();
-					for (const auto& event_npc : event_data.npcs) {
-						table += SnapshotRow(
-							fmt::format("NPC {}", event_npc.id),
-							fmt::format(
-								"role {}, type {}, spawn {}, death {}, loot {}",
-								event_npc.role,
-								event_npc.npc_type_id,
-								event_npc.spawn2_id,
-								OnOff(event_npc.complete_on_death),
-								OnOff(event_npc.loot_protected)
-							)
-						);
-					}
-					AppendPopupText(body, DialogueWindow::Table(table));
-				}
-
-				if (!event_data.actions.empty()) {
-					table.clear();
-					for (const auto& event_action : event_data.actions) {
-						table += SnapshotRow(
-							fmt::format("Action {}", event_action.id),
-							fmt::format("{} [{}] order {}", event_action.action_type, event_action.action_value, event_action.sort_order)
-						);
-					}
-					AppendPopupText(body, DialogueWindow::Table(table));
-				}
-				AppendPopupText(body, DialogueWindow::Break());
+		else if (!validation.warnings.empty()) {
+			AppendPopupSection(body, "Warnings");
+			for (const auto& warning : validation.warnings) {
+				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", PopupSafe(warning)));
 			}
 		}
 
 		AppendPopupSection(body, "Chat Actions");
-		AppendPopupText(body, "Clickable command links are sent to your chat window.");
+		AppendPopupText(body, "Clickable command links for the next action were sent to your chat window. Use #expedition preview for detailed runtime data.");
 
 		c->SendPopupToClient("Expedition Builder", body.c_str());
 		SendBuilderChatUi(c, *template_data);
@@ -1478,12 +1740,44 @@ void command_expedition(Client* c, const Seperator* sep)
 			SendInfoLine(c, "Status", template_data.enabled ? "enabled" : "disabled");
 			SendHelpLink(c, fmt::format("#expedition select {}", id), "select this template");
 			SendHelpLink(c, fmt::format("#expedition menu {}", id), "open menu for this template");
+			SendHelpLink(c, fmt::format("#expedition rename {} \"New Name\"", id), "rename this template");
+			SendHelpLink(c, fmt::format("#expedition delete {}", id), template_data.enabled ? "review delete; disable first if live" : "review delete this draft");
 		}
 		return;
 	}
 
 	if (sub == "advanced") {
 		ShowAdvancedHelp(c);
+		return;
+	}
+
+	if (sub == "setup") {
+		std::string name = CommandTail(sep, 2);
+		if (name.empty()) {
+			ShowCreateHelp(c);
+			return;
+		}
+
+		if (const auto* existing_template = ExpeditionDB::FindTemplate(name)) {
+			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), existing_template->id);
+			c->Message(Chat::Green, fmt::format("Selected existing expedition [{}] ({}).", existing_template->id, existing_template->name).c_str());
+			ShowMenu(c);
+			return;
+		}
+
+		const uint32_t id = ExpeditionDB::CreateTemplateFromClient(content_db, *c, name);
+		if (!id) {
+			c->Message(Chat::Red, "Failed to create DB expedition draft.");
+			return;
+		}
+
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
+		c->Message(Chat::Green, fmt::format(
+			"Created draft expedition [{}] with group defaults, DB-only requests, and a [{}] replay timer.",
+			id,
+			Duration(ExpeditionDB::kSimpleSetupReplaySeconds)
+		).c_str());
+		ShowMenu(c);
 		return;
 	}
 
@@ -1570,6 +1864,166 @@ void command_expedition(Client* c, const Seperator* sep)
 		return;
 	}
 
+	if (sub == "request") {
+		if (strcasecmp(sep->arg[2], "help") == 0) {
+			ShowRequestNpcHelp(c);
+			return;
+		}
+
+		const auto* template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		NPC* npc = TargetNpc(c);
+		if (!npc) {
+			NeedTargetNpc(c);
+			c->Message(Chat::Yellow, "Target the NPC players should talk to, then run #expedition request.");
+			return;
+		}
+
+		std::string phrase = CommandTail(sep, 2);
+		if (phrase.empty()) {
+			phrase = ExpeditionDB::kSimpleRequestPhrase;
+		}
+
+		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase);
+		if (!request_npc_id) {
+			c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
+			return;
+		}
+
+		c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}].", NpcLabel(*npc), phrase).c_str());
+		SendScriptedRequestNpcWarning(c, *template_data, *npc);
+		ShowMenu(c);
+		return;
+	}
+
+	if (sub == "boss") {
+		if (strcasecmp(sep->arg[2], "help") == 0) {
+			c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot]");
+			c->Message(Chat::White, "Example: #expedition boss 6h loot");
+			return;
+		}
+
+		const auto* template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		NPC* npc = TargetNpc(c);
+		if (!npc) {
+			NeedTargetNpc(c);
+			c->Message(Chat::Yellow, "Target the boss NPC, then run #expedition boss 6h or #expedition boss 6h loot.");
+			return;
+		}
+
+		uint32_t lockout_seconds = ExpeditionDB::kSimpleBossLockoutSeconds;
+		int loot_mode = -1;
+		for (int i = 2; i < 10 && sep->arg[i][0] != '\0'; ++i) {
+			if (IsLootArg(sep->arg[i])) {
+				loot_mode = 1;
+				continue;
+			}
+
+			if (IsNoLootArg(sep->arg[i])) {
+				loot_mode = 0;
+				continue;
+			}
+
+			const uint32_t parsed_duration = ParseExpeditionDuration(sep->arg[i]);
+			if (parsed_duration) {
+				lockout_seconds = parsed_duration;
+				continue;
+			}
+
+			c->Message(Chat::Red, "Usage: #expedition boss [lockout] [loot|noloot]");
+			return;
+		}
+
+		const auto* event_data = FindBossEventForNpc(*template_data, *npc);
+		std::string event_name = event_data ? event_data->event_name : UniqueEventName(*template_data, BossEventName(*npc));
+		const uint32_t event_id = event_data ? event_data->id : ExpeditionDB::AddEvent(content_db, template_data->id, event_name);
+		if (!event_id) {
+			c->Message(Chat::Red, "Failed to create boss completion event.");
+			return;
+		}
+
+		if (event_data && Strings::EqualFold(event_name, ExpeditionDB::kSimpleBossEventName)) {
+			const std::string renamed_event = UniqueEventName(*template_data, BossEventName(*npc), event_id);
+			if (ExpeditionDB::SetEventName(content_db, event_id, renamed_event)) {
+				event_name = renamed_event;
+			}
+		}
+
+		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+		if (
+			!ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "boss") ||
+			!ExpeditionDB::SetEventLockout(content_db, event_id, lockout_seconds) ||
+			!ExpeditionDB::SetEventReplay(content_db, event_id, ExpeditionDB::kSimpleBossReplaySeconds)
+		) {
+			c->Message(Chat::Red, fmt::format("Failed to save boss setup for event [{}].", event_name).c_str());
+			return;
+		}
+
+		if (loot_mode != -1 && !ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), loot_mode == 1)) {
+			c->Message(Chat::Red, fmt::format("Failed to set boss loot protection for event [{}].", event_name).c_str());
+			return;
+		}
+
+		c->Message(Chat::Green, fmt::format(
+			"Saved: boss [{}] completes [{}] with lockout [{}] and replay [{}].",
+			NpcLabel(*npc),
+			event_name,
+			Duration(lockout_seconds),
+			Duration(ExpeditionDB::kSimpleBossReplaySeconds)
+		).c_str());
+		if (loot_mode == 1) {
+			c->Message(Chat::Yellow, "Loot protection is enabled for this NPC type in the DB builder flow.");
+		}
+		else if (loot_mode == 0) {
+			c->Message(Chat::Yellow, "Loot protection is disabled for this boss mapping.");
+		}
+		ShowMenu(c);
+		return;
+	}
+
+	if (sub == "publish") {
+		const auto* template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+			return;
+		}
+
+		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
+		if (!validation.errors.empty()) {
+			c->Message(Chat::Red, fmt::format("Publish blocked: [{}] has [{}] blocking issue(s).", template_data->name, validation.errors.size()).c_str());
+			for (const auto& error : validation.errors) {
+				c->Message(Chat::Red, fmt::format("Error: {}", error).c_str());
+			}
+			const auto guidance = BuildWizardGuidance(c, *template_data, validation);
+			SendActionGroup(c, "Next Action", {
+				{guidance.next_command, guidance.next_label}
+			});
+			return;
+		}
+
+		for (const auto& warning : validation.warnings) {
+			c->Message(Chat::Yellow, fmt::format("Warning: {}", warning).c_str());
+		}
+
+		if (!ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, true)) {
+			c->Message(Chat::Red, fmt::format("Failed to publish expedition [{}].", template_data->name).c_str());
+			return;
+		}
+
+		c->Message(Chat::Green, fmt::format("Published expedition [{}].", template_data->name).c_str());
+		ShowMenu(c);
+		return;
+	}
+
 	const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 	if (sub == "show") {
 		if (!template_data) {
@@ -1632,8 +2086,9 @@ void command_expedition(Client* c, const Seperator* sep)
 				NeedTargetNpc(c);
 				return;
 			}
-			ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), "expedition");
+			ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), ExpeditionDB::kSimpleRequestPhrase);
 			c->Message(Chat::Green, "Added targeted NPC as request NPC.");
+			SendScriptedRequestNpcWarning(c, *template_data, *npc);
 		}
 		else if (action == "replay") {
 			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3][0] ? sep->arg[3] : "2h");
@@ -1935,7 +2390,7 @@ void command_expedition(Client* c, const Seperator* sep)
 
 		std::string phrase = CommandTail(sep, 2);
 		if (phrase.empty()) {
-			phrase = "expedition";
+			phrase = ExpeditionDB::kSimpleRequestPhrase;
 		}
 		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase);
 		if (!request_npc_id) {
@@ -1943,6 +2398,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			return;
 		}
 		c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}] for expedition [{}].", NpcLabel(*npc), phrase, template_data->name).c_str());
+		SendScriptedRequestNpcWarning(c, *template_data, *npc);
 		ShowMenu(c);
 		return;
 	}
@@ -2526,12 +2982,12 @@ void command_expedition(Client* c, const Seperator* sep)
 				OnOff(check.is_raid)
 			).c_str());
 			if (template_data->request_mode == "db_only" && scripted) {
-				c->Message(Chat::Yellow, "Target has EVENT_SAY; automatic DB request handling will defer to the script. Use script_can_opt_in and call DB APIs from the script if desired.");
+				c->Message(Chat::Yellow, "Target has EVENT_SAY; DB expedition options are offered after the script runs, and script behavior is preserved.");
 			}
 			else if (template_data->request_mode != "db_only") {
 				c->Message(Chat::Yellow, "Automatic DB request handling is disabled for this request mode; scripts must opt in explicitly.");
 			}
-			if (check.success && matched_request_npc && template_data->request_mode == "db_only" && !scripted) {
+			if (check.success && matched_request_npc && template_data->request_mode == "db_only") {
 				c->Message(Chat::Green, "Simulation result: this request would create the expedition and move the requester.");
 			}
 			else {

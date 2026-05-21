@@ -42,6 +42,10 @@ DynamicZone* CreateExpeditionFromTemplateName(Client& client, const std::string&
 		return nullptr;
 	}
 
+	if (Strings::IsNumber(template_name)) {
+		return client.CreateExpeditionFromTemplate(Strings::ToUnsignedInt(template_name));
+	}
+
 	for (const auto& [template_id, dz_template] : zone->dz_template_cache) {
 		if (Strings::EqualFold(dz_template.name, template_name)) {
 			return client.CreateExpeditionFromTemplate(template_id);

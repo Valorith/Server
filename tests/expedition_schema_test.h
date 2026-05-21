@@ -4,6 +4,7 @@
 #include "common/database_schema.h"
 #include "common/version.h"
 #include "cppunit/cpptest.h"
+#include "zone/expedition_db.h"
 
 #include <algorithm>
 
@@ -17,6 +18,7 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::InitialMigrationIncludesRequestMode);
 		TEST_ADD(ExpeditionSchemaTest::FollowupMigrationAddsRequestMode);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
+		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 	}
 
 private:
@@ -62,5 +64,18 @@ private:
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()
 	{
 		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9343);
+	}
+
+	void SimpleBuilderDefaultsAreGroupReady()
+	{
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupMinPlayers == 1);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupMaxPlayers == 6);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupDurationSeconds == 21600);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupReplaySeconds == 7200);
+		TEST_ASSERT(ExpeditionDB::kSimpleBossLockoutSeconds == 21600);
+		TEST_ASSERT(ExpeditionDB::kSimpleBossReplaySeconds == 7200);
+		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestPhrase) == "expedition");
+		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestMode) == "db_only");
+		TEST_ASSERT(std::string(ExpeditionDB::kSimpleBossEventName) == "Boss Defeated");
 	}
 };
