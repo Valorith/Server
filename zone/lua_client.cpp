@@ -1897,7 +1897,7 @@ static luabind::object LuaTableValueAny(const luabind::object& table, std::initi
 		}
 	}
 
-	return table[""];
+	return luabind::object();
 }
 
 static uint32_t LuaZoneID(const luabind::object& zone)
