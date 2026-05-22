@@ -2024,15 +2024,24 @@ static bool ParseLuaExpeditionConfig(
 	}
 
 	if (LuaTableHasAny(expedition_table, { "compass" })) {
-		dz.SetCompass(GetDynamicZoneLocationFromTable(expedition_table["compass"]));
+		auto compass = expedition_table["compass"];
+		if (luabind::type(compass) == LUA_TTABLE) {
+			dz.SetCompass(GetDynamicZoneLocationFromTable(compass));
+		}
 	}
 
 	if (LuaTableHasAny(expedition_table, { "safe_return", "safereturn" })) {
-		dz.SetSafeReturn(GetDynamicZoneLocationFromTable(LuaTableValueAny(expedition_table, { "safe_return", "safereturn" })));
+		auto safe_return = LuaTableValueAny(expedition_table, { "safe_return", "safereturn" });
+		if (luabind::type(safe_return) == LUA_TTABLE) {
+			dz.SetSafeReturn(GetDynamicZoneLocationFromTable(safe_return));
+		}
 	}
 
 	if (LuaTableHasAny(expedition_table, { "zone_in", "zonein" })) {
-		dz.SetZoneInLocation(GetDynamicZoneLocationFromTable(LuaTableValueAny(expedition_table, { "zone_in", "zonein" })));
+		auto zone_in = LuaTableValueAny(expedition_table, { "zone_in", "zonein" });
+		if (luabind::type(zone_in) == LUA_TTABLE) {
+			dz.SetZoneInLocation(GetDynamicZoneLocationFromTable(zone_in));
+		}
 	}
 
 	if (LuaTableHasAny(expedition_table, { "switch_id", "switchid" })) {
