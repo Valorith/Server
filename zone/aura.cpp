@@ -13,7 +13,7 @@ Aura::Aura(NPCType *type_data, Mob *owner, AuraRecord &record)
 	GiveNPCTypeData(type_data); // we will delete this later on
 	m_owner = owner->GetID();
 
-	if (record.cast_time) {
+	if (record.cast_time > 0) {
 		cast_timer.SetTimer(record.cast_time);
 		cast_timer.Disable(); // we don't want to be enabled yet
 	}
@@ -68,6 +68,53 @@ Mob *Aura::GetOwner()
 	return entity_list.GetMob(m_owner);
 }
 
+void Aura::RemoveTrackedTarget(uint16 entity_id)
+{
+	casted_on.erase(entity_id);
+	spawned_for.erase(entity_id);
+}
+
+bool Aura::HasAppliedAuraBuff(Mob *mob) const
+{
+	return mob && mob->FindBuff(spell_id, GetID());
+}
+
+void Aura::TrackAuraTarget(Mob *mob, bool is_buff)
+{
+	if (!mob) {
+		return;
+	}
+
+	if (!is_buff) {
+		casted_on.insert(mob->GetID());
+		return;
+	}
+
+	if (HasAppliedAuraBuff(mob) || (SpellFinished(spell_id, mob) && HasAppliedAuraBuff(mob))) {
+		casted_on.insert(mob->GetID());
+	}
+}
+
+void Aura::PulseTrackedTargets(bool is_buff)
+{
+	auto it = casted_on.begin();
+	while (it != casted_on.end()) {
+		auto mob = entity_list.GetMob(*it);
+		if (!mob) {
+			it = casted_on.erase(it);
+			continue;
+		}
+
+		SpellFinished(spell_id, mob);
+		if (is_buff && !HasAppliedAuraBuff(mob)) {
+			it = casted_on.erase(it);
+			continue;
+		}
+
+		++it;
+	}
+}
+
 // not 100% sure how this one should work and PVP affects ...
 void Aura::ProcessOnAllFriendlies(Mob *owner)
 {
@@ -90,10 +137,7 @@ void Aura::ProcessOnAllFriendlies(Mob *owner)
 			}
 			else { // not on list, lets check if we're in range
 				if (DistanceSquared(GetPosition(), mob->GetPosition()) <= distance) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 			}
 		}
@@ -116,12 +160,7 @@ void Aura::ProcessOnAllFriendlies(Mob *owner)
 		return;
 	}
 
-	for (auto &e : casted_on) {
-		auto mob = entity_list.GetMob(e);
-		if (mob != nullptr) {
-			SpellFinished(spell_id, mob);
-		}
-	}
+	PulseTrackedTargets(is_buff);
 }
 
 void Aura::ProcessOnAllGroupMembers(Mob *owner)
@@ -216,24 +255,15 @@ void Aura::ProcessOnAllGroupMembers(Mob *owner)
 			}
 			else { // we're not on it!
 				if (mob->IsOfClientBot() && verify_raid_client(mob->CastToClient())) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (mob->IsPet() && mob->IsPetOwnerOfClientBot() && mob->GetOwner() && verify_raid_client_pet(mob)) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (mob->IsNPC() && mob->IsPetOwnerOfClientBot()) {
 					auto npc = mob->CastToNPC();
 					if (verify_raid_client_swarm(npc)) {
-						casted_on.insert(mob->GetID());
-						if (is_buff) {
-							SpellFinished(spell_id, mob);
-						}
+						TrackAuraTarget(mob, is_buff);
 					}
 				}
 			}
@@ -286,22 +316,13 @@ void Aura::ProcessOnAllGroupMembers(Mob *owner)
 			}
 			else { // not on, check if we should be!
 				if (mob->IsPet() && verify_group_pet(mob)) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (mob->IsNPC() && mob->CastToNPC()->GetSwarmInfo() && verify_group_swarm(mob->CastToNPC())) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (group->IsGroupMember(mob) && DistanceSquared(GetPosition(), mob->GetPosition()) <= distance) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 			}
 		}
@@ -332,10 +353,7 @@ void Aura::ProcessOnAllGroupMembers(Mob *owner)
 				}
 			}
 			else if (good && DistanceSquared(GetPosition(), mob->GetPosition()) <= distance) {
-				casted_on.insert(mob->GetID());
-				if (is_buff) {
-					SpellFinished(spell_id, mob);
-				}
+				TrackAuraTarget(mob, is_buff);
 			}
 		}
 	}
@@ -358,12 +376,7 @@ void Aura::ProcessOnAllGroupMembers(Mob *owner)
 	}
 
 	// some auras have to recast (DRU for example, non-buff too)
-	for (auto &e : casted_on) {
-		auto mob = entity_list.GetMob(e);
-		if (mob != nullptr) {
-			SpellFinished(spell_id, mob);
-		}
-	}
+	PulseTrackedTargets(is_buff);
 }
 
 void Aura::ProcessOnGroupMembersPets(Mob *owner)
@@ -444,18 +457,12 @@ void Aura::ProcessOnGroupMembersPets(Mob *owner)
 					continue; // never hit client
 				}
 				else if (mob->IsPet() && mob->IsPetOwnerOfClientBot() && mob->GetOwner() && verify_raid_client_pet(mob)) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (mob->IsNPC() && mob->IsPetOwnerOfClientBot()) {
 					auto npc = mob->CastToNPC();
 					if (verify_raid_client_swarm(npc)) {
-						casted_on.insert(mob->GetID());
-						if (is_buff) {
-							SpellFinished(spell_id, mob);
-						}
+						TrackAuraTarget(mob, is_buff);
 					}
 				}
 			}
@@ -502,16 +509,10 @@ void Aura::ProcessOnGroupMembersPets(Mob *owner)
 					continue;
 				}
 				else if (mob->IsPet() && verify_group_pet(mob)) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 				else if (mob->IsNPC() && mob->CastToNPC()->GetSwarmInfo() && verify_group_swarm(mob->CastToNPC())) {
-					casted_on.insert(mob->GetID());
-					if (is_buff) {
-						SpellFinished(spell_id, mob);
-					}
+					TrackAuraTarget(mob, is_buff);
 				}
 			}
 		}
@@ -539,10 +540,7 @@ void Aura::ProcessOnGroupMembersPets(Mob *owner)
 				}
 			}
 			else if (good && DistanceSquared(GetPosition(), mob->GetPosition()) <= distance) {
-				casted_on.insert(mob->GetID());
-				if (is_buff) {
-					SpellFinished(spell_id, mob);
-				}
+				TrackAuraTarget(mob, is_buff);
 			}
 		}
 	}
@@ -565,12 +563,7 @@ void Aura::ProcessOnGroupMembersPets(Mob *owner)
 	}
 
 	// some auras have to recast (DRU for example, non-buff too)
-	for (auto &e : casted_on) {
-		auto mob = entity_list.GetMob(e);
-		if (mob != nullptr) {
-			SpellFinished(spell_id, mob);
-		}
-	}
+	PulseTrackedTargets(is_buff);
 }
 
 void Aura::ProcessTotem(Mob *owner)
@@ -600,8 +593,13 @@ void Aura::ProcessTotem(Mob *owner)
 				}
 			}
 			else if (in_range) {
-				casted_on.insert(mob->GetID());
-				SpellFinished(spell_id, mob);
+				if (is_buff) {
+					TrackAuraTarget(mob, true);
+				}
+				else {
+					casted_on.insert(mob->GetID());
+					SpellFinished(spell_id, mob);
+				}
 			}
 		}
 	}
@@ -623,12 +621,7 @@ void Aura::ProcessTotem(Mob *owner)
 		return;
 	}
 
-	for (auto &e : casted_on) {
-		auto mob = entity_list.GetMob(e);
-		if (mob != nullptr) {
-			SpellFinished(spell_id, mob);
-		}
-	}
+	PulseTrackedTargets(is_buff);
 }
 
 void Aura::ProcessEnterTrap(Mob *owner)
@@ -1037,6 +1030,23 @@ bool Mob::CanSpawnAura(bool trap)
 	return true;
 }
 
+namespace {
+void CompactAuraManager(Mob::AuraMgr &manager, int index)
+{
+	if (index < 0 || index >= manager.count) {
+		return;
+	}
+
+	for (int i = index; i < manager.count - 1; ++i) {
+		manager.auras[i]          = manager.auras[i + 1];
+		manager.auras[i + 1].aura = nullptr;
+	}
+
+	manager.auras[manager.count - 1] = Mob::AuraInfo();
+	manager.count--;
+}
+}
+
 void Mob::RemoveAllAuras()
 {
 	if (IsClient()) {
@@ -1112,15 +1122,7 @@ void Mob::RemoveAura(int spawn_id, bool skip_strip, bool expired)
 				CastToClient()->QueuePacket(app);
 				safe_delete(app);
 			}
-			while (aura_mgr.count - 1 > i) {
-				i++;
-				aura.spawn_id          = aura_mgr.auras[i].spawn_id;
-				aura.icon              = aura_mgr.auras[i].icon;
-				aura.aura              = aura_mgr.auras[i].aura;
-				aura_mgr.auras[i].aura = nullptr;
-				strn0cpy(aura.name, aura_mgr.auras[i].name, 64);
-			}
-			aura_mgr.count--;
+			CompactAuraManager(aura_mgr, i);
 			return;
 		}
 	}
@@ -1135,18 +1137,9 @@ void Mob::RemoveAura(int spawn_id, bool skip_strip, bool expired)
 				CastToClient()->SendColoredText(
 					Chat::Yellow, StringFormat("%s has expired.", aura.name));
 			} // TODO: verify color
-			while (trap_mgr.count - 1 > i) {
-				i++;
-				aura.spawn_id          = trap_mgr.auras[i].spawn_id;
-				aura.icon              = trap_mgr.auras[i].icon;
-				aura.aura              = trap_mgr.auras[i].aura;
-				trap_mgr.auras[i].aura = nullptr;
-				strn0cpy(aura.name, trap_mgr.auras[i].name, 64);
-			}
-			trap_mgr.count--;
+			CompactAuraManager(trap_mgr, i);
 			return;
 		}
 	}
 
 }
-

@@ -578,6 +578,7 @@ Mob::~Mob()
 	entity_list.UnMarkNPC(GetID());
 	UninitializeBuffSlots();
 
+	entity_list.RemoveAuraFromTarget(this);
 	entity_list.RemoveAuraFromMobs(this);
 
 	ClearDataBucketCache();

@@ -874,8 +874,22 @@ public:
 
 	// aura functions
 	void MakeAura(uint16 spell_id);
-	inline int GetAuraSlots() { return 1 + aabonuses.aura_slots + itembonuses.aura_slots + spellbonuses.aura_slots; }
-	inline int GetTrapSlots() { return 1 + aabonuses.trap_slots + itembonuses.trap_slots + spellbonuses.trap_slots; }
+	inline int GetAuraSlots()
+	{
+		const int slots = 1 + aabonuses.aura_slots + itembonuses.aura_slots + spellbonuses.aura_slots;
+		if (slots < 0) {
+			return 0;
+		}
+		return slots > AURA_HARDCAP ? AURA_HARDCAP : slots;
+	}
+	inline int GetTrapSlots()
+	{
+		const int slots = 1 + aabonuses.trap_slots + itembonuses.trap_slots + spellbonuses.trap_slots;
+		if (slots < 0) {
+			return 0;
+		}
+		return slots > AURA_HARDCAP ? AURA_HARDCAP : slots;
+	}
 	inline bool HasFreeAuraSlots() { return aura_mgr.count < GetAuraSlots(); }
 	inline bool HasFreeTrapSlots() { return trap_mgr.count < GetTrapSlots(); }
 	void AddAura(Aura *aura, AuraRecord &record);
