@@ -120,10 +120,29 @@ jobs:
 
           echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
 
+  restore-dev-version:
+    name: Restore Dev Version
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Restore dev version on release branch
         shell: bash
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
           set -euo pipefail
           python3 utils/scripts/release/release_version.py set --version "$VERSION" --channel dev
@@ -135,7 +154,20 @@ jobs:
 
           git add common/version.h
           git commit -m "chore(release): restore ${VERSION}-dev"
-          git push origin HEAD:${RELEASE_BRANCH}
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:${RELEASE_BRANCH}; then
+              exit 0
+            fi
+
+            echo "Dev version push failed on attempt ${attempt}; rebasing onto origin/${RELEASE_BRANCH} and retrying."
+            git fetch origin "${RELEASE_BRANCH}"
+            git rebase "origin/${RELEASE_BRANCH}"
+            sleep "$attempt"
+          done
+
+          echo "Failed to push dev version restore commit after 3 attempts."
+          exit 1
 
   build-linux:
     name: Build Linux
