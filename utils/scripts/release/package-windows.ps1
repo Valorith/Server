@@ -169,13 +169,13 @@ foreach ($libraryRoot in $libraryRoots) {
 Copy-VisualCppRuntime
 Test-RuntimeDependencies
 
-$manifestFiles = Get-ChildItem -Path $stageDir -File | Sort-Object Name | ForEach-Object {
+$manifestFiles = @(Get-ChildItem -Path $stageDir -File | Sort-Object Name | ForEach-Object {
     [PSCustomObject]@{
         path   = $_.Name
         size   = $_.Length
         sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
-}
+})
 
 $manifest = [PSCustomObject]@{
     version      = $Version
