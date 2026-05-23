@@ -19,7 +19,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
 endif()
 
 project(EQEmu
-	VERSION 24.10.3
+	VERSION 1.1.4
 	LANGUAGES CXX 
 )
 
