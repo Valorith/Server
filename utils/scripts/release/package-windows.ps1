@@ -30,6 +30,10 @@ $requiredBinaries = @(
     "export_client_files.exe"
 )
 
+$script:SystemRuntimeRootsCache = $null
+$script:BlockedRuntimeSearchRootsCache = $null
+$script:SystemRuntimeDependencyCache = @{}
+
 function Copy-UniqueFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -103,11 +107,175 @@ function New-SystemDllSet {
     return $systemDlls
 }
 
+function Normalize-PathForCompare {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd([char[]]@("\", "/"))
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-IsSubPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Root
+    )
+
+    $normalizedPath = Normalize-PathForCompare -Path $Path
+    $normalizedRoot = Normalize-PathForCompare -Path $Root
+
+    if (-not $normalizedPath -or -not $normalizedRoot) {
+        return $false
+    }
+
+    if ($normalizedPath.Equals($normalizedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $rootPrefix = "$normalizedRoot$([System.IO.Path]::DirectorySeparatorChar)"
+    return $normalizedPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Add-UniqueResolvedDirectory {
+    param(
+        [System.Collections.Generic.List[string]]$Directories,
+
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+
+    try {
+        $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    }
+    catch {
+        return
+    }
+
+    if (-not $Directories.Contains($resolvedPath)) {
+        [void]$Directories.Add($resolvedPath)
+    }
+}
+
+function Get-SystemRuntimeRoots {
+    if ($null -ne $script:SystemRuntimeRootsCache) {
+        return $script:SystemRuntimeRootsCache
+    }
+
+    $roots = [System.Collections.Generic.List[string]]::new()
+
+    Add-UniqueResolvedDirectory -Directories $roots -Path $env:WINDIR
+    Add-UniqueResolvedDirectory -Directories $roots -Path $env:SystemRoot
+
+    if ($env:SystemDrive) {
+        Add-UniqueResolvedDirectory -Directories $roots -Path (Join-Path $env:SystemDrive "Windows")
+    }
+
+    $script:SystemRuntimeRootsCache = $roots
+    return $script:SystemRuntimeRootsCache
+}
+
+function Get-BlockedRuntimeSearchRoots {
+    if ($null -ne $script:BlockedRuntimeSearchRootsCache) {
+        return $script:BlockedRuntimeSearchRootsCache
+    }
+
+    $roots = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($root in (Get-SystemRuntimeRoots)) {
+        Add-UniqueResolvedDirectory -Directories $roots -Path $root
+    }
+
+    $blockedRoots = @(
+        $env:WindowsSdkDir,
+        $env:WindowsSdkBinPath,
+        $env:WindowsSdkVerBinPath,
+        $env:UniversalCRTSdkDir,
+        $env:VSINSTALLDIR,
+        $env:VCINSTALLDIR,
+        $env:DevEnvDir,
+        $env:VCToolsInstallDir,
+        $env:FrameworkDir,
+        $env:FrameworkDir64
+    )
+
+    $programFilesX86 = ${env:ProgramFiles(x86)}
+    if ($programFilesX86) {
+        $blockedRoots += @(
+            (Join-Path $programFilesX86 "Windows Kits"),
+            (Join-Path $programFilesX86 "Microsoft SDKs")
+        )
+    }
+
+    $blockedRoots | ForEach-Object { Add-UniqueResolvedDirectory -Directories $roots -Path $_ }
+
+    $script:BlockedRuntimeSearchRootsCache = $roots
+    return $script:BlockedRuntimeSearchRootsCache
+}
+
+function Test-IsBlockedRuntimeSearchDirectory {
+    param([string]$Path)
+
+    foreach ($root in (Get-BlockedRuntimeSearchRoots)) {
+        if (Test-IsSubPath -Path $Path -Root $root) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Find-SystemRuntimeDependency {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $cacheKey = $Name.ToLowerInvariant()
+    if ($script:SystemRuntimeDependencyCache.ContainsKey($cacheKey)) {
+        return $script:SystemRuntimeDependencyCache[$cacheKey]
+    }
+
+    $systemDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in (Get-SystemRuntimeRoots)) {
+        Add-UniqueResolvedDirectory -Directories $systemDirs -Path (Join-Path $root "System32")
+        Add-UniqueResolvedDirectory -Directories $systemDirs -Path (Join-Path $root "SysWOW64")
+        Add-UniqueResolvedDirectory -Directories $systemDirs -Path $root
+    }
+
+    foreach ($directory in $systemDirs) {
+        $candidate = Join-Path $directory $Name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $resolvedCandidate = (Resolve-Path -LiteralPath $candidate).Path
+            $script:SystemRuntimeDependencyCache[$cacheKey] = $resolvedCandidate
+            return $resolvedCandidate
+        }
+    }
+
+    $script:SystemRuntimeDependencyCache[$cacheKey] = $null
+    return $script:SystemRuntimeDependencyCache[$cacheKey]
+}
+
 function Get-RuntimeSearchDirectories {
     $directories = [System.Collections.Generic.List[string]]::new()
 
     function Add-SearchDirectory {
-        param([string]$Path)
+        param(
+            [string]$Path,
+            [switch]$AllowBlockedRoot
+        )
 
         if ([string]::IsNullOrWhiteSpace($Path)) {
             return
@@ -120,29 +288,33 @@ function Get-RuntimeSearchDirectories {
             return
         }
 
+        if (-not $AllowBlockedRoot -and (Test-IsBlockedRuntimeSearchDirectory -Path $resolvedPath)) {
+            return
+        }
+
         if (-not $directories.Contains($resolvedPath)) {
             [void]$directories.Add($resolvedPath)
         }
     }
 
-    Add-SearchDirectory -Path $stageDir
-    Add-SearchDirectory -Path $binDir
+    Add-SearchDirectory -Path $stageDir -AllowBlockedRoot
+    Add-SearchDirectory -Path $binDir -AllowBlockedRoot
 
     foreach ($libraryRoot in $libraryRoots) {
         if (-not (Test-Path $libraryRoot)) {
             continue
         }
 
-        Add-SearchDirectory -Path $libraryRoot
+        Add-SearchDirectory -Path $libraryRoot -AllowBlockedRoot
         Get-ChildItem -Path $libraryRoot -Recurse -Directory |
             Where-Object { $_.FullName -notmatch "\\debug\\" } |
-            ForEach-Object { Add-SearchDirectory -Path $_.FullName }
+            ForEach-Object { Add-SearchDirectory -Path $_.FullName -AllowBlockedRoot }
     }
 
     @(
         (Join-Path $env:SystemDrive "Strawberry/perl/bin"),
         (Join-Path $env:SystemDrive "Strawberry/c/bin")
-    ) | ForEach-Object { Add-SearchDirectory -Path $_ }
+    ) | ForEach-Object { Add-SearchDirectory -Path $_ -AllowBlockedRoot }
 
     if ($env:PATH) {
         $env:PATH -split ";" | ForEach-Object { Add-SearchDirectory -Path $_ }
@@ -163,7 +335,10 @@ function Find-RuntimeDependency {
     foreach ($directory in $SearchDirectories) {
         $candidate = Join-Path $directory $Name
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            return (Resolve-Path -LiteralPath $candidate).Path
+            $resolvedCandidate = (Resolve-Path -LiteralPath $candidate).Path
+            if (-not (Test-IsBlockedRuntimeSearchDirectory -Path $resolvedCandidate)) {
+                return $resolvedCandidate
+            }
         }
     }
 
@@ -195,6 +370,9 @@ function Resolve-RuntimeDependencies {
                     continue
                 }
                 if ($presentDlls.Contains($dependency)) {
+                    continue
+                }
+                if (Find-SystemRuntimeDependency -Name $dependency) {
                     continue
                 }
 
@@ -235,6 +413,9 @@ function Test-RuntimeDependencies {
                 continue
             }
             if ($systemDlls.Contains($dependency)) {
+                continue
+            }
+            if (Find-SystemRuntimeDependency -Name $dependency) {
                 continue
             }
             if (-not $presentDlls.Contains($dependency)) {
