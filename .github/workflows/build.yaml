@@ -39,6 +39,21 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ${{ runner.os }}-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/build.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
+      - name: Configure vcpkg binary cache
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.vcpkg-binary-cache"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/.vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
 
       - name: Ensure ccache installed
         run: |
