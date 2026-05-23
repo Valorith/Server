@@ -16,6 +16,11 @@ on:
         required: true
         type: boolean
         default: false
+      notify_discord:
+        description: Send a Discord notification for non-draft releases
+        required: true
+        type: boolean
+        default: true
       confirm:
         description: Type "release" to confirm
         required: true
@@ -370,15 +375,17 @@ jobs:
             artifacts/SHA256SUMS.txt
 
       - name: Notify Discord
-        if: ${{ !inputs.draft }}
+        if: ${{ inputs.notify_discord && !inputs.draft }}
         env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TAG_NAME: ${{ needs.prepare-release.outputs.tag }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
+          DISCORD_WEBHOOK_URL="${DISCORD_RELEASE_WEBHOOK_URL:-${DISCORD_WEBHOOK_URL:-}}"
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            echo "No Discord webhook secret is set; skipping Discord notification."
             exit 0
           fi
 
