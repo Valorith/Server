@@ -370,6 +370,7 @@ jobs:
             artifacts/SHA256SUMS.txt
 
       - name: Notify Discord
+        if: ${{ !inputs.draft }}
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TAG_NAME: ${{ needs.prepare-release.outputs.tag }}
