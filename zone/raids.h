@@ -286,11 +286,11 @@ public:
 	char main_marker_pcs[MAX_NO_RAID_MAIN_MARKERS][64];
 	Raid_Marked_NPC	marked_npcs[MAX_MARKED_NPCS];
 protected:
-	Client *leader;
-	bool locked;
-	uint32 LootType;
-	bool disbandCheck;
-	bool forceDisband;
+	Client *leader{ nullptr };
+	bool locked{ false };
+	uint32 LootType{ 4 };
+	bool disbandCheck{ false };
+	bool forceDisband{ false };
 	std::string motd;
 	RaidLeadershipAA_Struct raid_aa{};
 	GroupLeadershipAA_Struct group_aa[MAX_RAID_GROUPS]{};

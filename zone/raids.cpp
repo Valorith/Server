@@ -1135,7 +1135,13 @@ void Raid::SendRaidCreate(Client *to)
 	auto rc = (RaidCreate_Struct*)outapp->pBuffer;
 	rc->action = raidCreate;
 	strn0cpy(rc->leader_name, leadername, 64);
-	rc->leader_id = (GetLeader()?GetLeader()->GetID():0);
+
+	Mob *raid_leader = entity_list.GetClientByName(leadername);
+	if (!raid_leader && RuleB(Bots, Enabled)) {
+		raid_leader = entity_list.GetBotByBotName(leadername);
+	}
+
+	rc->leader_id = raid_leader ? raid_leader->GetID() : 0;
 	to->QueuePacket(outapp);
 	safe_delete(outapp);
 }
@@ -1726,8 +1732,14 @@ bool Raid::LearnMembers()
 	}
 
 	int i = 0;
+	int skipped_members = 0;
 	for (const auto &e: raid_members) {
 		if (e.name.empty()) {
+			continue;
+		}
+
+		if (i >= MAX_RAID_MEMBERS) {
+			++skipped_members;
 			continue;
 		}
 
@@ -1755,6 +1767,16 @@ bool Raid::LearnMembers()
 		members[i].is_bot          = e.bot_id > 0;
 		++i;
 	}
+
+	if (skipped_members > 0) {
+		LogError(
+			"Raid [{}] has [{}] extra raid member row(s) beyond MAX_RAID_MEMBERS [{}]; ignoring extras",
+			GetID(),
+			skipped_members,
+			MAX_RAID_MEMBERS
+		);
+	}
+
 	return true;
 }
 
@@ -2976,6 +2998,17 @@ void Raid::SendMarkTargets(Client* c)
 
 void Raid::EmptyRaidMembers()
 {
+	leader = nullptr;
+	leadername[0] = '\0';
+
+	for (auto& main_assister_pc : main_assister_pcs) {
+		main_assister_pc[0] = '\0';
+	}
+
+	for (auto& main_marker_pc : main_marker_pcs) {
+		main_marker_pc[0] = '\0';
+	}
+
 	for (int i = 0; i < MAX_RAID_MEMBERS; i++) {
 		members[i].group_number    = RAID_GROUPLESS;
 		members[i].is_group_leader = 0;
