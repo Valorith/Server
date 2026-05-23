@@ -117,11 +117,9 @@ jobs:
 
           git add package.json common/version.h CMakeLists.txt
           git commit -m "chore(release): ${TAG}"
-          git tag -a "$TAG" -m "Release ${TAG}"
 
           release_sha="$(git rev-parse HEAD)"
           git push origin HEAD:${RELEASE_BRANCH}
-          git push origin "$TAG"
 
           echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
 
@@ -182,10 +180,10 @@ jobs:
       image: akkadius/eqemu-server:v16
       options: --user 0
     steps:
-      - name: Checkout release tag
+      - name: Checkout release commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.prepare-release.outputs.tag }}
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
           fetch-depth: 0
           submodules: recursive
 
@@ -263,10 +261,10 @@ jobs:
     needs: prepare-release
     runs-on: windows-latest
     steps:
-      - name: Checkout release tag
+      - name: Checkout release commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.prepare-release.outputs.tag }}
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
           fetch-depth: 0
           submodules: recursive
 

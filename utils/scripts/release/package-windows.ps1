@@ -79,12 +79,7 @@ function Get-DumpbinDependencies {
     return $dependencies
 }
 
-function Test-RuntimeDependencies {
-    $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
-    if (-not $dumpbin) {
-        throw "dumpbin was not found. Run this script from an MSVC developer environment."
-    }
-
+function New-SystemDllSet {
     $systemDlls = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     @(
         "advapi32.dll", "authz.dll", "bcrypt.dll", "bcryptprimitives.dll",
@@ -105,6 +100,129 @@ function Test-RuntimeDependencies {
         "wldap32.dll"
     ) | ForEach-Object { [void]$systemDlls.Add($_) }
 
+    return $systemDlls
+}
+
+function Get-RuntimeSearchDirectories {
+    $directories = [System.Collections.Generic.List[string]]::new()
+
+    function Add-SearchDirectory {
+        param([string]$Path)
+
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            return
+        }
+
+        try {
+            $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+        }
+        catch {
+            return
+        }
+
+        if (-not $directories.Contains($resolvedPath)) {
+            [void]$directories.Add($resolvedPath)
+        }
+    }
+
+    Add-SearchDirectory -Path $stageDir
+    Add-SearchDirectory -Path $binDir
+
+    foreach ($libraryRoot in $libraryRoots) {
+        if (-not (Test-Path $libraryRoot)) {
+            continue
+        }
+
+        Add-SearchDirectory -Path $libraryRoot
+        Get-ChildItem -Path $libraryRoot -Recurse -Directory |
+            Where-Object { $_.FullName -notmatch "\\debug\\" } |
+            ForEach-Object { Add-SearchDirectory -Path $_.FullName }
+    }
+
+    @(
+        (Join-Path $env:SystemDrive "Strawberry/perl/bin"),
+        (Join-Path $env:SystemDrive "Strawberry/c/bin")
+    ) | ForEach-Object { Add-SearchDirectory -Path $_ }
+
+    if ($env:PATH) {
+        $env:PATH -split ";" | ForEach-Object { Add-SearchDirectory -Path $_ }
+    }
+
+    return $directories
+}
+
+function Find-RuntimeDependency {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$SearchDirectories
+    )
+
+    foreach ($directory in $SearchDirectories) {
+        $candidate = Join-Path $directory $Name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    return $null
+}
+
+function Resolve-RuntimeDependencies {
+    $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
+    if (-not $dumpbin) {
+        throw "dumpbin was not found. Run this script from an MSVC developer environment."
+    }
+
+    $systemDlls = New-SystemDllSet
+    $searchDirectories = Get-RuntimeSearchDirectories
+
+    for ($pass = 1; $pass -le 10; $pass++) {
+        $presentDlls = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        Get-ChildItem -Path $stageDir -File -Filter "*.dll" | ForEach-Object {
+            [void]$presentDlls.Add($_.Name)
+        }
+
+        $copiedCount = 0
+        Get-ChildItem -Path $stageDir -File | Where-Object { $_.Extension -in @(".exe", ".dll") } | ForEach-Object {
+            foreach ($dependency in (Get-DumpbinDependencies -Path $_.FullName)) {
+                if ($dependency -match "^(api-ms-win-|ext-ms-)") {
+                    continue
+                }
+                if ($systemDlls.Contains($dependency)) {
+                    continue
+                }
+                if ($presentDlls.Contains($dependency)) {
+                    continue
+                }
+
+                $candidate = Find-RuntimeDependency -Name $dependency -SearchDirectories $searchDirectories
+                if ($candidate) {
+                    Write-Host "Copying runtime dependency $dependency from $candidate"
+                    Copy-UniqueFile -Path $candidate
+                    [void]$presentDlls.Add($dependency)
+                    $copiedCount++
+                }
+            }
+        }
+
+        if ($copiedCount -eq 0) {
+            return
+        }
+    }
+
+    throw "Runtime dependency resolution did not converge after 10 passes."
+}
+
+function Test-RuntimeDependencies {
+    $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
+    if (-not $dumpbin) {
+        throw "dumpbin was not found. Run this script from an MSVC developer environment."
+    }
+
+    $systemDlls = New-SystemDllSet
     $presentDlls = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     Get-ChildItem -Path $stageDir -File -Filter "*.dll" | ForEach-Object {
         [void]$presentDlls.Add($_.Name)
@@ -167,6 +285,7 @@ foreach ($libraryRoot in $libraryRoots) {
 }
 
 Copy-VisualCppRuntime
+Resolve-RuntimeDependencies
 Test-RuntimeDependencies
 
 $manifestFiles = @(Get-ChildItem -Path $stageDir -File | Sort-Object Name | ForEach-Object {
