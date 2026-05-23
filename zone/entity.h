@@ -311,6 +311,7 @@ public:
 	bool	RemoveProximity(uint16 delete_npc_id);
 	bool	RemoveMobFromCloseLists(Mob *mob);
 	void    RemoveAuraFromMobs(Mob *aura);
+	void    RemoveAuraFromTarget(Mob *target);
 	void	RemoveAllMobs();
 	void	RemoveAllClients();
 	void	RemoveAllNPCs();

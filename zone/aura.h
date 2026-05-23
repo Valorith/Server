@@ -50,6 +50,7 @@ public:
 	bool Process();
 	void Depop(bool skip_strip = false);
 	Mob *GetOwner();
+	void RemoveTrackedTarget(uint16 entity_id);
 
 	void ProcessOnAllFriendlies(Mob *owner);
 	void ProcessOnAllGroupMembers(Mob *owner);
@@ -85,4 +86,8 @@ private:
 	std::function<void(Aura &, Mob *)> process_func;
 	std::set<int> casted_on; // we keep track of the other entities we've casted on
 	std::set<int> spawned_for;
+
+	bool HasAppliedAuraBuff(Mob *mob) const;
+	void TrackAuraTarget(Mob *mob, bool is_buff);
+	void PulseTrackedTargets(bool is_buff);
 };

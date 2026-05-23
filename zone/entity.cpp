@@ -21,6 +21,7 @@
 #include "common/data_verification.h"
 #include "common/features.h"
 #include "common/guilds.h"
+#include "zone/aura.h"
 #include "zone/bot.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
@@ -2865,6 +2866,23 @@ void EntityList::RemoveAuraFromMobs(Mob *aura)
 	for (auto &it : mob_list) {
 		auto mob = it.second;
 		mob->RemoveAura(aura->GetID());
+	}
+}
+
+void EntityList::RemoveAuraFromTarget(Mob *target)
+{
+	if (!target) {
+		return;
+	}
+
+	const auto target_id = target->GetID();
+	for (auto &it : npc_list) {
+		auto npc = it.second;
+		if (!npc || npc == target || !npc->IsAura()) {
+			continue;
+		}
+
+		static_cast<Aura *>(npc)->RemoveTrackedTarget(target_id);
 	}
 }
 
