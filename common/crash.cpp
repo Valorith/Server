@@ -90,18 +90,23 @@ std::string CrashReport::RedactCrashReportEndpoint(const std::string &endpoint)
 
 std::string CrashReport::GetCrashReportRequestTarget(const std::string &endpoint)
 {
-	const uri u(endpoint);
+	try {
+		const uri u(endpoint);
 
-	std::string request_target = "/";
-	if (!u.get_path().empty()) {
-		request_target += u.get_path();
+		std::string request_target = "/";
+		if (!u.get_path().empty()) {
+			request_target += u.get_path();
+		}
+
+		if (!u.get_query().empty()) {
+			request_target += fmt::format("?{}", u.get_query());
+		}
+
+		return request_target;
 	}
-
-	if (!u.get_query().empty()) {
-		request_target += fmt::format("?{}", u.get_query());
+	catch (const std::exception &) {
+		return {};
 	}
-
-	return request_target;
 }
 
 std::vector<std::string> CrashReport::GetCrashReportEndpoints(const std::string &additional_endpoints)
@@ -179,27 +184,40 @@ void SendCrashReport(const std::string &crash_report)
 	for (const auto &e: CrashReport::GetCrashReportEndpoints(RuleS(Analytics, CrashReportingAdditionalEndpoints))) {
 		const auto redacted_endpoint = CrashReport::RedactCrashReportEndpoint(e);
 
-		uri u(e);
-		const auto base_url = GetCrashReportBaseUrl(u);
-		const auto request_target = CrashReport::GetCrashReportRequestTarget(e);
+		try {
+			uri u(e);
+			const auto base_url = GetCrashReportBaseUrl(u);
 
-		// client
-		httplib::Client r(base_url);
-		r.set_connection_timeout(1, 0);
-		r.set_read_timeout(1, 0);
-		r.set_write_timeout(1, 0);
+			std::string request_target = "/";
+			if (!u.get_path().empty()) {
+				request_target += u.get_path();
+			}
+			if (!u.get_query().empty()) {
+				request_target += fmt::format("?{}", u.get_query());
+			}
 
-		auto res = r.Post(request_target, payload.str(), "application/json");
-		if (!res) {
-			LogError("Failed to send crash report to [{}] error [{}]", redacted_endpoint, httplib::to_string(res.error()));
+			// client
+			httplib::Client r(base_url);
+			r.set_connection_timeout(1, 0);
+			r.set_read_timeout(1, 0);
+			r.set_write_timeout(1, 0);
+
+			auto res = r.Post(request_target, payload.str(), "application/json");
+			if (!res) {
+				LogError("Failed to send crash report to [{}] error [{}]", redacted_endpoint, httplib::to_string(res.error()));
+				continue;
+			}
+
+			if (CrashReport::IsCrashReportSuccessStatus(res->status)) {
+				LogInfo("Sent crash report to [{}]", redacted_endpoint);
+			}
+			else {
+				LogError("Failed to send crash report to [{}] status [{}]", redacted_endpoint, res->status);
+			}
+		}
+		catch (const std::exception &) {
+			LogError("Failed to send crash report to [{}] exception while sending", redacted_endpoint);
 			continue;
-		}
-
-		if (CrashReport::IsCrashReportSuccessStatus(res->status)) {
-			LogInfo("Sent crash report to [{}]", redacted_endpoint);
-		}
-		else {
-			LogError("Failed to send crash report to [{}] status [{}]", redacted_endpoint, res->status);
 		}
 	}
 }
