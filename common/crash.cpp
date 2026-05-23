@@ -88,21 +88,24 @@ std::string CrashReport::RedactCrashReportEndpoint(const std::string &endpoint)
 	}
 }
 
+std::string CrashReport::GetCrashReportRequestTarget(const uri &endpoint_uri)
+{
+	std::string request_target = "/";
+	if (!endpoint_uri.get_path().empty()) {
+		request_target += endpoint_uri.get_path();
+	}
+
+	if (!endpoint_uri.get_query().empty()) {
+		request_target += fmt::format("?{}", endpoint_uri.get_query());
+	}
+
+	return request_target;
+}
+
 std::string CrashReport::GetCrashReportRequestTarget(const std::string &endpoint)
 {
 	try {
-		const uri u(endpoint);
-
-		std::string request_target = "/";
-		if (!u.get_path().empty()) {
-			request_target += u.get_path();
-		}
-
-		if (!u.get_query().empty()) {
-			request_target += fmt::format("?{}", u.get_query());
-		}
-
-		return request_target;
+		return GetCrashReportRequestTarget(uri(endpoint));
 	}
 	catch (const std::exception &) {
 		return {};
@@ -186,15 +189,8 @@ void SendCrashReport(const std::string &crash_report)
 
 		try {
 			uri u(e);
-			const auto base_url = GetCrashReportBaseUrl(u);
-
-			std::string request_target = "/";
-			if (!u.get_path().empty()) {
-				request_target += u.get_path();
-			}
-			if (!u.get_query().empty()) {
-				request_target += fmt::format("?{}", u.get_query());
-			}
+			const auto base_url       = GetCrashReportBaseUrl(u);
+			const auto request_target = CrashReport::GetCrashReportRequestTarget(u);
 
 			// client
 			httplib::Client r(base_url);
