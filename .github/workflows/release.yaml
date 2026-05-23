@@ -51,9 +51,11 @@ jobs:
 
       - name: Validate manual release request
         shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          if [ "${{ inputs.confirm }}" != "release" ]; then
+          if [ "$CONFIRM" != "release" ]; then
             echo "Confirmation input must exactly equal 'release'."
             exit 1
           fi
@@ -71,6 +73,8 @@ jobs:
       - name: Compute and apply release version
         id: version
         shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
           git fetch --tags --force
@@ -80,7 +84,7 @@ jobs:
             latest_tag="v${package_version}"
           fi
 
-          version="$(python3 utils/scripts/release/release_version.py compute --latest-tag "$latest_tag" --bump "${{ inputs.bump }}")"
+          version="$(python3 utils/scripts/release/release_version.py compute --latest-tag "$latest_tag" --bump "$BUMP")"
           tag="v${version}"
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "Tag ${tag} already exists."
