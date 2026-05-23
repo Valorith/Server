@@ -1,24 +1,192 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Release type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      draft:
+        description: Create the GitHub release as a draft
+        required: true
+        type: boolean
+        default: false
+      notify_discord:
+        description: Send a Discord notification for non-draft releases
+        required: true
+        type: boolean
+        default: true
+      confirm:
+        description: Type "release" to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_BRANCH: master
 
 jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release_sha: ${{ steps.publish.outputs.release_sha }}
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Validate manual release request
+        shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "release" ]; then
+            echo "Confirmation input must exactly equal 'release'."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/${RELEASE_BRANCH}" ]; then
+            echo "Release workflow must be run from ${RELEASE_BRANCH}; current ref is ${GITHUB_REF}."
+            exit 1
+          fi
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute and apply release version
+        id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          latest_tag="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [ -z "$latest_tag" ]; then
+            package_version="$(python3 -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])')"
+            latest_tag="v${package_version}"
+          fi
+
+          version="$(python3 utils/scripts/release/release_version.py compute --latest-tag "$latest_tag" --bump "$BUMP")"
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists."
+            exit 1
+          fi
+
+          python3 utils/scripts/release/release_version.py set --version "$version" --channel release
+
+          echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit release version and tag
+        id: publish
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package.json common/version.h CMakeLists.txt; then
+            echo "No release version changes were produced."
+            exit 1
+          fi
+
+          git add package.json common/version.h CMakeLists.txt
+          git commit -m "chore(release): ${TAG}"
+          git tag -a "$TAG" -m "Release ${TAG}"
+
+          release_sha="$(git rev-parse HEAD)"
+          git push origin HEAD:${RELEASE_BRANCH}
+          git push origin "$TAG"
+
+          echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
+
+  restore-dev-version:
+    name: Restore Dev Version
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Restore dev version on release branch
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 utils/scripts/release/release_version.py set --version "$VERSION" --channel dev
+
+          if git diff --quiet -- common/version.h; then
+            echo "CURRENT_VERSION already has the expected dev suffix."
+            exit 0
+          fi
+
+          git add common/version.h
+          git commit -m "chore(release): restore ${VERSION}-dev"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:${RELEASE_BRANCH}; then
+              exit 0
+            fi
+
+            echo "Dev version push failed on attempt ${attempt}; rebasing onto origin/${RELEASE_BRANCH} and retrying."
+            git fetch origin "${RELEASE_BRANCH}"
+            git rebase "origin/${RELEASE_BRANCH}"
+            sleep "$attempt"
+          done
+
+          echo "Failed to push dev version restore commit after 3 attempts."
+          exit 1
+
   build-linux:
     name: Build Linux
+    needs: prepare-release
     runs-on: ubuntu-latest
     container:
       image: akkadius/eqemu-server:v16
-      # Run as root to avoid EACCES on GitHub Actions runner file command writes in the container.
       options: --user 0
     steps:
-      - name: Checkout source
+      - name: Checkout release tag
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+          fetch-depth: 0
           submodules: recursive
 
       - name: Mark workspace safe
@@ -28,13 +196,30 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ runner.os }}-release-ccache-${{ hashFiles('.github/workflows/release.yaml') }}
+          key: ${{ runner.os }}-release-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/release.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-release-ccache-
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-binary-cache
+          key: ${{ runner.os }}-release-vcpkg-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-release-vcpkg-
+            ${{ runner.os }}-vcpkg-
+
+      - name: Configure vcpkg binary cache
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.vcpkg-binary-cache"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/.vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         shell: bash
         run: |
           apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build ccache uuid-dev
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build ccache uuid-dev zip unzip python3 patchelf
 
       - name: Configure
         shell: bash
@@ -43,6 +228,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DEQEMU_BUILD_TESTS=ON \
             -DEQEMU_BUILD_LOGIN=ON \
             -DEQEMU_BUILD_LUA=ON \
             -DEQEMU_BUILD_PERL=ON \
@@ -52,122 +238,36 @@ jobs:
         shell: bash
         run: cmake --build build --parallel
 
+      - name: Test
+        shell: bash
+        working-directory: build
+        run: ./bin/tests
+
       - name: Package binaries
         shell: bash
         run: |
-          cd build/bin
-          
-          # Verify that critical binaries exist
-          REQUIRED_BINARIES=(world zone ucs queryserv eqlaunch shared_memory loginserver import_client_files export_client_files)
-          MISSING_BINARIES=()
-          
-          for binary in "${REQUIRED_BINARIES[@]}"; do
-            if [ ! -f "$binary" ]; then
-              MISSING_BINARIES+=("$binary")
-            fi
-          done
-          
-          if [ ${#MISSING_BINARIES[@]} -ne 0 ]; then
-            echo "Error: Required binaries not found: ${MISSING_BINARIES[*]}"
-            echo "Build may have failed. Refusing to create incomplete package."
-            exit 1
-          fi
-          
-          ZIP_CONTENTS=""
-          zip_add() {
-            zip -uj eqemu-server-linux-x64.zip "$1"
-          }
-          zip_add_unique() {
-            local target_name
-            target_name="$(basename "$1")"
-            if [ -f eqemu-server-linux-x64.zip ] && printf '%s\n' "$ZIP_CONTENTS" | grep -qx "$target_name"; then
-              echo "Skipping duplicate library: $target_name"
-              return 0
-            fi
-            zip_add "$1"
-            ZIP_CONTENTS="${ZIP_CONTENTS}${target_name}"$'\n'
-          }
-
-          # Add all executable files (excluding tests)
-          for f in *; do
-            if [ -f "$f" ] && [ -x "$f" ] && [ "$f" != "tests" ]; then
-              zip_add_unique "$f"
-            fi
-          done
-
-          # Add shared libraries needed for runtime (from build/bin, build/libs, and vcpkg_installed)
-          bin_lib_count="$(find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
-          if [ "$bin_lib_count" -gt 0 ]; then
-            find . -maxdepth 1 -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
-              while IFS= read -r -d '' lib; do
-                zip_add_unique "$lib"
-              done
-          fi
-
-          if [ -d ../libs ]; then
-            lib_count="$(find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) | wc -l)"
-            if [ "$lib_count" -gt 0 ]; then
-              find ../libs -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) -print0 | \
-                while IFS= read -r -d '' lib; do
-                  zip_add_unique "$lib"
-                done
-            else
-              echo "No shared libraries found in build/libs"
-            fi
-          else
-            echo "No build/libs directory found; skipping shared library packaging"
-          fi
-
-          for vcpkg_dir in ../vcpkg_installed ../../vcpkg_installed; do
-            if [ -d "$vcpkg_dir" ]; then
-              lib_count="$(find "$vcpkg_dir" -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) ! -path "*/debug/*" -print | wc -l)"
-              if [ "$lib_count" -gt 0 ]; then
-                find "$vcpkg_dir" -type f \( -name "*.so" -o -name "*.so.[0-9]*" \) ! -path "*/debug/*" -print0 | \
-                  while IFS= read -r -d '' lib; do
-                    zip_add_unique "$lib"
-                  done
-              else
-                echo "No shared libraries found in $vcpkg_dir"
-              fi
-            else
-              echo "No $vcpkg_dir directory found; skipping vcpkg shared library packaging"
-            fi
-          done
-          
-          # Verify zip file was created and contains files
-          if [ ! -f eqemu-server-linux-x64.zip ]; then
-            echo "Error: Failed to create zip file"
-            exit 1
-          fi
-          
-          FILE_COUNT=$(unzip -Z1 eqemu-server-linux-x64.zip | wc -l)
-          EXPECTED_MIN_FILES=${#REQUIRED_BINARIES[@]}
-          if [ "$FILE_COUNT" -lt "$EXPECTED_MIN_FILES" ]; then
-            echo "Error: Zip file contains fewer than expected files ($FILE_COUNT, expected at least $EXPECTED_MIN_FILES)"
-            unzip -l eqemu-server-linux-x64.zip
-            exit 1
-          fi
-          
-          echo "Successfully packaged $FILE_COUNT files"
-          ls -lh eqemu-server-linux-x64.zip
-          echo ""
-          echo "Package contents:"
-          unzip -l eqemu-server-linux-x64.zip
+          bash utils/scripts/release/package-linux.sh \
+            "${{ needs.prepare-release.outputs.version }}" \
+            "${{ needs.prepare-release.outputs.tag }}" \
+            "${{ needs.prepare-release.outputs.release_sha }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: eqemu-server-linux-x64
-          path: build/bin/eqemu-server-linux-x64.zip
+          path: dist/eqemu-server-linux-x64-${{ needs.prepare-release.outputs.tag }}.zip
           retention-days: 90
 
   build-windows:
     name: Build Windows
+    needs: prepare-release
     runs-on: windows-latest
     steps:
-      - name: Checkout source
+      - name: Checkout release tag
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+          fetch-depth: 0
           submodules: recursive
 
       - name: Enable long paths
@@ -178,11 +278,28 @@ jobs:
         with:
           arch: x64
 
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-binary-cache
+          key: ${{ runner.os }}-release-vcpkg-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-release-vcpkg-
+            ${{ runner.os }}-vcpkg-
+
+      - name: Configure vcpkg binary cache
+        shell: pwsh
+        run: |
+          $cachePath = Join-Path $env:GITHUB_WORKSPACE ".vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$cachePath,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Configure
         shell: pwsh
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+          cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DEQEMU_BUILD_TESTS=ON `
             -DEQEMU_BUILD_LOGIN=ON `
             -DEQEMU_BUILD_LUA=ON `
             -DEQEMU_BUILD_ZLIB=ON `
@@ -191,103 +308,32 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: cmake --build build --config RelWithDebInfo --target ALL_BUILD -- /m:4
+        run: cmake --build build --parallel
+
+      - name: Test
+        shell: pwsh
+        working-directory: build
+        run: ./bin/tests.exe
 
       - name: Package binaries
         shell: pwsh
         run: |
-          $binDir = "build/bin/RelWithDebInfo"
-          $outZip = "eqemu-server-windows-x64.zip"
-          # Minimum expected zip size (core binaries should be at least this size)
-          $minZipSize = 100KB
-
-          # Verify that critical binaries exist
-          $requiredBinaries = @("world.exe", "zone.exe", "ucs.exe", "queryserv.exe", "eqlaunch.exe", "shared_memory.exe", "loginserver.exe", "import_client_files.exe", "export_client_files.exe")
-          $missingBinaries = @()
-          
-          foreach ($binary in $requiredBinaries) {
-            $path = Join-Path $binDir $binary
-            if (-not (Test-Path $path)) {
-              $missingBinaries += $binary
-            }
-          }
-          
-          if ($missingBinaries.Count -gt 0) {
-            Write-Host "Error: Required binaries not found: $($missingBinaries -join ', ')"
-            Write-Host "Build may have failed. Refusing to create incomplete package."
-            exit 1
-          }
-
-          # Collect all exe and dll files
-          $files = @()
-
-          # Add executables (exclude tests.exe)
-          Get-ChildItem -Path $binDir -Filter "*.exe" | Where-Object { $_.Name -ne "tests.exe" } | ForEach-Object {
-            $files += $_.FullName
-          }
-
-          # Add DLLs from bin directory
-          Get-ChildItem -Path $binDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            $files += $_.FullName
-          }
-
-          # Add zlib DLLs if they exist
-          $zlibDir = "build/libs/zlibng/RelWithDebInfo"
-          if (Test-Path $zlibDir) {
-            Get-ChildItem -Path $zlibDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-              $files += $_.FullName
-            }
-          }
-
-          # Verify we have files to package
-          if ($files.Count -eq 0) {
-            Write-Host "Error: No files found to package"
-            exit 1
-          }
-
-          # Create zip
-          Compress-Archive -Path $files -DestinationPath $outZip -Force
-
-          # Verify zip was created successfully
-          if (-not (Test-Path $outZip)) {
-            Write-Host "Error: Failed to create zip file"
-            exit 1
-          }
-
-          # Verify zip contains files (should contain at least the core binaries)
-          $zipInfo = Get-Item $outZip
-          if ($zipInfo.Length -lt $minZipSize) {
-            Write-Host "Error: Zip file is suspiciously small ($($zipInfo.Length) bytes, expected at least $minZipSize)"
-            exit 1
-          }
-
-          # Show contents
-          Write-Host "Successfully packaged $($files.Count) files"
-          Write-Host "Package contents:"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($outZip)
-          try {
-            foreach ($entry in $zip.Entries) {
-              Write-Host (" - {0} ({1} bytes)" -f $entry.FullName, $entry.Length)
-            }
-          }
-          finally {
-            $zip.Dispose()
-          }
+          ./utils/scripts/release/package-windows.ps1 `
+            -Version "${{ needs.prepare-release.outputs.version }}" `
+            -Tag "${{ needs.prepare-release.outputs.tag }}" `
+            -CommitSha "${{ needs.prepare-release.outputs.release_sha }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: eqemu-server-windows-x64
-          path: eqemu-server-windows-x64.zip
+          path: dist/eqemu-server-windows-x64-${{ needs.prepare-release.outputs.tag }}.zip
           retention-days: 90
 
   release:
     name: Create Release
-    needs: [build-linux, build-windows]
+    needs: [prepare-release, build-linux, build-windows]
     runs-on: ubuntu-latest
-    # Only run on tag pushes
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -304,9 +350,11 @@ jobs:
           path: artifacts/
 
       - name: List artifacts
+        shell: bash
         run: ls -la artifacts/
 
       - name: Generate checksums
+        shell: bash
         run: |
           cd artifacts
           sha256sum *.zip > SHA256SUMS.txt
@@ -315,26 +363,36 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
-          draft: false
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          target_commitish: ${{ needs.prepare-release.outputs.release_sha }}
+          name: Release ${{ needs.prepare-release.outputs.tag }}
+          draft: ${{ inputs.draft }}
           prerelease: false
           generate_release_notes: true
           files: |
-            artifacts/eqemu-server-linux-x64.zip
-            artifacts/eqemu-server-windows-x64.zip
+            artifacts/eqemu-server-linux-x64-${{ needs.prepare-release.outputs.tag }}.zip
+            artifacts/eqemu-server-windows-x64-${{ needs.prepare-release.outputs.tag }}.zip
             artifacts/SHA256SUMS.txt
+
       - name: Notify Discord
+        if: ${{ inputs.notify_discord && !inputs.draft }}
         env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag }}
           REPO: ${{ github.repository }}
+        shell: bash
         run: |
+          DISCORD_WEBHOOK_URL="${DISCORD_RELEASE_WEBHOOK_URL:-${DISCORD_WEBHOOK_URL:-}}"
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            echo "No Discord webhook secret is set; skipping Discord notification."
             exit 0
           fi
-          LINUX_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-linux-x64.zip"
-          WINDOWS_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/eqemu-server-windows-x64.zip"
+
+          LINUX_ASSET="eqemu-server-linux-x64-${TAG_NAME}.zip"
+          WINDOWS_ASSET="eqemu-server-windows-x64-${TAG_NAME}.zip"
+          LINUX_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/${LINUX_ASSET}"
+          WINDOWS_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/${WINDOWS_ASSET}"
           SHA_URL="https://github.com/${REPO}/releases/download/${TAG_NAME}/SHA256SUMS.txt"
           payload=$(jq -n \
             --arg tag "$TAG_NAME" \
