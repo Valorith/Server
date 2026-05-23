@@ -2876,13 +2876,13 @@ void EntityList::RemoveAuraFromTarget(Mob *target)
 	}
 
 	const auto target_id = target->GetID();
-	for (auto &it : mob_list) {
-		auto mob = it.second;
-		if (!mob || mob == target || !mob->IsAura()) {
+	for (auto &it : npc_list) {
+		auto npc = it.second;
+		if (!npc || npc == target || !npc->IsAura()) {
 			continue;
 		}
 
-		static_cast<Aura *>(mob)->RemoveTrackedTarget(target_id);
+		static_cast<Aura *>(npc)->RemoveTrackedTarget(target_id);
 	}
 }
 
