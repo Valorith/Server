@@ -1078,6 +1078,7 @@ RULE_CATEGORY_END()
 
 RULE_CATEGORY(Analytics)
 RULE_BOOL(Analytics, CrashReporting, true, "Automatic crash reporting analytics for EQEmu Server developers")
+RULE_STRING(Analytics, CrashReportingAdditionalEndpoints, "", "Semicolon-delimited list of additional crash report POST URLs. Spire remains the built-in default endpoint.")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Logging)

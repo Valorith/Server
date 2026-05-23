@@ -13,78 +13,207 @@
 #include "common/version.h"
 
 #include <cstdio>
+#include <exception>
+#include <sstream>
 #include <vector>
 
-void SendCrashReport(const std::string &crash_report)
-{
-	// can configure multiple endpoints if need be
-	std::vector<std::string> endpoints = {
-		"https://spire.eqemu.dev/api/v1/analytics/server-crash-report",
-//		"http://localhost:3010/api/v1/analytics/server-crash-report", // development
-	};
+namespace {
+	const std::string kBuiltInCrashReportEndpoint = "https://spire.eqemu.dev/api/v1/analytics/server-crash-report";
 
-	EQEmuLogSys* log = EQEmuLogSys::Instance();
-
-	auto      config = EQEmuConfig::get();
-	for (auto &e: endpoints) {
-		uri u(e);
-
-		std::string base_url = fmt::format("{}://{}", u.get_scheme(), u.get_host());
+	std::string GetCrashReportBaseUrl(const uri &u)
+	{
+		std::string base_url = fmt::format("{}://{}", Strings::ToLower(u.get_scheme()), u.get_host());
 		if (u.get_port()) {
 			base_url += fmt::format(":{}", u.get_port());
 		}
 
-		// client
-		httplib::Client r(base_url);
-		r.set_connection_timeout(1, 0);
-		r.set_read_timeout(1, 0);
-		r.set_write_timeout(1, 0);
+		return base_url;
+	}
 
-		// os info
-		auto os         = EQ::GetOS();
-		auto cpus       = EQ::GetCPUs();
-		auto process_id = EQ::GetPID();
-		auto rss        = EQ::GetRSS() / 1048576.0;
-		auto uptime     = static_cast<uint32>(EQ::GetUptime());
-
-		// payload
-		Json::Value p;
-		p["platform_name"]     = GetPlatformName();
-		p["crash_report"]      = crash_report;
-		p["server_version"]    = CURRENT_VERSION;
-		p["compile_date"]      = COMPILE_DATE;
-		p["compile_time"]      = COMPILE_TIME;
-		p["server_name"]       = config->LongName;
-		p["server_short_name"] = config->ShortName;
-		p["uptime"]            = uptime;
-		p["os_machine"]        = os.machine;
-		p["os_release"]        = os.release;
-		p["os_version"]        = os.version;
-		p["os_sysname"]        = os.sysname;
-		p["process_id"]        = process_id;
-		p["rss_memory"]        = rss;
-		p["cpus"]              = cpus.size();
-		p["origination_info"]  = "";
-
-		if (!log->origination_info.zone_short_name.empty()) {
-			p["origination_info"] = fmt::format(
-				"{} ({}) instance_id [{}]",
-				log->origination_info.zone_short_name,
-				log->origination_info.zone_long_name,
-				log->origination_info.instance_id
-			);
+	std::vector<std::string> GetPathSegments(const std::string &path)
+	{
+		std::vector<std::string> segments;
+		for (auto segment : Strings::Split(path, '/')) {
+			Strings::Trim(segment);
+			if (!segment.empty()) {
+				segments.emplace_back(segment);
+			}
 		}
 
-		std::stringstream payload;
-		payload << p;
+		return segments;
+	}
+}
 
-		if (auto res = r.Post(e, payload.str(), "application/json")) {
-			if (res->status == 200) {
-				LogInfo("Sent crash report");
+bool CrashReport::IsCrashReportEndpoint(const std::string &endpoint)
+{
+	try {
+		const uri   u(endpoint);
+		const auto scheme = Strings::ToLower(u.get_scheme());
+		return (scheme == "http" || scheme == "https") && !u.get_host().empty();
+	}
+	catch (const std::exception &) {
+		return false;
+	}
+}
+
+bool CrashReport::IsCrashReportSuccessStatus(int status)
+{
+	return status >= 200 && status < 300;
+}
+
+std::string CrashReport::RedactCrashReportEndpoint(const std::string &endpoint)
+{
+	try {
+		const uri u(endpoint);
+
+		std::string redacted = GetCrashReportBaseUrl(u);
+		const auto  segments = GetPathSegments(u.get_path());
+		if (segments.size() > 2) {
+			for (size_t i = 0; i < 2; ++i) {
+				redacted += fmt::format("/{}", segments[i]);
+			}
+			redacted += "/...";
+		}
+		else if (!segments.empty()) {
+			redacted += "/...";
+		}
+		else {
+			redacted += "/";
+		}
+
+		return redacted;
+	}
+	catch (const std::exception &) {
+		return "[invalid crash report endpoint]";
+	}
+}
+
+std::string CrashReport::GetCrashReportRequestTarget(const uri &endpoint_uri)
+{
+	std::string request_target = "/";
+	if (!endpoint_uri.get_path().empty()) {
+		request_target += endpoint_uri.get_path();
+	}
+
+	if (!endpoint_uri.get_query().empty()) {
+		request_target += fmt::format("?{}", endpoint_uri.get_query());
+	}
+
+	return request_target;
+}
+
+std::string CrashReport::GetCrashReportRequestTarget(const std::string &endpoint)
+{
+	try {
+		return GetCrashReportRequestTarget(uri(endpoint));
+	}
+	catch (const std::exception &) {
+		return {};
+	}
+}
+
+std::vector<std::string> CrashReport::GetCrashReportEndpoints(const std::string &additional_endpoints)
+{
+	std::vector<std::string> endpoints = {
+		kBuiltInCrashReportEndpoint,
+//		"http://localhost:3010/api/v1/analytics/server-crash-report", // development
+	};
+
+	if (additional_endpoints.empty()) {
+		return endpoints;
+	}
+
+	for (auto endpoint : Strings::Split(additional_endpoints, ';')) {
+		Strings::Trim(endpoint);
+		if (endpoint.empty()) {
+			continue;
+		}
+
+		if (!IsCrashReportEndpoint(endpoint)) {
+			LogWarning("Skipping invalid crash report endpoint [{}]", RedactCrashReportEndpoint(endpoint));
+			continue;
+		}
+
+		endpoints.emplace_back(endpoint);
+	}
+
+	return endpoints;
+}
+
+void SendCrashReport(const std::string &crash_report)
+{
+	EQEmuLogSys* log = EQEmuLogSys::Instance();
+
+	auto config = EQEmuConfig::get();
+
+	// os info
+	auto os         = EQ::GetOS();
+	auto cpus       = EQ::GetCPUs();
+	auto process_id = EQ::GetPID();
+	auto rss        = EQ::GetRSS() / 1048576.0;
+	auto uptime     = static_cast<uint32>(EQ::GetUptime());
+
+	// payload
+	Json::Value p;
+	p["platform_name"]     = GetPlatformName();
+	p["crash_report"]      = crash_report;
+	p["server_version"]    = CURRENT_VERSION;
+	p["compile_date"]      = COMPILE_DATE;
+	p["compile_time"]      = COMPILE_TIME;
+	p["server_name"]       = config->LongName;
+	p["server_short_name"] = config->ShortName;
+	p["uptime"]            = uptime;
+	p["os_machine"]        = os.machine;
+	p["os_release"]        = os.release;
+	p["os_version"]        = os.version;
+	p["os_sysname"]        = os.sysname;
+	p["process_id"]        = process_id;
+	p["rss_memory"]        = rss;
+	p["cpus"]              = cpus.size();
+	p["origination_info"]  = "";
+
+	if (!log->origination_info.zone_short_name.empty()) {
+		p["origination_info"] = fmt::format(
+			"{} ({}) instance_id [{}]",
+			log->origination_info.zone_short_name,
+			log->origination_info.zone_long_name,
+			log->origination_info.instance_id
+		);
+	}
+
+	std::stringstream payload;
+	payload << p;
+
+	for (const auto &e: CrashReport::GetCrashReportEndpoints(RuleS(Analytics, CrashReportingAdditionalEndpoints))) {
+		const auto redacted_endpoint = CrashReport::RedactCrashReportEndpoint(e);
+
+		try {
+			uri u(e);
+			const auto base_url       = GetCrashReportBaseUrl(u);
+			const auto request_target = CrashReport::GetCrashReportRequestTarget(u);
+
+			// client
+			httplib::Client r(base_url);
+			r.set_connection_timeout(1, 0);
+			r.set_read_timeout(1, 0);
+			r.set_write_timeout(1, 0);
+
+			auto res = r.Post(request_target, payload.str(), "application/json");
+			if (!res) {
+				LogError("Failed to send crash report to [{}] error [{}]", redacted_endpoint, httplib::to_string(res.error()));
+				continue;
+			}
+
+			if (CrashReport::IsCrashReportSuccessStatus(res->status)) {
+				LogInfo("Sent crash report to [{}]", redacted_endpoint);
 			}
 			else {
-				LogError("Failed to send crash report to [{}]", e);
+				LogError("Failed to send crash report to [{}] status [{}]", redacted_endpoint, res->status);
 			}
+		}
+		catch (const std::exception &) {
+			LogError("Failed to send crash report to [{}] exception while sending", redacted_endpoint);
+			continue;
 		}
 	}
 }
