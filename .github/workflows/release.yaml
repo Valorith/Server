@@ -45,7 +45,7 @@ jobs:
       - name: Checkout release branch
         uses: actions/checkout@v5
         with:
-          ref: master
+          ref: ${{ env.RELEASE_BRANCH }}
           fetch-depth: 0
           submodules: recursive
 
