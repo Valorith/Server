@@ -105,7 +105,7 @@ void register_event(std::string package_name, std::string name, int evt, luabind
 void unregister_event(std::string package_name, std::string name, int evt) {
 	auto liter = lua_encounter_events_registered.find(package_name);
 	if(liter != lua_encounter_events_registered.end()) {
-		std::list<lua_registered_event> elist = liter->second;
+		std::list<lua_registered_event> &elist = liter->second;
 		auto iter = elist.begin();
 		while(iter != elist.end()) {
 			if(iter->event_id == evt && iter->encounter_name.compare(name) == 0) {
@@ -114,7 +114,10 @@ void unregister_event(std::string package_name, std::string name, int evt) {
 			}
 			++iter;
 		}
-		lua_encounter_events_registered[package_name] = elist;
+
+		if(elist.empty()) {
+			lua_encounter_events_registered.erase(liter);
+		}
 	}
 }
 
