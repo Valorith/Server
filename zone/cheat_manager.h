@@ -54,13 +54,14 @@ public:
 		SetExemptStatus(Assist, false);
 		SetExemptStatus(Sense, false);
 		m_distance_since_last_position_check = 0.0f;
+		m_last_position_check_location       = glm::vec3(0.0f);
+		m_current_position_check_location    = glm::vec3(0.0f);
 		m_cheat_detect_moved                 = false;
 		m_target                             = nullptr;
 		m_time_since_last_memorization       = 0;
 		m_time_since_last_position_check     = 0;
 		m_time_since_last_warp_detection.Start();
 		m_time_since_last_movement_history.Start(70000);
-		m_warp_counter = 0;
 	}
 	void SetClient(Client *cli);
 	void SetExemptStatus(ExemptionType type, bool v);
@@ -71,18 +72,17 @@ public:
 	void CheckMemTimer();
 	void ProcessMovementHistory(const EQApplicationPacket *app);
 	void ProcessSpawnApperance(uint16 spawn_id, uint16 type, uint32 parameter);
-	void ProcessItemVerifyRequest(int32 slot_id, uint32 target_id);
 	void ClientProcess();
 private:
 	bool  m_exemption[ExemptionType::MAX_EXEMPTIONS]{};
 	float m_distance_since_last_position_check;
+	glm::vec3 m_last_position_check_location;
+	glm::vec3 m_current_position_check_location;
 	bool  m_cheat_detect_moved;
 
 	Client *m_target;
 	uint32 m_time_since_last_position_check;
 	uint32 m_time_since_last_memorization;
-	uint32 m_time_since_last_action{};
 	Timer  m_time_since_last_warp_detection;
 	Timer  m_time_since_last_movement_history;
-	uint32 m_warp_counter;
 };

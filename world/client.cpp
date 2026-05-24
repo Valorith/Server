@@ -1408,9 +1408,18 @@ bool Client::HandlePacket(const EQApplicationPacket *app) {
 
 	// Voidd: Anti-GM Account hack, Checks source ip against valid GM Account IP Addresses
 	if (RuleB(World, GMAccountIPList) && GetAdmin() >= (RuleI(World, MinGMAntiHackStatus))) {
-		if(!database.CheckGMIPs(long2ip(GetIP()), GetAccountID())) {
-			LogInfo("GM Account not permited from source address [{}] and accountid [{}]", long2ip(GetIP()).c_str(), GetAccountID());
+		const auto source_ip = long2ip(GetIP());
+		if(!database.CheckGMIPs(source_ip, GetAccountID())) {
+			LogInfo("GM Account not permited from source address [{}] and accountid [{}]", source_ip.c_str(), GetAccountID());
+			RecordPossibleHack(
+				fmt::format(
+					"[GMAntiHack] GM account packet rejected from unauthorized source address [{}] account_id [{}]",
+					source_ip,
+					GetAccountID()
+				)
+			);
 			eqs->Close();
+			return false;
 		}
 	}
 

@@ -678,6 +678,7 @@ void Client::DropItem(int16 slot_id, bool recurse)
 
 	if (GetInv().CheckNoDrop(slot_id, recurse) && !CanTradeFVNoDropItem()) {
 		auto invalid_drop = m_inv.GetItem(slot_id);
+		const auto invalid_item = invalid_drop ? invalid_drop->GetItem() : nullptr;
 		if (!invalid_drop) {
 			LogInventory("Error in InventoryProfile::CheckNoDrop() - returned 'true' for empty slot");
 		}
@@ -701,8 +702,8 @@ void Client::DropItem(int16 slot_id, bool recurse)
 
 		std::string message = fmt::format(
 			"Tried to drop an item on the ground that was no-drop! item_name [{}] item_id ({})",
-			invalid_drop->GetItem()->Name,
-			invalid_drop->GetItem()->ID
+			invalid_item ? invalid_item->Name : "UNKNOWN ITEM",
+			invalid_item ? invalid_item->ID : 0
 		);
 
 		invalid_drop = nullptr;
@@ -1905,6 +1906,17 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		}
 		LogError("WorldKick() of Player [{}](id:[{}], acct:[{}]) due to 'NoDrop Hack' detection >> SlotID:[{}], ItemData:[{}]",
 			GetName(), CharacterID(), AccountID(), src_slot_id, ndh_item_data.c_str());
+		RecordPlayerEventLog(
+			PlayerEvent::POSSIBLE_HACK,
+			PlayerEvent::PossibleHackEvent{
+				.message = fmt::format(
+					"NoDrop Hack detected while moving item from slot [{}] to slot [{}]. ItemData:[{}]",
+					src_slot_id,
+					dst_slot_id,
+					ndh_item_data
+				)
+			}
+		);
 		ndh_inst = nullptr;
 
 		DeleteItemInInventory(src_slot_id);
