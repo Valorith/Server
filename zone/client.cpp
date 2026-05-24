@@ -10749,7 +10749,18 @@ bool Client::MovePCExpedition(bool msg_if_invalid)
 		return false;
 	}
 
-	MovePCDynamicZone(expedition->GetZoneID(), static_cast<int>(expedition->GetZoneVersion()), msg_if_invalid);
+	const auto zone_id = expedition->GetZoneID();
+	const auto zone_version = static_cast<int>(expedition->GetZoneVersion());
+	const auto client_dzs = GetDynamicZones(zone_id, zone_version);
+	if (client_dzs.size() != 1) {
+		MovePCDynamicZone(zone_id, zone_version, msg_if_invalid);
+		return false;
+	}
+
+	const auto* dz = client_dzs.front();
+	const DynamicZoneLocation zonein = dz->GetZoneInLocation();
+	const ZoneMode zone_mode = dz->HasZoneInLocation() ? ZoneMode::ZoneSolicited : ZoneMode::ZoneToSafeCoords;
+	MovePC(zone_id, dz->GetInstanceID(), zonein.x, zonein.y, zonein.z, zonein.heading, 0, zone_mode);
 	return true;
 }
 

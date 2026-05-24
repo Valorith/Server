@@ -39,11 +39,6 @@ namespace {
 		return value ? static_cast<int32_t>(atoi(value)) : 0;
 	}
 
-	float Float(const char* value)
-	{
-		return value ? strtof(value, nullptr) : 0.0f;
-	}
-
 	std::string Text(const char* value)
 	{
 		return value ? value : "";
@@ -345,11 +340,41 @@ namespace {
 		return score;
 	}
 
+	std::string NormalizeSayText(const std::string& message)
+	{
+		std::string text = message;
+		Strings::Trim(text);
+		std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+		return text;
+	}
+
+	bool HasHailPrefix(const std::string& text)
+	{
+		if (text == "hail") {
+			return true;
+		}
+
+		if (!text.starts_with("hail") || text.size() <= 4) {
+			return false;
+		}
+
+		const auto next = static_cast<unsigned char>(text[4]);
+		return std::isspace(next) || std::ispunct(next);
+	}
+
 	std::string CommandWord(const std::string& message)
 	{
-		auto text = NormalizePhrase(message);
-		if (text.starts_with("hail ")) {
-			text = text.substr(5);
+		auto text = NormalizeSayText(message);
+		if (HasHailPrefix(text)) {
+			text = text.substr(4);
+			while (!text.empty()) {
+				const auto next = static_cast<unsigned char>(text.front());
+				if (!std::isspace(next) && !std::ispunct(next)) {
+					break;
+				}
+				text.erase(text.begin());
+			}
 		}
 
 		return text;
@@ -357,8 +382,7 @@ namespace {
 
 	bool IsHailMessage(const std::string& message)
 	{
-		const auto text = NormalizePhrase(message);
-		return text.starts_with("hail");
+		return HasHailPrefix(NormalizeSayText(message));
 	}
 
 	std::string RequestPhrase(const Template& template_data, const RequestNpc& request_npc)
@@ -514,8 +538,8 @@ namespace {
 		}
 
 		const auto& safe_return = expedition->GetSafeReturnLocation();
-		if (safe_return.zone_id == expedition->GetZoneID()) {
-			client.MovePC(expedition->GetZoneID(), 0, safe_return.x, safe_return.y, safe_return.z, safe_return.heading);
+		if (safe_return.zone_id != 0) {
+			client.MovePC(safe_return.zone_id, 0, safe_return.x, safe_return.y, safe_return.z, safe_return.heading);
 			return true;
 		}
 
