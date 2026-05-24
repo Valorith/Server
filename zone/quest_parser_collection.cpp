@@ -111,6 +111,7 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	for (const auto& encounter : _encounters) {
 		if (encounter.second) {
 			_encounters_unloading[encounter.first] = true;
+			EventEncounter(EVENT_ENCOUNTER_UNLOAD, encounter.first, "", 0, nullptr);
 			quest_manager.stopalltimers(encounter.second);
 			encounter.second->Depop();
 		}
