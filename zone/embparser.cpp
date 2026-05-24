@@ -920,9 +920,18 @@ int PerlembParser::EventEncounter(
 	ExportVar(package_name.c_str(), "encounter_name", encounter_name.c_str());
 	ExportVar(package_name.c_str(), "data", "");
 	ExportVar(package_name.c_str(), "timer", "");
+	ExportVar(package_name.c_str(), "duration", "");
 
-	if (event_id == EVENT_TIMER) {
+	if (event_id == EVENT_TIMER || event_id == EVENT_TIMER_STOP) {
 		ExportVar(package_name.c_str(), "timer", data.c_str());
+	} else if (
+		event_id == EVENT_TIMER_PAUSE ||
+		event_id == EVENT_TIMER_RESUME ||
+		event_id == EVENT_TIMER_START
+	) {
+		Seperator sep(data.c_str());
+		ExportVar(package_name.c_str(), "timer", sep.arg[0]);
+		ExportVar(package_name.c_str(), "duration", sep.arg[1]);
 	} else if (
 		(event_id == EVENT_ENCOUNTER_LOAD || event_id == EVENT_ENCOUNTER_UNLOAD) &&
 		extra_pointers &&
