@@ -21,6 +21,32 @@
 #include <unordered_set>
 
 namespace ExpeditionDB {
+
+std::string NpcTypeName(uint32_t npc_type_id)
+{
+	if (npc_type_id == 0) {
+		return "";
+	}
+
+	std::string name = content_db.GetCleanNPCNameByID(npc_type_id);
+	if (name.empty()) {
+		name = content_db.GetNPCNameByID(npc_type_id);
+		Strings::FindReplace(name, "_", " ");
+		Strings::Trim(name);
+	}
+
+	return name.empty() ? "unknown NPC" : name;
+}
+
+std::string NpcTypeLabel(uint32_t npc_type_id)
+{
+	if (npc_type_id == 0) {
+		return "unset";
+	}
+
+	return fmt::format("{} ({})", NpcTypeName(npc_type_id), npc_type_id);
+}
+
 namespace {
 	std::unordered_map<uint32_t, Template> g_templates;
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
@@ -45,31 +71,6 @@ namespace {
 	std::string Text(const char* value)
 	{
 		return value ? value : "";
-	}
-
-	std::string NpcTypeName(uint32_t npc_type_id)
-	{
-		if (npc_type_id == 0) {
-			return "";
-		}
-
-		std::string name = content_db.GetCleanNPCNameByID(npc_type_id);
-		if (name.empty()) {
-			name = content_db.GetNPCNameByID(npc_type_id);
-			Strings::FindReplace(name, "_", " ");
-			Strings::Trim(name);
-		}
-
-		return name.empty() ? "unknown NPC" : name;
-	}
-
-	std::string NpcTypeLabel(uint32_t npc_type_id)
-	{
-		if (npc_type_id == 0) {
-			return "unset";
-		}
-
-		return fmt::format("{} ({})", NpcTypeName(npc_type_id), npc_type_id);
 	}
 
 	std::string Escape(const std::string& value)
@@ -1773,8 +1774,10 @@ void MaybeShowGmTargetMenu(Client& client, NPC& npc)
 	}
 	g_last_gm_target_menu_entity[client.CharacterID()] = entity_id;
 
+	const auto& builder_state = GetBuilderState(client.CharacterID());
+	const auto* selected_template = FindTemplate(builder_state.selected_template_id);
 	std::vector<const Template*> candidates;
-	if (const auto* selected_template = FindTemplate(GetBuilderState(client.CharacterID()).selected_template_id)) {
+	if (selected_template) {
 		candidates.push_back(selected_template);
 	}
 
@@ -1805,9 +1808,6 @@ void MaybeShowGmTargetMenu(Client& client, NPC& npc)
 					event_npc.complete_on_spawn ? "spawn" :
 					(event_npc.complete_on_death ? "death" : "manual");
 				const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
-				SetSelectedTemplate(client.CharacterID(), template_data->id);
-				SetSelectedEvent(client.CharacterID(), event_data.id);
-
 				client.Message(Chat::NPCQuestSay, header.c_str());
 				client.Message(Chat::NPCQuestSay, fmt::format(
 					"{} ({}) | event {} [{}] | trigger {} | lockout {} | replay {} | loot {}",
@@ -1820,6 +1820,25 @@ void MaybeShowGmTargetMenu(Client& client, NPC& npc)
 					Strings::SecondsToTime(event_data.replay_lockout_seconds),
 					loot_protected ? "on" : "off"
 				).c_str());
+
+				const bool can_update_selection = !selected_template || selected_template->id == template_data->id;
+				if (!can_update_selection) {
+					client.Message(Chat::NPCQuestSay, fmt::format(
+						"Target maps to expedition [{}], but your active builder selection is [{}]. Select it explicitly before using event shortcuts.",
+						template_data->name,
+						selected_template->name
+					).c_str());
+					client.Message(Chat::NPCQuestSay, fmt::format(
+						"-> {} | {}",
+						Saylink::Silent(fmt::format("#expedition select {}", template_data->id), "Select Expedition"),
+						Saylink::Silent(fmt::format("#expedition menu {}", template_data->id), "Open Builder Menu")
+					).c_str());
+					return;
+				}
+
+				SetSelectedTemplate(client.CharacterID(), template_data->id);
+				SetSelectedEvent(client.CharacterID(), event_data.id);
+
 				client.Message(Chat::NPCQuestSay, fmt::format(
 					"-> {} | {} | {}",
 					Saylink::Silent(fmt::format("#expedition event select {}", event_data.id), "Select Event"),
@@ -1864,6 +1883,13 @@ void ApplyLootEvents(DynamicZone& expedition)
 				expedition.SetLootEvent(event_npc.npc_type_id, RuntimeEventName(event_data, event_npc), DzLootEvent::Type::NpcType);
 			}
 		}
+	}
+}
+
+void ClearRuntimeEventState(uint32_t dz_id)
+{
+	if (dz_id != 0) {
+		g_completed_runtime_events.erase(dz_id);
 	}
 }
 

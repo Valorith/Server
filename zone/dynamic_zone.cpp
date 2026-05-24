@@ -23,6 +23,7 @@
 #include "common/repositories/character_expedition_lockouts_repository.h"
 #include "common/repositories/dynamic_zone_lockouts_repository.h"
 #include "zone/client.h"
+#include "zone/expedition_db.h"
 #include "zone/expedition_request.h"
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
@@ -682,6 +683,7 @@ void DynamicZone::HandleWorldMessage(ServerPacket* pack)
 		{
 			LogDynamicZonesDetail("Deleting dynamic zone [{}] from zone cache", buf->dz_id);
 			dz->SendUpdatesToZoneMembers(true, true); // members silently removed
+			ExpeditionDB::ClearRuntimeEventState(buf->dz_id);
 			zone->dynamic_zone_cache.erase(buf->dz_id);
 		}
 		break;

@@ -143,6 +143,8 @@ const Template* FindTemplate(const std::string& id_or_name);
 const Event* FindEvent(uint32_t event_id);
 const Event* FindEvent(const Template& template_data, const std::string& id_or_name);
 ValidationResult ValidateTemplate(const Template& template_data);
+std::string NpcTypeName(uint32_t npc_type_id);
+std::string NpcTypeLabel(uint32_t npc_type_id);
 DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& template_data);
 DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled);
 DynamicZone* CreateExpeditionFromTemplate(Client& client, const std::string& id_or_name);
@@ -153,6 +155,7 @@ bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
 void MaybeShowGmTargetMenu(Client& client, NPC& npc);
 void ApplyLootEvents(DynamicZone& expedition);
+void ClearRuntimeEventState(uint32_t dz_id);
 
 BuilderState& GetBuilderState(uint32_t character_id);
 void SetSelectedTemplate(uint32_t character_id, uint32_t template_id);

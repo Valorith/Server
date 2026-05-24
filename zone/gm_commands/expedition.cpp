@@ -342,8 +342,6 @@ namespace {
 		return request_npc.npc_type_id == npc.GetNPCTypeID();
 	}
 
-	std::string NpcTypeName(uint32_t npc_type_id);
-
 	std::string TargetBossName(NPC& npc)
 	{
 		std::string name = npc.GetCleanName();
@@ -363,7 +361,8 @@ namespace {
 			return event_data.event_name;
 		}
 
-		return fmt::format("{} Defeated", NpcTypeName(event_npc.npc_type_id));
+		const std::string npc_name = ExpeditionDB::NpcTypeName(event_npc.npc_type_id);
+		return npc_name.empty() ? ExpeditionDB::kSimpleBossEventName : fmt::format("{} Defeated", npc_name);
 	}
 
 	constexpr const char* ChatSeparator()
@@ -673,32 +672,11 @@ namespace {
 			fmt::format("{}:{}", ZoneLabel(zone_id), zone_version);
 	}
 
-	std::string NpcTypeName(uint32_t npc_type_id)
-	{
-		if (npc_type_id == 0) {
-			return "unset";
-		}
-
-		std::string name = content_db.GetCleanNPCNameByID(npc_type_id);
-		if (name.empty()) {
-			name = content_db.GetNPCNameByID(npc_type_id);
-			Strings::FindReplace(name, "_", " ");
-			Strings::Trim(name);
-		}
-
-		return name.empty() ? "unknown NPC" : name;
-	}
-
-	std::string NpcTypeLabel(uint32_t npc_type_id)
-	{
-		return npc_type_id == 0 ? "unset" : fmt::format("{} ({})", NpcTypeName(npc_type_id), npc_type_id);
-	}
-
 	std::string NpcMappingLabel(uint32_t npc_type_id, uint32_t spawn2_id)
 	{
 		return spawn2_id == 0 ?
-			fmt::format("{} | spawn any", NpcTypeLabel(npc_type_id)) :
-			fmt::format("{} | spawn {}", NpcTypeLabel(npc_type_id), spawn2_id);
+			fmt::format("{} | spawn any", ExpeditionDB::NpcTypeLabel(npc_type_id)) :
+			fmt::format("{} | spawn {}", ExpeditionDB::NpcTypeLabel(npc_type_id), spawn2_id);
 	}
 
 	std::string NextStep(const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
@@ -2087,7 +2065,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			npc_type_id = Strings::ToUnsignedInt(sep->arg[3]);
-			npc_label = NpcTypeLabel(npc_type_id);
+			npc_label = ExpeditionDB::NpcTypeLabel(npc_type_id);
 			arg_index = 4;
 		}
 		else {
