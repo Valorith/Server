@@ -1069,6 +1069,7 @@ void PerlembParser::UnregisterEncounterEvent(
 void PerlembParser::RemoveEncounter(const std::string& name)
 {
 	UnregisterEncounterEvent("", name, -1);
+	encounter_quest_status_.erase(name);
 }
 
 int PerlembParser::DispatchEncounterRegisteredEvents(
