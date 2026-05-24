@@ -105,7 +105,6 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 
 	_spell_quest_status.clear();
 	_item_quest_status.clear();
-	_encounter_quest_status.clear();
 
 	for (const auto& encounter : _encounters) {
 		if (encounter.second) {
@@ -118,6 +117,7 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	entity_list.EncounterProcess();
 	_encounters.clear();
 	_encounters_unloading.clear();
+	_encounter_quest_status.clear();
 
 	for (const auto& e: _load_precedence) {
 		e->ReloadQuests();
