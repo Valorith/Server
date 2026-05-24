@@ -17,12 +17,15 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace ExpeditionDB {
 namespace {
 	std::unordered_map<uint32_t, Template> g_templates;
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
 	std::unordered_map<uint32_t, uint16_t> g_last_gm_target_menu_entity;
+	std::unordered_map<uint32_t, std::unordered_set<std::string>> g_completed_runtime_events;
 
 	bool Truthy(const char* value)
 	{
@@ -607,6 +610,11 @@ namespace {
 		return event_data.event_name;
 	}
 
+	bool TryMarkRuntimeEventComplete(DynamicZone& expedition, const std::string& runtime_event_name)
+	{
+		return g_completed_runtime_events[expedition.GetID()].insert(runtime_event_name).second;
+	}
+
 	std::pair<std::string, uint32_t> ParseLockoutActionValue(const std::string& value, const std::string& default_event_name)
 	{
 		auto parts = Strings::Split(value, "|");
@@ -668,19 +676,16 @@ namespace {
 	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
 	{
 		const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
-		if (expedition.HasLockout(runtime_event_name)) {
+		if (expedition.HasLockout(runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
 			return false;
 		}
 
-		bool handled = false;
 		if (event_data.lock_on_success && event_data.lockout_seconds > 0) {
 			expedition.AddLockout(runtime_event_name, event_data.lockout_seconds);
-			handled = true;
 		}
 
 		if (event_data.replay_lockout_seconds > 0) {
 			expedition.AddLockout(DzLockout::ReplayTimer, event_data.replay_lockout_seconds);
-			handled = true;
 		}
 
 		ExecuteActions(expedition, event_data, runtime_event_name);
@@ -689,7 +694,7 @@ namespace {
 			notifier->Message(Chat::Yellow, fmt::format("Expedition event complete: {}", runtime_event_name).c_str());
 		}
 
-		return handled;
+		return true;
 	}
 }
 

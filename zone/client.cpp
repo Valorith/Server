@@ -1641,14 +1641,16 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 			if (t->IsNPC() && !is_engaged) {
 				CheckLDoNHail(t->CastToNPC());
 				CheckEmoteHail(t->CastToNPC(), message);
-				if (ExpeditionDB::HandleRequestSay(*this, *t->CastToNPC(), message)) {
-					break;
-				}
+				const bool handled_expedition_request = ExpeditionDB::HandleRequestSay(*this, *t->CastToNPC(), message);
 
 				if (RuleB(TaskSystem, EnableTaskSystem)) {
 					if (UpdateTasksOnSpeakWith(t->CastToNPC())) {
 						t->CastToNPC()->DoQuestPause(this);
 					}
+				}
+
+				if (handled_expedition_request) {
+					break;
 				}
 			}
 		}
