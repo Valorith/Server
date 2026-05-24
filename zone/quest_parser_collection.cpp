@@ -132,6 +132,7 @@ void QuestParserCollection::RemoveEncounter(const std::string& name)
 {
 	_encounters.erase(name);
 	_encounters_unloading.erase(name);
+	_encounter_quest_status.erase(name);
 	RemoveEncounterRegistrations(name);
 }
 
