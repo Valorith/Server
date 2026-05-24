@@ -6,6 +6,8 @@
 #include "zone/worldserver.h"
 #include "zone/queryserv.h"
 
+#include <algorithm>
+
 extern WorldServer worldserver;
 extern QueryServ *QServ;
 
@@ -58,6 +60,8 @@ void CheatManager::CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3
 
 					parse->EventPlayer(EVENT_WARP, m_target, export_string, 0);
 				}
+
+				m_time_since_last_warp_detection.Start(WarpDetectionCooldownMS);
 			}
 			break;
 		case MQWarpAbsolute:
@@ -87,7 +91,7 @@ void CheatManager::CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3
 					parse->EventPlayer(EVENT_WARP, m_target, export_string, 0);
 				}
 
-				m_time_since_last_warp_detection.Start(2500);
+				m_time_since_last_warp_detection.Start(WarpDetectionCooldownMS);
 			}
 			break;
 		case MQWarpShadowStep:
@@ -122,10 +126,14 @@ void CheatManager::CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3
 				((m_target->Admin() < RuleI(Cheat, MQWarpExemptStatus) || (RuleI(Cheat, MQWarpExemptStatus)) == -1))) {
 				if (RuleB(Cheat, MarkMQWarpLT)) {
 					std::string message = fmt::format(
-						"/MQWarp(Knockback) with location from x [{:.2f}] y [{:.2f}] z [{:.2f}] running fast but not fast enough to get killed, possibly: small warp, speed hack, excessive lag, marked as suspicious.",
+						"/MQWarp (light) with location from x [{:.2f}] y [{:.2f}] z [{:.2f}] to x [{:.2f}] y [{:.2f}] z [{:.2f}] Distance [{:.2f}] running fast but not fast enough to get killed, possibly: small warp, speed hack, excessive lag, marked as suspicious.",
 						position1.x,
 						position1.y,
-						position1.z
+						position1.z,
+						position2.x,
+						position2.y,
+						position2.z,
+						Distance(position1, position2)
 					);
 					RecordPlayerEventLogWithClient(m_target, PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
 					LogCheat(fmt::runtime(message));
@@ -219,25 +227,31 @@ void CheatManager::MovementCheck(glm::vec3 updated_position)
 		CheatDetected(MQGhost, updated_position);
 	}
 
-	float  dist     = DistanceNoZ(m_target->GetPosition(), updated_position);
+	glm::vec3 current_position = glm::vec3(m_target->GetPosition());
+	float  dist     = DistanceNoZ(current_position, updated_position);
 	uint32 cur_time = Timer::GetCurrentTime();
 	if (dist == 0) {
 		if (m_distance_since_last_position_check > 0.0f) {
+			m_current_position_check_location = updated_position;
 			MovementCheck(0);
 		}
 		else {
 			m_time_since_last_position_check = cur_time;
+			m_last_position_check_location   = updated_position;
+			m_current_position_check_location = updated_position;
 			m_cheat_detect_moved             = false;
 		}
 	}
 	else {
 		m_distance_since_last_position_check += dist;
+		m_current_position_check_location = updated_position;
 		m_cheat_detect_moved = true;
 		if (m_time_since_last_position_check == 0) {
 			m_time_since_last_position_check = cur_time;
+			m_last_position_check_location   = current_position;
 		}
 		else {
-			MovementCheck(2500);
+			MovementCheck(PositionCheckIntervalMS);
 		}
 	}
 }
@@ -251,49 +265,50 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 
 		// MQWarpDetection shouldn't go below 1.0f so we can't end up dividing by 0.
 		float run_speed = m_target->GetRunspeed() /
-						  std::min(
+						  std::max(
 							  RuleR(Cheat, MQWarpDetectionDistanceFactor),
 							  1.0f
 						  );
 		if (estimated_speed > run_speed) {
 			bool using_gm_speed = m_target->GetGMSpeed();
 			bool is_immobile    = m_target->GetRunspeed() == 0; // this covers stuns, roots, mez, and pseudorooted.
+			const auto from      = m_last_position_check_location;
+			const auto to        = m_current_position_check_location;
 			if (!using_gm_speed && !is_immobile) {
 				if (GetExemptStatus(ShadowStep)) {
 					if (m_distance_since_last_position_check > 800) {
 						CheatDetected(
 							MQWarpShadowStep,
-							glm::vec3(
-								m_target->GetX(),
-								m_target->GetY(),
-								m_target->GetZ()
-							)
+							from,
+							to
 						);
 					}
 				}
 				else if (GetExemptStatus(KnockBack)) {
 					if (estimated_speed > 30.0f) {
-						CheatDetected(MQWarpKnockBack, glm::vec3(m_target->GetX(), m_target->GetY(), m_target->GetZ()));
+						CheatDetected(MQWarpKnockBack, from, to);
 					}
 				}
 				else if (!GetExemptStatus(Port)) {
 					if (estimated_speed > (run_speed * 1.5)) {
-						CheatDetected(MQWarp, glm::vec3(m_target->GetX(), m_target->GetY(), m_target->GetZ()));
+						CheatDetected(MQWarp, from, to);
 						m_time_since_last_position_check     = cur_time;
+						m_last_position_check_location       = to;
 						m_distance_since_last_position_check = 0.0f;
 					}
 					else {
-						CheatDetected(MQWarpLight, glm::vec3(m_target->GetX(), m_target->GetY(), m_target->GetZ()));
+						CheatDetected(MQWarpLight, from, to);
 					}
 				}
 			}
 		}
-		if (time_between_checks != 1000) {
+		if (time_between_checks != DefaultMovementCheckIntervalMS) {
 			SetExemptStatus(ShadowStep, false);
 			SetExemptStatus(KnockBack, false);
 			SetExemptStatus(Port, false);
 		}
 		m_time_since_last_position_check     = cur_time;
+		m_last_position_check_location       = m_current_position_check_location;
 		m_distance_since_last_position_check = 0.0f;
 	}
 }
@@ -303,18 +318,22 @@ void CheatManager::CheckMemTimer()
 	if (m_target == nullptr) {
 		return;
 	}
-	if (m_time_since_last_memorization - Timer::GetCurrentTime() <= 1) {
+	const uint32 current_time = Timer::GetCurrentTime();
+	if (
+		m_time_since_last_memorization != 0 &&
+		(current_time - m_time_since_last_memorization) <= FastMemorizationWindowMS
+	) {
 		glm::vec3 pos = m_target->GetPosition();
 		CheatDetected(MQFastMem, pos);
 	}
-	m_time_since_last_memorization = Timer::GetCurrentTime();
+	m_time_since_last_memorization = current_time;
 }
 
 void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 {
 	// if they haven't sent sent the packet within this time... they are probably spoofing...
 	// linux users reported that they don't send this packet at all but i can't prove they don't so i'm not sure if thats a fake or not.
-	m_time_since_last_movement_history.Start(70000);
+	m_time_since_last_movement_history.Start(MovementHistoryTimeoutMS);
 	if (GetExemptStatus(Port)) {
 		return;
 	}
@@ -350,20 +369,10 @@ void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 	}
 }
 
-void CheatManager::ProcessSpawnApperance(uint16 spawn_id, uint16 type, uint32 parameter)
+void CheatManager::ProcessSpawnApperance(uint16, uint16 type, uint32 parameter)
 {
 	if (type == AppearanceType::Animation && parameter == Animation::Sitting) {
 		m_time_since_last_memorization = Timer::GetCurrentTime();
-	}
-	else if (spawn_id == 0 && type == AppearanceType::AntiCheat) {
-		m_time_since_last_action = parameter;
-	}
-}
-
-void CheatManager::ProcessItemVerifyRequest(int32 slot_id, uint32 target_id)
-{
-	if (slot_id == -1 && m_warp_counter != target_id) {
-		m_warp_counter = target_id;
 	}
 }
 

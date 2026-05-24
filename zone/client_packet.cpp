@@ -9462,8 +9462,6 @@ void Client::Handle_OP_ItemVerifyRequest(const EQApplicationPacket *app)
 	slot_id = request->slot;
 	target_id = request->target;
 
-	cheat_manager.ProcessItemVerifyRequest(request->slot, request->target);
-
 	EQApplicationPacket *outapp = nullptr;
 	outapp = new EQApplicationPacket(OP_ItemVerifyReply, sizeof(ItemVerifyReply_Struct));
 	ItemVerifyReply_Struct* reply = (ItemVerifyReply_Struct*)outapp->pBuffer;
