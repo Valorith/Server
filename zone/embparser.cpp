@@ -1771,6 +1771,15 @@ int PerlembParser::SendCommands(
 			}
 		}
 
+		if (!encounter_name.empty() && (!other || !other->IsEncounter())) {
+			auto* loaded_encounter = GetLoadedEncounter(encounter_name);
+			if (loaded_encounter) {
+				buf = fmt::format("{}::encounter", prefix);
+				SV* encounter = get_sv(buf.c_str(), true);
+				sv_setref_pv(encounter, "Mob", loaded_encounter);
+			}
+		}
+
 		//only export QuestItem if it's an inst quest
 		if (inst) {
 			auto i = quest_manager.GetQuestItem();
