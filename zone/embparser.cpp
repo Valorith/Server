@@ -1718,7 +1718,7 @@ int PerlembParser::SendCommands(
 
 			for (const auto& suffix : suffixes) {
 				const std::string& key = fmt::format("${}::{}", prefix, suffix);
-				if (clear_vars_.find(suffix) != clear_vars_.end()) {
+				if (clear_vars_.find(key) != clear_vars_.end()) {
 					auto e = fmt::format("{} = undef;", key);
 					perl->eval(e.c_str());
 				}
