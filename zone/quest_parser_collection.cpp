@@ -86,7 +86,6 @@ void QuestParserCollection::Init()
 void QuestParserCollection::ReloadQuests(bool reset_timers)
 {
 	if (reset_timers) {
-		quest_manager.ClearAllTimers();
 		zone->StopAllTimers();
 	}
 
@@ -122,6 +121,10 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	_encounters_unloading.clear();
 	_encounter_quest_status.clear();
 	_encounters_reloading = false;
+
+	if (reset_timers) {
+		quest_manager.ClearAllTimers();
+	}
 
 	for (const auto& e: _load_precedence) {
 		e->ReloadQuests();
