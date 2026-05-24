@@ -50,6 +50,7 @@ QuestParserCollection::QuestParserCollection()
 	_global_merc_quest_status   = QuestUnloaded;
 	_zone_quest_status          = QuestUnloaded;
 	_global_zone_quest_status   = QuestUnloaded;
+	_encounters_reloading       = false;
 }
 
 QuestParserCollection::~QuestParserCollection() { }
@@ -106,6 +107,8 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	_spell_quest_status.clear();
 	_item_quest_status.clear();
 
+	_encounters_reloading = true;
+
 	for (const auto& encounter : _encounters) {
 		if (encounter.second) {
 			_encounters_unloading[encounter.first] = true;
@@ -118,6 +121,7 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	_encounters.clear();
 	_encounters_unloading.clear();
 	_encounter_quest_status.clear();
+	_encounters_reloading = false;
 
 	for (const auto& e: _load_precedence) {
 		e->ReloadQuests();
@@ -145,7 +149,7 @@ bool QuestParserCollection::IsEncounterLoaded(const std::string& name) const
 
 bool QuestParserCollection::IsEncounterUnloading(const std::string& name) const
 {
-	return _encounters_unloading.find(name) != _encounters_unloading.end();
+	return _encounters_reloading || _encounters_unloading.find(name) != _encounters_unloading.end();
 }
 
 Encounter* QuestParserCollection::GetLoadedEncounter(const std::string& name)

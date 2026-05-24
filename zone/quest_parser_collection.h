@@ -408,6 +408,7 @@ private:
 	std::map<std::string, uint32> _encounter_quest_status;
 	std::map<std::string, Encounter*> _encounters;
 	std::map<std::string, bool> _encounters_unloading;
+	bool _encounters_reloading;
 };
 
 extern QuestParserCollection *parse;
