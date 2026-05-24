@@ -383,6 +383,10 @@ LuaParser::LuaParser() {
 	SpellArgumentDispatch[EVENT_SPELL_EFFECT_TRANSLOCATE_COMPLETE] = handle_translocate_finish;
 
 	EncounterArgumentDispatch[EVENT_TIMER]            = handle_encounter_timer;
+	EncounterArgumentDispatch[EVENT_TIMER_PAUSE]      = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_RESUME]     = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_START]      = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_STOP]       = handle_encounter_timer_stop;
 	EncounterArgumentDispatch[EVENT_ENCOUNTER_LOAD]   = handle_encounter_load;
 	EncounterArgumentDispatch[EVENT_ENCOUNTER_UNLOAD] = handle_encounter_unload;
 
