@@ -1017,11 +1017,15 @@ void PerlembParser::UnregisterEncounterEvent(
 		encounter_name = quest_manager.GetEncounter();
 	}
 
+	if (encounter_name.empty()) {
+		return;
+	}
+
 	auto remove_from_list = [&](auto& events) {
 		auto iter = events.begin();
 		while (iter != events.end()) {
 			if (
-				(iter->encounter_name == encounter_name || encounter_name.empty()) &&
+				iter->encounter_name == encounter_name &&
 				(event_id < 0 || iter->event_id == static_cast<QuestEventID>(event_id))
 			) {
 				iter = events.erase(iter);
