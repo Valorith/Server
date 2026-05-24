@@ -11,12 +11,6 @@
 extern WorldServer worldserver;
 extern QueryServ *QServ;
 
-namespace {
-	constexpr uint32 MovementHistoryTimeoutMS = 70000;
-	constexpr uint32 WarpDetectionCooldownMS = 2500;
-	constexpr uint32 FastMemorizationWindowMS = 1;
-}
-
 void CheatManager::SetClient(Client *cli)
 {
 	m_target = cli;
@@ -257,7 +251,7 @@ void CheatManager::MovementCheck(glm::vec3 updated_position)
 			m_last_position_check_location   = current_position;
 		}
 		else {
-			MovementCheck(2500);
+			MovementCheck(PositionCheckIntervalMS);
 		}
 	}
 }
@@ -308,7 +302,7 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 				}
 			}
 		}
-		if (time_between_checks != 1000) {
+		if (time_between_checks != DefaultMovementCheckIntervalMS) {
 			SetExemptStatus(ShadowStep, false);
 			SetExemptStatus(KnockBack, false);
 			SetExemptStatus(Port, false);

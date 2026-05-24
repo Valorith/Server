@@ -1410,7 +1410,7 @@ bool Client::HandlePacket(const EQApplicationPacket *app) {
 	if (RuleB(World, GMAccountIPList) && GetAdmin() >= (RuleI(World, MinGMAntiHackStatus))) {
 		const auto source_ip = long2ip(GetIP());
 		if(!database.CheckGMIPs(source_ip, GetAccountID())) {
-			LogInfo("GM Account not permited from source address [{}] and accountid [{}]", source_ip.c_str(), GetAccountID());
+			LogInfo("GM Account not permitted from source address [{}] and accountid [{}]", source_ip.c_str(), GetAccountID());
 			RecordPossibleHack(
 				fmt::format(
 					"[GMAntiHack] GM account packet rejected from unauthorized source address [{}] account_id [{}]",

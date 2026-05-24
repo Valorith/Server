@@ -45,6 +45,13 @@ typedef enum {
 } CheatTypes;
 
 class CheatManager {
+private:
+	static constexpr uint32 MovementHistoryTimeoutMS = 70000;
+	static constexpr uint32 WarpDetectionCooldownMS = 2500;
+	static constexpr uint32 PositionCheckIntervalMS = 2500;
+	static constexpr uint32 DefaultMovementCheckIntervalMS = 1000;
+	static constexpr uint32 FastMemorizationWindowMS = 1;
+
 public:
 	CheatManager()
 	{
@@ -61,14 +68,14 @@ public:
 		m_time_since_last_memorization       = 0;
 		m_time_since_last_position_check     = 0;
 		m_time_since_last_warp_detection.Start();
-		m_time_since_last_movement_history.Start(70000);
+		m_time_since_last_movement_history.Start(MovementHistoryTimeoutMS);
 	}
 	void SetClient(Client *cli);
 	void SetExemptStatus(ExemptionType type, bool v);
 	bool GetExemptStatus(ExemptionType type);
 	void CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3 position2 = glm::vec3(0, 0, 0));
 	void MovementCheck(glm::vec3 updated_position);
-	void MovementCheck(uint32 time_between_checks = 1000);
+	void MovementCheck(uint32 time_between_checks = DefaultMovementCheckIntervalMS);
 	void CheckMemTimer();
 	void ProcessMovementHistory(const EQApplicationPacket *app);
 	void ProcessSpawnApperance(uint16 spawn_id, uint16 type, uint32 parameter);
