@@ -387,6 +387,7 @@ private:
 		std::vector<std::any>* extra_pointers
 	);
 
+	void FinalizeEncounterUnload(const std::string& name);
 	void RemoveEncounterRegistrations(const std::string& name);
 
 	std::map<uint32, QuestInterface*> _interfaces;

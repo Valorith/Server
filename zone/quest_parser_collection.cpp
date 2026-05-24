@@ -143,6 +143,21 @@ void QuestParserCollection::RemoveEncounterRegistrations(const std::string& name
 	}
 }
 
+void QuestParserCollection::FinalizeEncounterUnload(const std::string& name)
+{
+	auto* encounter = GetLoadedEncounter(name);
+	if (!encounter) {
+		RemoveEncounter(name);
+		return;
+	}
+
+	quest_manager.stopalltimers(encounter);
+	encounter->Depop();
+
+	// Finalize now so same-tick unload/reload sees the encounter as unloaded.
+	entity_list.EncounterProcess();
+}
+
 bool QuestParserCollection::IsEncounterLoaded(const std::string& name) const
 {
 	return _encounters.find(name) != _encounters.end();
@@ -201,13 +216,7 @@ void QuestParserCollection::UnloadEncounter(const std::string& name)
 	_encounters_unloading[name] = true;
 	EventEncounter(EVENT_ENCOUNTER_UNLOAD, name, "", 0, nullptr);
 
-	auto* encounter = GetLoadedEncounter(name);
-	if (encounter) {
-		quest_manager.stopalltimers(encounter);
-		encounter->Depop();
-	}
-
-	RemoveEncounterRegistrations(name);
+	FinalizeEncounterUnload(name);
 }
 
 void QuestParserCollection::UnloadEncounterWithData(const std::string& name, const std::string& data)
@@ -223,13 +232,7 @@ void QuestParserCollection::UnloadEncounterWithData(const std::string& name, con
 	extra_pointers.push_back(&mutable_data);
 	EventEncounter(EVENT_ENCOUNTER_UNLOAD, name, "", 0, &extra_pointers);
 
-	auto* encounter = GetLoadedEncounter(name);
-	if (encounter) {
-		quest_manager.stopalltimers(encounter);
-		encounter->Depop();
-	}
-
-	RemoveEncounterRegistrations(name);
+	FinalizeEncounterUnload(name);
 }
 
 bool QuestParserCollection::HasQuestSub(uint32 npc_id, QuestEventID event_id)
