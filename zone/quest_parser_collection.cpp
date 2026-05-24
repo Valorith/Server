@@ -160,6 +160,8 @@ void QuestParserCollection::FinalizeEncounterUnload(const std::string& name)
 
 	// Finalize now so same-tick unload/reload sees the encounter as unloaded.
 	entity_list.EncounterProcess();
+	// Encounter stores a bounded copy of its name; also clear the caller's key.
+	RemoveEncounter(name);
 }
 
 bool QuestParserCollection::IsEncounterLoaded(const std::string& name) const
