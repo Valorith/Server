@@ -21,6 +21,8 @@
 #include "common/memory_mapped_file.h"
 #include "cppunit/cpptest.h"
 
+#include <cstdio>
+
 class MemoryMappedFileTest : public Test::Suite {
 	typedef void(MemoryMappedFileTest::*TestFunction)(void);
 public:
@@ -30,11 +32,24 @@ public:
 	}
 
 	~MemoryMappedFileTest() {
+		CleanupTestFile();
 	}
 
 	private:
+	static constexpr const char* TestFileName()
+	{
+		return "testfile.txt";
+	}
+
+	static void CleanupTestFile()
+	{
+		std::remove(TestFileName());
+	}
+
 	void LoadAndZeroMMF() {
-		EQ::MemoryMappedFile mmf("testfile.txt", 512);
+		CleanupTestFile();
+
+		EQ::MemoryMappedFile mmf(TestFileName(), 512);
 		mmf.ZeroFile();
 		TEST_ASSERT(mmf.Size() == 512);
 
@@ -45,7 +60,7 @@ public:
 	}
 
 	void LoadExistingMMF() {
-		EQ::MemoryMappedFile mmf("testfile.txt");
+		EQ::MemoryMappedFile mmf(TestFileName());
 		TEST_ASSERT(mmf.Size() == 512);
 
 		unsigned char *data = reinterpret_cast<unsigned char*>(mmf.Get());

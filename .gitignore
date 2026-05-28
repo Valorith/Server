@@ -70,5 +70,8 @@ compile_flags.txt
 cmake-build-relwithdebinfo/*
 skill-caps.diff
 
+# Test artifacts
+/testfile.txt
+
 # OCC runtime state
 utils/occ/data/live-session.json
