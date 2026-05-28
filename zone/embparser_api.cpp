@@ -27,6 +27,7 @@
 #include "common/zone_store.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
+#include "zone/embparser.h"
 #include "zone/embperl.h"
 #include "zone/entity.h"
 #include "zone/queryserv.h"
@@ -403,6 +404,147 @@ void Perl__settimerMS(std::string timer_name, uint32 milliseconds, EQ::ItemInsta
 	quest_manager.settimerMS(timer_name, milliseconds, inst);
 }
 
+void Perl__load_encounter(std::string encounter_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->LoadEncounter(encounter_name);
+	}
+}
+
+void Perl__load_encounter_with_data(std::string encounter_name, std::string data)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->LoadEncounterWithData(encounter_name, data);
+	}
+}
+
+void Perl__unload_encounter(std::string encounter_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnloadEncounter(encounter_name);
+	}
+}
+
+void Perl__unload_encounter_with_data(std::string encounter_name, std::string data)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnloadEncounterWithData(encounter_name, data);
+	}
+}
+
+std::string Perl__get_encounter()
+{
+	return quest_manager.GetEncounter();
+}
+
+void Perl__register_npc_event(std::string encounter_name, int event_id, int npc_id, std::string sub_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->RegisterEncounterEvent(fmt::format("npc_{}", npc_id), encounter_name, event_id, sub_name);
+	}
+}
+
+void Perl__register_npc_event(int event_id, int npc_id, std::string sub_name)
+{
+	Perl__register_npc_event(quest_manager.GetEncounter(), event_id, npc_id, sub_name);
+}
+
+void Perl__unregister_npc_event(std::string encounter_name, int event_id, int npc_id)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnregisterEncounterEvent(fmt::format("npc_{}", npc_id), encounter_name, event_id);
+	}
+}
+
+void Perl__unregister_npc_event(int event_id, int npc_id)
+{
+	Perl__unregister_npc_event(quest_manager.GetEncounter(), event_id, npc_id);
+}
+
+void Perl__register_player_event(std::string encounter_name, int event_id, std::string sub_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->RegisterEncounterEvent("player", encounter_name, event_id, sub_name);
+	}
+}
+
+void Perl__register_player_event(int event_id, std::string sub_name)
+{
+	Perl__register_player_event(quest_manager.GetEncounter(), event_id, sub_name);
+}
+
+void Perl__unregister_player_event(std::string encounter_name, int event_id)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnregisterEncounterEvent("player", encounter_name, event_id);
+	}
+}
+
+void Perl__unregister_player_event(int event_id)
+{
+	Perl__unregister_player_event(quest_manager.GetEncounter(), event_id);
+}
+
+void Perl__register_item_event(std::string encounter_name, int event_id, int item_id, std::string sub_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->RegisterEncounterEvent(fmt::format("item_{}", item_id), encounter_name, event_id, sub_name);
+	}
+}
+
+void Perl__register_item_event(int event_id, int item_id, std::string sub_name)
+{
+	Perl__register_item_event(quest_manager.GetEncounter(), event_id, item_id, sub_name);
+}
+
+void Perl__unregister_item_event(std::string encounter_name, int event_id, int item_id)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnregisterEncounterEvent(fmt::format("item_{}", item_id), encounter_name, event_id);
+	}
+}
+
+void Perl__unregister_item_event(int event_id, int item_id)
+{
+	Perl__unregister_item_event(quest_manager.GetEncounter(), event_id, item_id);
+}
+
+void Perl__register_spell_event(std::string encounter_name, int event_id, int spell_id, std::string sub_name)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->RegisterEncounterEvent(fmt::format("spell_{}", spell_id), encounter_name, event_id, sub_name);
+	}
+}
+
+void Perl__register_spell_event(int event_id, int spell_id, std::string sub_name)
+{
+	Perl__register_spell_event(quest_manager.GetEncounter(), event_id, spell_id, sub_name);
+}
+
+void Perl__unregister_spell_event(std::string encounter_name, int event_id, int spell_id)
+{
+	auto* perl_parser = PerlembParser::Instance();
+	if (perl_parser) {
+		perl_parser->UnregisterEncounterEvent(fmt::format("spell_{}", spell_id), encounter_name, event_id);
+	}
+}
+
+void Perl__unregister_spell_event(int event_id, int spell_id)
+{
+	Perl__unregister_spell_event(quest_manager.GetEncounter(), event_id, spell_id);
+}
+
 void Perl__pausetimer(std::string timer_name)
 {
 	quest_manager.pausetimer(timer_name);
@@ -418,9 +560,29 @@ void Perl__stoptimer(std::string timer_name)
 	quest_manager.stoptimer(timer_name);
 }
 
+void Perl__stoptimer(std::string timer_name, Mob* m)
+{
+	quest_manager.stoptimer(timer_name, m);
+}
+
+void Perl__stoptimer(std::string timer_name, EQ::ItemInstance* inst)
+{
+	quest_manager.stoptimer(timer_name, inst);
+}
+
 void Perl__stopalltimers()
 {
 	quest_manager.stopalltimers();
+}
+
+void Perl__stopalltimers(Mob* m)
+{
+	quest_manager.stopalltimers(m);
+}
+
+void Perl__stopalltimers(EQ::ItemInstance* inst)
+{
+	quest_manager.stopalltimers(inst);
 }
 
 void Perl__emote(const char* message)
@@ -6918,6 +7080,27 @@ void perl_register_quest()
 	package.add("settimerMS", (void(*)(std::string, uint32))&Perl__settimerMS);
 	package.add("settimerMS", (void(*)(std::string, uint32, EQ::ItemInstance*))&Perl__settimerMS);
 	package.add("settimerMS", (void(*)(std::string, uint32, Mob*))&Perl__settimerMS);
+	package.add("load_encounter", &Perl__load_encounter);
+	package.add("unload_encounter", &Perl__unload_encounter);
+	package.add("load_encounter_with_data", &Perl__load_encounter_with_data);
+	package.add("unload_encounter_with_data", &Perl__unload_encounter_with_data);
+	package.add("get_encounter", &Perl__get_encounter);
+	package.add("register_npc_event", (void(*)(std::string, int, int, std::string))&Perl__register_npc_event);
+	package.add("register_npc_event", (void(*)(int, int, std::string))&Perl__register_npc_event);
+	package.add("unregister_npc_event", (void(*)(std::string, int, int))&Perl__unregister_npc_event);
+	package.add("unregister_npc_event", (void(*)(int, int))&Perl__unregister_npc_event);
+	package.add("register_player_event", (void(*)(std::string, int, std::string))&Perl__register_player_event);
+	package.add("register_player_event", (void(*)(int, std::string))&Perl__register_player_event);
+	package.add("unregister_player_event", (void(*)(std::string, int))&Perl__unregister_player_event);
+	package.add("unregister_player_event", (void(*)(int))&Perl__unregister_player_event);
+	package.add("register_item_event", (void(*)(std::string, int, int, std::string))&Perl__register_item_event);
+	package.add("register_item_event", (void(*)(int, int, std::string))&Perl__register_item_event);
+	package.add("unregister_item_event", (void(*)(std::string, int, int))&Perl__unregister_item_event);
+	package.add("unregister_item_event", (void(*)(int, int))&Perl__unregister_item_event);
+	package.add("register_spell_event", (void(*)(std::string, int, int, std::string))&Perl__register_spell_event);
+	package.add("register_spell_event", (void(*)(int, int, std::string))&Perl__register_spell_event);
+	package.add("unregister_spell_event", (void(*)(std::string, int, int))&Perl__unregister_spell_event);
+	package.add("unregister_spell_event", (void(*)(int, int))&Perl__unregister_spell_event);
 	package.add("sfollow", &Perl__sfollow);
 	package.add("shout", &Perl__shout);
 	package.add("shout2", &Perl__shout2);
@@ -6936,8 +7119,12 @@ void perl_register_quest()
 	package.add("spawn_from_spawn2", &Perl__spawn_from_spawn2);
 	package.add("start", &Perl__start);
 	package.add("stop", &Perl__stop);
-	package.add("stopalltimers", &Perl__stopalltimers);
-	package.add("stoptimer", &Perl__stoptimer);
+	package.add("stopalltimers", (void(*)())&Perl__stopalltimers);
+	package.add("stopalltimers", (void(*)(EQ::ItemInstance*))&Perl__stopalltimers);
+	package.add("stopalltimers", (void(*)(Mob*))&Perl__stopalltimers);
+	package.add("stoptimer", (void(*)(std::string))&Perl__stoptimer);
+	package.add("stoptimer", (void(*)(std::string, EQ::ItemInstance*))&Perl__stoptimer);
+	package.add("stoptimer", (void(*)(std::string, Mob*))&Perl__stoptimer);
 	package.add("summonallplayercorpses", &Perl__summonallplayercorpses);
 	package.add("summonburiedplayercorpse", &Perl__summonburiedplayercorpse);
 	package.add("summonitem", (void(*)(int))&Perl__summonitem);

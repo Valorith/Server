@@ -61,6 +61,13 @@ public:
 	void Init();
 	void ReloadQuests(bool reset_timers = true);
 	void RemoveEncounter(const std::string& name);
+	bool IsEncounterLoaded(const std::string& name) const;
+	bool IsEncounterUnloading(const std::string& name) const;
+	Encounter* GetLoadedEncounter(const std::string& name);
+	void LoadEncounter(const std::string& name);
+	void LoadEncounterWithData(const std::string& name, const std::string& data);
+	void UnloadEncounter(const std::string& name);
+	void UnloadEncounterWithData(const std::string& name, const std::string& data);
 
 	bool HasQuestSub(uint32 npc_id, QuestEventID event_id);
 	bool PlayerHasQuestSub(QuestEventID event_id);
@@ -380,6 +387,9 @@ private:
 		std::vector<std::any>* extra_pointers
 	);
 
+	void FinalizeEncounterUnload(const std::string& name);
+	void RemoveEncounterRegistrations(const std::string& name);
+
 	std::map<uint32, QuestInterface*> _interfaces;
 	std::map<uint32, std::string>     _extensions;
 	std::list<QuestInterface*>        _load_precedence;
@@ -397,6 +407,9 @@ private:
 	std::map<uint32, uint32>      _spell_quest_status;
 	std::map<uint32, uint32>      _item_quest_status;
 	std::map<std::string, uint32> _encounter_quest_status;
+	std::map<std::string, Encounter*> _encounters;
+	std::map<std::string, bool> _encounters_unloading;
+	bool _encounters_reloading;
 };
 
 extern QuestParserCollection *parse;

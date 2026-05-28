@@ -2262,6 +2262,35 @@ void handle_encounter_timer(
 	lua_setfield(L, -2, "timer");
 }
 
+void handle_encounter_timer_pause_resume_start(
+	QuestInterface *parse,
+	lua_State* L,
+	Encounter* encounter,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	Seperator sep(data.c_str());
+
+	lua_pushstring(L, sep.arg[0]);
+	lua_setfield(L, -2, "timer");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
+	lua_setfield(L, -2, "duration");
+}
+
+void handle_encounter_timer_stop(
+	QuestInterface *parse,
+	lua_State* L,
+	Encounter* encounter,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	lua_pushstring(L, data.c_str());
+	lua_setfield(L, -2, "timer");
+}
+
 void handle_encounter_load(
 	QuestInterface *parse,
 	lua_State* L,

@@ -24,6 +24,7 @@
 #include "zone/quest_interface.h"
 #include "zone/quest_parser_collection.h"
 
+#include <list>
 #include <map>
 #include <queue>
 #include <string>
@@ -31,6 +32,7 @@
 class Mob;
 class Client;
 class NPC;
+class Encounter;
 
 namespace EQ {
 	class ItemInstance;
@@ -63,6 +65,8 @@ class PerlembParser : public QuestInterface {
 public:
 	PerlembParser();
 	~PerlembParser();
+
+	static PerlembParser* Instance() { return instance_; }
 
 	virtual int EventNPC(
 		QuestEventID event_id,
@@ -113,6 +117,14 @@ public:
 		Mob* mob,
 		Client* client,
 		uint32 spell_id,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int EventEncounter(
+		QuestEventID event_id,
+		std::string encounter_name,
 		std::string data,
 		uint32 extra_data,
 		std::vector<std::any>* extra_pointers
@@ -176,6 +188,8 @@ public:
 	virtual bool GlobalPlayerHasQuestSub(QuestEventID event_id);
 	virtual bool SpellHasQuestSub(uint32 spell_id, QuestEventID event_id);
 	virtual bool ItemHasQuestSub(EQ::ItemInstance* inst, QuestEventID event_id);
+	virtual bool EncounterHasQuestSub(std::string encounter_name, QuestEventID event_id);
+	virtual bool HasEncounterSub(const std::string& package_name, QuestEventID event_id);
 	virtual bool BotHasQuestSub(QuestEventID event_id);
 	virtual bool GlobalBotHasQuestSub(QuestEventID event_id);
 	virtual bool MercHasQuestSub(QuestEventID event_id);
@@ -189,6 +203,7 @@ public:
 	virtual void LoadGlobalPlayerScript(std::string filename);
 	virtual void LoadItemScript(std::string filename, EQ::ItemInstance* inst);
 	virtual void LoadSpellScript(std::string filename, uint32 spell_id);
+	virtual void LoadEncounterScript(std::string filename, std::string encounter_name);
 	virtual void LoadBotScript(std::string filename);
 	virtual void LoadGlobalBotScript(std::string filename);
 	virtual void LoadMercScript(std::string filename);
@@ -201,8 +216,87 @@ public:
 	virtual void Init() override;
 	virtual void ReloadQuests();
 	virtual uint32 GetIdentifier() { return 0xf8b05c11; }
+	virtual void RemoveEncounter(const std::string& name);
+
+	virtual int DispatchEventNPC(
+		QuestEventID event_id,
+		NPC* npc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventPlayer(
+		QuestEventID event_id,
+		Client* client,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventItem(
+		QuestEventID event_id,
+		Client* client,
+		EQ::ItemInstance* inst,
+		Mob* mob,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventSpell(
+		QuestEventID event_id,
+		Mob* mob,
+		Client* client,
+		uint32 spell_id,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventBot(
+		QuestEventID event_id,
+		Bot* bot,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventMerc(
+		QuestEventID event_id,
+		Merc* merc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	virtual int DispatchEventZone(
+		QuestEventID event_id,
+		Zone* zone,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+
+	void LoadEncounter(std::string encounter_name);
+	void LoadEncounterWithData(std::string encounter_name, std::string data);
+	void UnloadEncounter(std::string encounter_name);
+	void UnloadEncounterWithData(std::string encounter_name, std::string data);
+	void RegisterEncounterEvent(std::string package_name, std::string encounter_name, int event_id, std::string sub_name);
+	void UnregisterEncounterEvent(std::string package_name, std::string encounter_name, int event_id);
 
 private:
+	struct PerlRegisteredEvent {
+		std::string encounter_name;
+		std::string sub_name;
+		QuestEventID event_id;
+	};
+
+	static PerlembParser* instance_;
+
 	Embperl* perl;
 
 	void ExportHash(const char* prefix, const char* hash_name, std::map<std::string, std::string>& vals);
@@ -237,6 +331,18 @@ private:
 		Zone* zone
 	);
 
+	int SendCommands(
+		const char* prefix,
+		const char* event,
+		uint32 spell_id,
+		Mob* other,
+		Mob* mob,
+		EQ::ItemInstance* inst,
+		const SPDat_Spell_Struct* spell,
+		Zone* zone,
+		const std::string& encounter_name
+	);
+
 	void MapFunctions();
 
 	QuestType GetQuestTypes(
@@ -255,6 +361,23 @@ private:
 		const char* data,
 		Mob* npc_mob,
 		EQ::ItemInstance* inst
+	);
+
+	std::string GetEncounterPackageName(const std::string& encounter_name);
+	Encounter* GetLoadedEncounter(const std::string& encounter_name);
+
+	int DispatchEncounterRegisteredEvents(
+		const std::string& package_name,
+		QuestEventID event_id,
+		uint32 object_id,
+		const char* data,
+		Mob* npc_mob,
+		EQ::ItemInstance* inst,
+		const SPDat_Spell_Struct* spell,
+		Mob* mob,
+		Zone* zone,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
 	);
 
 	void ExportCharID(const std::string& package_name, int& char_id, Mob* npc_mob, Mob* mob);
@@ -293,6 +416,8 @@ private:
 	std::map<uint32, PerlQuestStatus> npc_quest_status_;
 	std::map<uint32, PerlQuestStatus> item_quest_status_;
 	std::map<uint32, PerlQuestStatus> spell_quest_status_;
+	std::map<std::string, PerlQuestStatus> encounter_quest_status_;
+	std::map<std::string, std::list<PerlRegisteredEvent>> perl_encounter_events_registered_;
 
 	PerlQuestStatus global_npc_quest_status_;
 	PerlQuestStatus player_quest_status_;

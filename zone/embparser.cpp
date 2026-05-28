@@ -23,12 +23,15 @@
 #include "common/seperator.h"
 #include "common/strings.h"
 #include "zone/embparser.h"
+#include "zone/encounter.h"
 #include "zone/masterentity.h"
 #include "zone/qglobals.h"
 #include "zone/questmgr.h"
 #include "zone/zone.h"
 
 #include <algorithm>
+#include <cctype>
+#include <functional>
 #include <sstream>
 
 extern Zone* zone;
@@ -216,8 +219,12 @@ const char* QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT"
 };
 
+PerlembParser* PerlembParser::instance_ = nullptr;
+
 PerlembParser::PerlembParser() : perl(nullptr)
 {
+	instance_ = this;
+
 	global_npc_quest_status_    = questUnloaded;
 	player_quest_status_        = questUnloaded;
 	global_player_quest_status_ = questUnloaded;
@@ -231,6 +238,10 @@ PerlembParser::PerlembParser() : perl(nullptr)
 
 PerlembParser::~PerlembParser()
 {
+	if (instance_ == this) {
+		instance_ = nullptr;
+	}
+
 	safe_delete(perl);
 }
 
@@ -275,6 +286,8 @@ void PerlembParser::ReloadQuests()
 
 	item_quest_status_.clear();
 	spell_quest_status_.clear();
+	encounter_quest_status_.clear();
+	perl_encounter_events_registered_.clear();
 }
 
 int PerlembParser::EventCommon(
@@ -822,6 +835,665 @@ void PerlembParser::LoadSpellScript(std::string filename, uint32 spell_id)
 	spell_quest_status_[spell_id] = questLoaded;
 }
 
+void PerlembParser::LoadEncounterScript(std::string filename, std::string encounter_name)
+{
+	if (!perl) {
+		return;
+	}
+
+	auto iter = encounter_quest_status_.find(encounter_name);
+	if (iter != encounter_quest_status_.end()) {
+		return;
+	}
+
+	std::string package_name = GetEncounterPackageName(encounter_name);
+
+	try {
+		perl->eval_file(package_name.c_str(), filename.c_str());
+	} catch (std::string e) {
+		AddError(
+			fmt::format(
+				"Error Compiling Encounter Quest File [{}] Encounter [{}] Error [{}]",
+				filename,
+				encounter_name,
+				e
+			)
+		);
+
+		encounter_quest_status_[encounter_name] = questFailedToLoad;
+		return;
+	}
+
+	encounter_quest_status_[encounter_name] = questLoaded;
+}
+
+bool PerlembParser::EncounterHasQuestSub(std::string encounter_name, QuestEventID event_id)
+{
+	if (!perl || event_id >= _LargestEventID) {
+		return false;
+	}
+
+	auto iter = encounter_quest_status_.find(encounter_name);
+	if (iter == encounter_quest_status_.end() || iter->second != questLoaded) {
+		return false;
+	}
+
+	std::string package_name = GetEncounterPackageName(encounter_name);
+	return perl->SubExists(package_name.c_str(), QuestEventSubroutines[event_id]);
+}
+
+bool PerlembParser::HasEncounterSub(const std::string& package_name, QuestEventID event_id)
+{
+	auto iter = perl_encounter_events_registered_.find(package_name);
+	if (iter == perl_encounter_events_registered_.end()) {
+		return false;
+	}
+
+	for (const auto& registered_event : iter->second) {
+		if (
+			registered_event.event_id == event_id &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int PerlembParser::EventEncounter(
+	QuestEventID event_id,
+	std::string encounter_name,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (!perl || event_id >= _LargestEventID || !EncounterHasQuestSub(encounter_name, event_id)) {
+		return 0;
+	}
+
+	std::string package_name = GetEncounterPackageName(encounter_name);
+
+	ExportVar(package_name.c_str(), "name", encounter_name.c_str());
+	ExportVar(package_name.c_str(), "encounter_name", encounter_name.c_str());
+	ExportVar(package_name.c_str(), "data", "");
+	ExportVar(package_name.c_str(), "timer", "");
+	ExportVar(package_name.c_str(), "duration", "");
+
+	if (event_id == EVENT_TIMER || event_id == EVENT_TIMER_STOP) {
+		ExportVar(package_name.c_str(), "timer", data.c_str());
+	} else if (
+		event_id == EVENT_TIMER_PAUSE ||
+		event_id == EVENT_TIMER_RESUME ||
+		event_id == EVENT_TIMER_START
+	) {
+		Seperator sep(data.c_str());
+		ExportVar(package_name.c_str(), "timer", sep.arg[0]);
+		ExportVar(package_name.c_str(), "duration", sep.arg[1]);
+	} else if (
+		(event_id == EVENT_ENCOUNTER_LOAD || event_id == EVENT_ENCOUNTER_UNLOAD) &&
+		extra_pointers &&
+		!extra_pointers->empty()
+	) {
+		auto* str = std::any_cast<std::string*>(extra_pointers->at(0));
+		ExportVar(package_name.c_str(), "data", str ? str->c_str() : "");
+	}
+
+	if (parse->perl_event_export_settings[event_id].zone) {
+		ExportZoneVariables(package_name);
+	}
+
+	auto* encounter = GetLoadedEncounter(encounter_name);
+	if (encounter) {
+		ExportVar(package_name.c_str(), "encounter", "Mob", encounter);
+	}
+
+	return SendCommands(
+		package_name.c_str(),
+		QuestEventSubroutines[event_id],
+		0,
+		encounter,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		encounter_name
+	);
+}
+
+void PerlembParser::LoadEncounter(std::string encounter_name)
+{
+	parse->LoadEncounter(encounter_name);
+}
+
+void PerlembParser::LoadEncounterWithData(std::string encounter_name, std::string data)
+{
+	parse->LoadEncounterWithData(encounter_name, data);
+}
+
+void PerlembParser::UnloadEncounter(std::string encounter_name)
+{
+	parse->UnloadEncounter(encounter_name);
+}
+
+void PerlembParser::UnloadEncounterWithData(std::string encounter_name, std::string data)
+{
+	parse->UnloadEncounterWithData(encounter_name, data);
+}
+
+void PerlembParser::RegisterEncounterEvent(
+	std::string package_name,
+	std::string encounter_name,
+	int event_id,
+	std::string sub_name
+)
+{
+	if (event_id < 0 || event_id >= _LargestEventID || sub_name.empty()) {
+		return;
+	}
+
+	if (encounter_name.empty()) {
+		encounter_name = quest_manager.GetEncounter();
+	}
+
+	if (
+		encounter_name.empty() ||
+		!parse->IsEncounterLoaded(encounter_name) ||
+		parse->IsEncounterUnloading(encounter_name)
+	) {
+		return;
+	}
+
+	UnregisterEncounterEvent(package_name, encounter_name, event_id);
+
+	PerlRegisteredEvent registered_event;
+	registered_event.encounter_name = encounter_name;
+	registered_event.sub_name       = sub_name;
+	registered_event.event_id       = static_cast<QuestEventID>(event_id);
+
+	perl_encounter_events_registered_[package_name].push_back(registered_event);
+}
+
+void PerlembParser::UnregisterEncounterEvent(
+	std::string package_name,
+	std::string encounter_name,
+	int event_id
+)
+{
+	if (encounter_name.empty()) {
+		encounter_name = quest_manager.GetEncounter();
+	}
+
+	if (encounter_name.empty()) {
+		return;
+	}
+
+	auto remove_from_list = [&](auto& events) {
+		auto iter = events.begin();
+		while (iter != events.end()) {
+			if (
+				iter->encounter_name == encounter_name &&
+				(event_id < 0 || iter->event_id == static_cast<QuestEventID>(event_id))
+			) {
+				iter = events.erase(iter);
+			} else {
+				++iter;
+			}
+		}
+	};
+
+	if (!package_name.empty()) {
+		auto iter = perl_encounter_events_registered_.find(package_name);
+		if (iter != perl_encounter_events_registered_.end()) {
+			remove_from_list(iter->second);
+			if (iter->second.empty()) {
+				perl_encounter_events_registered_.erase(iter);
+			}
+		}
+		return;
+	}
+
+	auto iter = perl_encounter_events_registered_.begin();
+	while (iter != perl_encounter_events_registered_.end()) {
+		remove_from_list(iter->second);
+		if (iter->second.empty()) {
+			iter = perl_encounter_events_registered_.erase(iter);
+		} else {
+			++iter;
+		}
+	}
+}
+
+void PerlembParser::RemoveEncounter(const std::string& name)
+{
+	UnregisterEncounterEvent("", name, -1);
+	encounter_quest_status_.erase(name);
+}
+
+int PerlembParser::DispatchEncounterRegisteredEvents(
+	const std::string& package_name,
+	QuestEventID event_id,
+	uint32 object_id,
+	const char* data,
+	Mob* npc_mob,
+	EQ::ItemInstance* inst,
+	const SPDat_Spell_Struct* spell,
+	Mob* mob,
+	Zone* zone,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (!perl || event_id >= _LargestEventID) {
+		return 0;
+	}
+
+	auto iter = perl_encounter_events_registered_.find(package_name);
+	if (iter == perl_encounter_events_registered_.end()) {
+		return 0;
+	}
+
+	const auto registered_events = iter->second;
+	int ret = 0;
+
+	for (const auto& registered_event : registered_events) {
+		if (registered_event.event_id != event_id) {
+			continue;
+		}
+
+		if (
+			!parse->IsEncounterLoaded(registered_event.encounter_name) ||
+			parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			continue;
+		}
+
+		auto status_iter = encounter_quest_status_.find(registered_event.encounter_name);
+		if (status_iter == encounter_quest_status_.end() || status_iter->second != questLoaded) {
+			continue;
+		}
+
+		std::string encounter_package_name = GetEncounterPackageName(registered_event.encounter_name);
+		if (!perl->SubExists(encounter_package_name.c_str(), registered_event.sub_name.c_str())) {
+			continue;
+		}
+
+		QuestType quest_type = GetQuestTypes(
+			event_id,
+			npc_mob,
+			inst,
+			mob,
+			zone,
+			false
+		);
+
+		int char_id = 0;
+		ExportCharID(encounter_package_name, char_id, npc_mob, mob);
+
+		if (parse->perl_event_export_settings[event_id].qglobals) {
+			ExportQGlobals(
+				quest_type,
+				encounter_package_name,
+				npc_mob,
+				mob,
+				char_id
+			);
+		}
+
+		if (parse->perl_event_export_settings[event_id].mob) {
+			ExportMobVariables(
+				quest_type,
+				encounter_package_name,
+				mob,
+				npc_mob
+			);
+		}
+
+		if (parse->perl_event_export_settings[event_id].zone) {
+			ExportZoneVariables(encounter_package_name);
+		}
+
+		if (parse->perl_event_export_settings[event_id].item) {
+			ExportItemVariables(encounter_package_name, mob);
+		}
+
+		if (parse->perl_event_export_settings[event_id].event_variables) {
+			ExportEventVariables(
+				encounter_package_name,
+				event_id,
+				object_id,
+				data,
+				npc_mob,
+				inst,
+				mob,
+				extra_data,
+				extra_pointers
+			);
+		}
+
+		ExportVar(encounter_package_name.c_str(), "name", registered_event.encounter_name.c_str());
+		ExportVar(encounter_package_name.c_str(), "encounter_name", registered_event.encounter_name.c_str());
+
+		auto* encounter = GetLoadedEncounter(registered_event.encounter_name);
+		if (encounter) {
+			ExportVar(encounter_package_name.c_str(), "encounter", "Mob", encounter);
+		}
+
+		int event_return = 0;
+		if (quest_type == QuestType::Player || quest_type == QuestType::PlayerGlobal) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				0,
+				mob,
+				mob,
+				nullptr,
+				nullptr,
+				nullptr,
+				registered_event.encounter_name
+			);
+		} else if (
+			quest_type == QuestType::Bot ||
+			quest_type == QuestType::BotGlobal ||
+			quest_type == QuestType::Merc ||
+			quest_type == QuestType::MercGlobal
+		) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				0,
+				npc_mob,
+				mob,
+				nullptr,
+				nullptr,
+				nullptr,
+				registered_event.encounter_name
+			);
+		} else if (quest_type == QuestType::Item || quest_type == QuestType::ItemGlobal) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				0,
+				mob,
+				mob,
+				inst,
+				nullptr,
+				nullptr,
+				registered_event.encounter_name
+			);
+		} else if (quest_type == QuestType::Spell || quest_type == QuestType::SpellGlobal) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				0,
+				mob ? mob : npc_mob,
+				mob,
+				nullptr,
+				spell,
+				nullptr,
+				registered_event.encounter_name
+			);
+		} else if (quest_type == QuestType::NPC || quest_type == QuestType::NPCGlobal) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				object_id,
+				npc_mob,
+				mob,
+				nullptr,
+				nullptr,
+				nullptr,
+				registered_event.encounter_name
+			);
+		} else if (quest_type == QuestType::Zone || quest_type == QuestType::ZoneGlobal) {
+			event_return = SendCommands(
+				encounter_package_name.c_str(),
+				registered_event.sub_name.c_str(),
+				0,
+				nullptr,
+				nullptr,
+				nullptr,
+				nullptr,
+				zone,
+				registered_event.encounter_name
+			);
+		}
+
+		if (event_return != 0) {
+			ret = event_return;
+		}
+	}
+
+	return ret;
+}
+
+int PerlembParser::DispatchEventNPC(
+	QuestEventID event_id,
+	NPC* npc,
+	Mob* init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (!npc) {
+		return 0;
+	}
+
+	int ret = DispatchEncounterRegisteredEvents(
+		fmt::format("npc_{}", npc->GetNPCTypeID()),
+		event_id,
+		npc->GetNPCTypeID(),
+		data.c_str(),
+		npc,
+		nullptr,
+		nullptr,
+		init,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	const int wildcard_return = DispatchEncounterRegisteredEvents(
+		"npc_-1",
+		event_id,
+		npc->GetNPCTypeID(),
+		data.c_str(),
+		npc,
+		nullptr,
+		nullptr,
+		init,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	return wildcard_return != 0 ? wildcard_return : ret;
+}
+
+int PerlembParser::DispatchEventPlayer(
+	QuestEventID event_id,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	return DispatchEncounterRegisteredEvents(
+		"player",
+		event_id,
+		0,
+		data.c_str(),
+		nullptr,
+		nullptr,
+		nullptr,
+		client,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+}
+
+int PerlembParser::DispatchEventItem(
+	QuestEventID event_id,
+	Client* client,
+	EQ::ItemInstance* inst,
+	Mob* mob,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (!inst) {
+		return 0;
+	}
+
+	int ret = DispatchEncounterRegisteredEvents(
+		fmt::format("item_{}", inst->GetID()),
+		event_id,
+		inst->GetID(),
+		data.c_str(),
+		nullptr,
+		inst,
+		nullptr,
+		client ? client : mob,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	const int wildcard_return = DispatchEncounterRegisteredEvents(
+		"item_-1",
+		event_id,
+		inst->GetID(),
+		data.c_str(),
+		nullptr,
+		inst,
+		nullptr,
+		client ? client : mob,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	return wildcard_return != 0 ? wildcard_return : ret;
+}
+
+int PerlembParser::DispatchEventSpell(
+	QuestEventID event_id,
+	Mob* mob,
+	Client* client,
+	uint32 spell_id,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	auto* spell = IsValidSpell(spell_id) ? &spells[spell_id] : nullptr;
+	int ret = DispatchEncounterRegisteredEvents(
+		fmt::format("spell_{}", spell_id),
+		event_id,
+		spell_id,
+		data.c_str(),
+		mob,
+		nullptr,
+		spell,
+		client,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	const int wildcard_return = DispatchEncounterRegisteredEvents(
+		"spell_-1",
+		event_id,
+		spell_id,
+		data.c_str(),
+		mob,
+		nullptr,
+		spell,
+		client,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+
+	return wildcard_return != 0 ? wildcard_return : ret;
+}
+
+int PerlembParser::DispatchEventBot(
+	QuestEventID event_id,
+	Bot* bot,
+	Mob* init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	return DispatchEncounterRegisteredEvents(
+		"bot",
+		event_id,
+		0,
+		data.c_str(),
+		bot,
+		nullptr,
+		nullptr,
+		init,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+}
+
+int PerlembParser::DispatchEventMerc(
+	QuestEventID event_id,
+	Merc* merc,
+	Mob* init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	return DispatchEncounterRegisteredEvents(
+		"merc",
+		event_id,
+		0,
+		data.c_str(),
+		merc,
+		nullptr,
+		nullptr,
+		init,
+		nullptr,
+		extra_data,
+		extra_pointers
+	);
+}
+
+int PerlembParser::DispatchEventZone(
+	QuestEventID event_id,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	return DispatchEncounterRegisteredEvents(
+		"zone",
+		event_id,
+		0,
+		data.c_str(),
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		zone,
+		extra_data,
+		extra_pointers
+	);
+}
+
 void PerlembParser::AddVar(std::string name, std::string val)
 {
 	vars_[name] = val;
@@ -995,6 +1667,21 @@ int PerlembParser::SendCommands(
 	Zone* zone
 )
 {
+	return SendCommands(prefix, event_id, object_id, other, mob, inst, spell, zone, "");
+}
+
+int PerlembParser::SendCommands(
+	const char* prefix,
+	const char* event_id,
+	uint32 object_id,
+	Mob* other,
+	Mob* mob,
+	EQ::ItemInstance* inst,
+	const SPDat_Spell_Struct* spell,
+	Zone* zone,
+	const std::string& encounter_name
+)
+{
 	if (!perl) {
 		return 0;
 	}
@@ -1005,6 +1692,11 @@ int PerlembParser::SendCommands(
 	q.owner      = other;
 	q.questitem  = inst;
 	q.questspell = spell;
+	q.encounter  = encounter_name;
+
+	if (q.encounter.empty() && other && other->IsEncounter()) {
+		q.encounter = other->CastToEncounter()->GetEncounterName();
+	}
 
 	if (mob && mob->IsClient()) {
 		q.initiator  = mob->CastToClient();
@@ -1030,12 +1722,13 @@ int PerlembParser::SendCommands(
 				"npc",
 				"questitem",
 				"spell",
-				"zone"
+				"zone",
+				"encounter"
 			};
 
 			for (const auto& suffix : suffixes) {
 				const std::string& key = fmt::format("${}::{}", prefix, suffix);
-				if (clear_vars_.find(suffix) != clear_vars_.end()) {
+				if (clear_vars_.find(key) != clear_vars_.end()) {
 					auto e = fmt::format("{} = undef;", key);
 					perl->eval(e.c_str());
 				}
@@ -1071,6 +1764,19 @@ int PerlembParser::SendCommands(
 				buf = fmt::format("{}::npc", prefix);
 				SV* npc = get_sv(buf.c_str(), true);
 				sv_setref_pv(npc, "NPC", n);
+			} else if (other->IsEncounter()) {
+				buf = fmt::format("{}::encounter", prefix);
+				SV* encounter = get_sv(buf.c_str(), true);
+				sv_setref_pv(encounter, "Mob", other);
+			}
+		}
+
+		if (!encounter_name.empty() && (!other || !other->IsEncounter())) {
+			auto* loaded_encounter = GetLoadedEncounter(encounter_name);
+			if (loaded_encounter) {
+				buf = fmt::format("{}::encounter", prefix);
+				SV* encounter = get_sv(buf.c_str(), true);
+				sv_setref_pv(encounter, "Mob", loaded_encounter);
 			}
 		}
 
@@ -1110,7 +1816,8 @@ int PerlembParser::SendCommands(
 				"npc",
 				"questitem",
 				"spell",
-				"zone"
+				"zone",
+				"encounter"
 			};
 
 			for (const auto& suffix : suffixes) {
@@ -1279,6 +1986,31 @@ std::string PerlembParser::GetQuestPackageName(
 	}
 
 	return "";
+}
+
+std::string PerlembParser::GetEncounterPackageName(const std::string& encounter_name)
+{
+	std::string package_name = "qst_encounter_";
+
+	for (const auto c : encounter_name) {
+		const auto uc = static_cast<unsigned char>(c);
+		if (std::isalnum(uc) || c == '_') {
+			package_name += c;
+		} else {
+			package_name += '_';
+		}
+	}
+
+	if (package_name == "qst_encounter_") {
+		package_name += "unnamed";
+	}
+
+	return fmt::format("{}_{:x}", package_name, std::hash<std::string>{}(encounter_name));
+}
+
+Encounter* PerlembParser::GetLoadedEncounter(const std::string& encounter_name)
+{
+	return parse->GetLoadedEncounter(encounter_name);
 }
 
 void PerlembParser::ExportCharID(const std::string& package_name, int& char_id, Mob* npc_mob, Mob* mob)

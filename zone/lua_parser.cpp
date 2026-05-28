@@ -202,8 +202,6 @@ struct lua_registered_event {
 };
 
 std::map<std::string, std::list<lua_registered_event>> lua_encounter_events_registered;
-std::map<std::string, bool> lua_encounters_loaded;
-std::map<std::string, Encounter *> lua_encounters;
 
 // use debug.traceback() for errors (luaL_traceback is only in luajit and lua 5.2+)
 static void PushErrorHandler(lua_State* L)
@@ -385,6 +383,10 @@ LuaParser::LuaParser() {
 	SpellArgumentDispatch[EVENT_SPELL_EFFECT_TRANSLOCATE_COMPLETE] = handle_translocate_finish;
 
 	EncounterArgumentDispatch[EVENT_TIMER]            = handle_encounter_timer;
+	EncounterArgumentDispatch[EVENT_TIMER_PAUSE]      = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_RESUME]     = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_START]      = handle_encounter_timer_pause_resume_start;
+	EncounterArgumentDispatch[EVENT_TIMER_STOP]       = handle_encounter_timer_stop;
 	EncounterArgumentDispatch[EVENT_ENCOUNTER_LOAD]   = handle_encounter_load;
 	EncounterArgumentDispatch[EVENT_ENCOUNTER_UNLOAD] = handle_encounter_unload;
 
@@ -440,9 +442,7 @@ LuaParser::LuaParser() {
 
 LuaParser::~LuaParser() {
 	// valgrind didn't like when we didn't clean these up :P
-	lua_encounters.clear();
 	lua_encounter_events_registered.clear();
-	lua_encounters_loaded.clear();
 	if(L) {
 		lua_close(L);
 	}
@@ -859,7 +859,7 @@ int LuaParser::_EventEncounter(std::string package_name, QuestEventID evt, std::
 		lua_pushstring(L, encounter_name.c_str());
 		lua_setfield(L, -2, "name");
 
-		Encounter *enc = lua_encounters[encounter_name];
+		Encounter *enc = parse->GetLoadedEncounter(encounter_name);
 
 		auto arg_function = EncounterArgumentDispatch[evt];
 		arg_function(this, L, enc, data, extra_data, extra_pointers);
@@ -1044,16 +1044,6 @@ void LuaParser::ReloadQuests() {
 	errors_.clear();
 	mods_.clear();
 	lua_encounter_events_registered.clear();
-	lua_encounters_loaded.clear();
-
-	for (auto encounter : lua_encounters) {
-		encounter.second->Depop();
-	}
-
-	lua_encounters.clear();
-	// so the Depop function above depends on the Process being called again so ...
-	// And there is situations where it wouldn't be :P
-	entity_list.EncounterProcess();
 
 	if(L) {
 		lua_close(L);
@@ -1230,13 +1220,30 @@ void LuaParser::ReloadQuests() {
 }
 
 /*
- * This function is intended only to clean up lua_encounters when the Encounter object is
- * about to be destroyed. It won't clean up memory else where, since the caller of this
- * function is responsible for that
+ * This function is intended only to clean up Lua registered encounter events when the Encounter
+ * object is about to be destroyed. It won't clean up memory elsewhere, since the caller of this
+ * function is responsible for that.
  */
 void LuaParser::RemoveEncounter(const std::string &name)
 {
-	lua_encounters.erase(name);
+	auto liter = lua_encounter_events_registered.begin();
+	while(liter != lua_encounter_events_registered.end()) {
+		std::list<lua_registered_event> &elist = liter->second;
+		auto iter = elist.begin();
+		while(iter != elist.end()) {
+			if(iter->encounter_name.compare(name) == 0) {
+				iter = elist.erase(iter);
+			} else {
+				++iter;
+			}
+		}
+
+		if(elist.size() == 0) {
+			liter = lua_encounter_events_registered.erase(liter);
+		} else {
+			++liter;
+		}
+	}
 }
 
 void LuaParser::LoadScript(std::string filename, std::string package_name) {
@@ -1311,7 +1318,11 @@ bool LuaParser::HasEncounterSub(const std::string& package_name, QuestEventID ev
 	auto it = lua_encounter_events_registered.find(package_name);
 	if (it != lua_encounter_events_registered.end()) {
 		for (auto & riter : it->second) {
-			if (riter.event_id == evt) {
+			if (
+				riter.event_id == evt &&
+				parse->IsEncounterLoaded(riter.encounter_name) &&
+				!parse->IsEncounterUnloading(riter.encounter_name)
+			) {
 				return true;
 			}
 		}
@@ -1411,15 +1422,18 @@ int LuaParser::DispatchEventNPC(QuestEventID evt, NPC* npc, Mob *init, std::stri
 
 	auto iter = lua_encounter_events_registered.find(package_name);
 	if(iter != lua_encounter_events_registered.end()) {
-		auto riter = iter->second.begin();
-		while(riter != iter->second.end()) {
-			if(riter->event_id == evt) {
-				std::string package_name = "encounter_" + riter->encounter_name;
-				int i = _EventNPC(package_name, evt, npc, init, data, extra_data, extra_pointers, &riter->lua_reference);
+		auto registered_events = iter->second;
+		for(auto &registered_event : registered_events) {
+			if(
+				registered_event.event_id == evt &&
+				parse->IsEncounterLoaded(registered_event.encounter_name) &&
+				!parse->IsEncounterUnloading(registered_event.encounter_name)
+			) {
+				std::string package_name = "encounter_" + registered_event.encounter_name;
+				int i = _EventNPC(package_name, evt, npc, init, data, extra_data, extra_pointers, &registered_event.lua_reference);
                 if(i != 0)
                     ret = i;
 			}
-			++riter;
 		}
 	}
 
@@ -1428,15 +1442,18 @@ int LuaParser::DispatchEventNPC(QuestEventID evt, NPC* npc, Mob *init, std::stri
 		return ret;
 	}
 
-	auto riter = iter->second.begin();
-	while(riter != iter->second.end()) {
-		if(riter->event_id == evt) {
-			std::string package_name = "encounter_" + riter->encounter_name;
-			int i = _EventNPC(package_name, evt, npc, init, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for(auto &registered_event : registered_events) {
+		if(
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			std::string package_name = "encounter_" + registered_event.encounter_name;
+			int i = _EventNPC(package_name, evt, npc, init, data, extra_data, extra_pointers, &registered_event.lua_reference);
             if(i != 0)
                 ret = i;
 		}
-		++riter;
 	}
 
     return ret;
@@ -1457,15 +1474,18 @@ int LuaParser::DispatchEventPlayer(QuestEventID evt, Client *client, std::string
 	}
 
     int ret = 0;
-	auto riter = iter->second.begin();
-	while(riter != iter->second.end()) {
-		if(riter->event_id == evt) {
-			std::string package_name = "encounter_" + riter->encounter_name;
-			int i = _EventPlayer(package_name, evt, client, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for(auto &registered_event : registered_events) {
+		if(
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			std::string package_name = "encounter_" + registered_event.encounter_name;
+			int i = _EventPlayer(package_name, evt, client, data, extra_data, extra_pointers, &registered_event.lua_reference);
             if(i != 0)
                 ret = i;
 		}
-		++riter;
 	}
 
     return ret;
@@ -1487,15 +1507,18 @@ int LuaParser::DispatchEventItem(QuestEventID evt, Client *client, EQ::ItemInsta
 
 	auto iter = lua_encounter_events_registered.find(package_name);
 	if(iter != lua_encounter_events_registered.end()) {
-		auto riter = iter->second.begin();
-		while(riter != iter->second.end()) {
-			if(riter->event_id == evt) {
-				std::string package_name = "encounter_" + riter->encounter_name;
-				int i = _EventItem(package_name, evt, client, item, mob, data, extra_data, extra_pointers, &riter->lua_reference);
+		auto registered_events = iter->second;
+		for(auto &registered_event : registered_events) {
+			if(
+				registered_event.event_id == evt &&
+				parse->IsEncounterLoaded(registered_event.encounter_name) &&
+				!parse->IsEncounterUnloading(registered_event.encounter_name)
+			) {
+				std::string package_name = "encounter_" + registered_event.encounter_name;
+				int i = _EventItem(package_name, evt, client, item, mob, data, extra_data, extra_pointers, &registered_event.lua_reference);
                 if(i != 0)
                     ret = i;
 			}
-			++riter;
 		}
 	}
 
@@ -1504,15 +1527,18 @@ int LuaParser::DispatchEventItem(QuestEventID evt, Client *client, EQ::ItemInsta
 		return ret;
 	}
 
-	auto riter = iter->second.begin();
-	while(riter != iter->second.end()) {
-		if(riter->event_id == evt) {
-			std::string package_name = "encounter_" + riter->encounter_name;
-			int i = _EventItem(package_name, evt, client, item, mob, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for(auto &registered_event : registered_events) {
+		if(
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			std::string package_name = "encounter_" + registered_event.encounter_name;
+			int i = _EventItem(package_name, evt, client, item, mob, data, extra_data, extra_pointers, &registered_event.lua_reference);
             if(i != 0)
                 ret = i;
 		}
-		++riter;
 	}
     return ret;
 }
@@ -1529,16 +1555,19 @@ int LuaParser::DispatchEventSpell(QuestEventID evt, Mob* mob, Client *client, ui
     int ret = 0;
 	auto iter = lua_encounter_events_registered.find(package_name);
 	if(iter != lua_encounter_events_registered.end()) {
-	    auto riter = iter->second.begin();
-		while(riter != iter->second.end()) {
-			if(riter->event_id == evt) {
-				std::string package_name = "encounter_" + riter->encounter_name;
-				int i = _EventSpell(package_name, evt, mob, client, spell_id, data, extra_data, extra_pointers, &riter->lua_reference);
+	    auto registered_events = iter->second;
+		for(auto &registered_event : registered_events) {
+			if(
+				registered_event.event_id == evt &&
+				parse->IsEncounterLoaded(registered_event.encounter_name) &&
+				!parse->IsEncounterUnloading(registered_event.encounter_name)
+			) {
+				std::string package_name = "encounter_" + registered_event.encounter_name;
+				int i = _EventSpell(package_name, evt, mob, client, spell_id, data, extra_data, extra_pointers, &registered_event.lua_reference);
                 if(i != 0) {
                     ret = i;
                 }
 			}
-			++riter;
 		}
 	}
 
@@ -1547,15 +1576,18 @@ int LuaParser::DispatchEventSpell(QuestEventID evt, Mob* mob, Client *client, ui
 		return ret;
 	}
 
-	auto riter = iter->second.begin();
-	while(riter != iter->second.end()) {
-		if(riter->event_id == evt) {
-			std::string package_name = "encounter_" + riter->encounter_name;
-			int i = _EventSpell(package_name, evt, mob, client, spell_id, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for(auto &registered_event : registered_events) {
+		if(
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			std::string package_name = "encounter_" + registered_event.encounter_name;
+			int i = _EventSpell(package_name, evt, mob, client, spell_id, data, extra_data, extra_pointers, &registered_event.lua_reference);
             if(i != 0)
                 ret = i;
 		}
-		++riter;
 	}
     return ret;
 }
@@ -1871,17 +1903,19 @@ int LuaParser::DispatchEventBot(
 	}
 
 	int ret = 0;
-	auto riter = iter->second.begin();
-	while (riter != iter->second.end()) {
-		if (riter->event_id == evt) {
-			package_name = fmt::format("encounter_{}", riter->encounter_name);
-			int i = _EventBot(package_name, evt, bot, init, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for (auto &registered_event : registered_events) {
+		if (
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			package_name = fmt::format("encounter_{}", registered_event.encounter_name);
+			int i = _EventBot(package_name, evt, bot, init, data, extra_data, extra_pointers, &registered_event.lua_reference);
 			if (i != 0) {
 				ret = i;
 			}
 		}
-
-		++riter;
 	}
 
 	return ret;
@@ -2064,17 +2098,19 @@ int LuaParser::DispatchEventMerc(
 	}
 
 	int ret = 0;
-	auto riter = iter->second.begin();
-	while (riter != iter->second.end()) {
-		if (riter->event_id == evt) {
-			package_name = fmt::format("encounter_{}", riter->encounter_name);
-			int i = _EventMerc(package_name, evt, merc, init, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for (auto &registered_event : registered_events) {
+		if (
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			package_name = fmt::format("encounter_{}", registered_event.encounter_name);
+			int i = _EventMerc(package_name, evt, merc, init, data, extra_data, extra_pointers, &registered_event.lua_reference);
 			if (i != 0) {
 				ret = i;
 			}
 		}
-
-		++riter;
 	}
 
 	return ret;
@@ -2251,17 +2287,19 @@ int LuaParser::DispatchEventZone(
 	}
 
 	int ret = 0;
-	auto riter = iter->second.begin();
-	while (riter != iter->second.end()) {
-		if (riter->event_id == evt) {
-			package_name = fmt::format("encounter_{}", riter->encounter_name);
-			int i = _EventZone(package_name, evt, zone, data, extra_data, extra_pointers, &riter->lua_reference);
+	auto registered_events = iter->second;
+	for (auto &registered_event : registered_events) {
+		if (
+			registered_event.event_id == evt &&
+			parse->IsEncounterLoaded(registered_event.encounter_name) &&
+			!parse->IsEncounterUnloading(registered_event.encounter_name)
+		) {
+			package_name = fmt::format("encounter_{}", registered_event.encounter_name);
+			int i = _EventZone(package_name, evt, zone, data, extra_data, extra_pointers, &registered_event.lua_reference);
 			if (i != 0) {
 				ret = i;
 			}
 		}
-
-		++riter;
 	}
 
 	return ret;

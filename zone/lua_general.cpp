@@ -56,8 +56,6 @@ struct lua_registered_event {
 };
 
 extern std::map<std::string, std::list<lua_registered_event>> lua_encounter_events_registered;
-extern std::map<std::string, bool> lua_encounters_loaded;
-extern std::map<std::string, Encounter *> lua_encounters;
 
 extern void MapOpcodes();
 extern void ClearMappedOpcode(EmuOpcode op);
@@ -67,91 +65,23 @@ extern WorldServer worldserver;
 void unregister_event(std::string package_name, std::string name, int evt);
 
 void load_encounter(std::string name) {
-	if(lua_encounters_loaded.count(name) > 0)
-		return;
-	auto enc = new Encounter(name.c_str());
-	entity_list.AddEncounter(enc);
-	lua_encounters[name] = enc;
-	lua_encounters_loaded[name] = true;
-	parse->EventEncounter(EVENT_ENCOUNTER_LOAD, name, "", 0);
+	parse->LoadEncounter(name);
 }
 
 void load_encounter_with_data(std::string name, std::string info_str) {
-	if(lua_encounters_loaded.count(name) > 0)
-		return;
-	auto enc = new Encounter(name.c_str());
-	entity_list.AddEncounter(enc);
-	lua_encounters[name] = enc;
-	lua_encounters_loaded[name] = true;
-	std::vector<std::any> info_ptrs;
-	info_ptrs.push_back(&info_str);
-	parse->EventEncounter(EVENT_ENCOUNTER_LOAD, name, "", 0, &info_ptrs);
+	parse->LoadEncounterWithData(name, info_str);
 }
 
 void unload_encounter(std::string name) {
-	if(lua_encounters_loaded.count(name) == 0)
-		return;
-
-	auto liter = lua_encounter_events_registered.begin();
-	while(liter != lua_encounter_events_registered.end()) {
-		std::list<lua_registered_event> &elist = liter->second;
-		auto iter = elist.begin();
-		while(iter != elist.end()) {
-			if((*iter).encounter_name.compare(name) == 0) {
-				iter = elist.erase(iter);
-			} else {
-				++iter;
-			}
-		}
-
-		if(elist.size() == 0) {
-			lua_encounter_events_registered.erase(liter++);
-		} else {
-			++liter;
-		}
-	}
-
-	lua_encounters[name]->Depop();
-	lua_encounters.erase(name);
-	lua_encounters_loaded.erase(name);
-	parse->EventEncounter(EVENT_ENCOUNTER_UNLOAD, name, "", 0);
+	parse->UnloadEncounter(name);
 }
 
 void unload_encounter_with_data(std::string name, std::string info_str) {
-	if(lua_encounters_loaded.count(name) == 0)
-		return;
-
-	auto liter = lua_encounter_events_registered.begin();
-	while(liter != lua_encounter_events_registered.end()) {
-		std::list<lua_registered_event> &elist = liter->second;
-		auto iter = elist.begin();
-		while(iter != elist.end()) {
-			if((*iter).encounter_name.compare(name) == 0) {
-				iter = elist.erase(iter);
-			}
-			else {
-				++iter;
-			}
-		}
-
-		if(elist.size() == 0) {
-			lua_encounter_events_registered.erase(liter++);
-		}
-		else {
-			++liter;
-		}
-	}
-
-	lua_encounters[name]->Depop();
-	lua_encounters.erase(name);
-	lua_encounters_loaded.erase(name);
-	std::vector<std::any> info_ptrs;
-	info_ptrs.push_back(&info_str);
-	parse->EventEncounter(EVENT_ENCOUNTER_UNLOAD, name, "", 0, &info_ptrs);
+	parse->UnloadEncounterWithData(name, info_str);
 }
 
 void register_event(std::string package_name, std::string name, int evt, luabind::adl::object func) {
-	if(lua_encounters_loaded.count(name) == 0)
+	if(!parse->IsEncounterLoaded(name) || parse->IsEncounterUnloading(name))
 		return;
 
 	unregister_event(package_name, name, evt);
@@ -175,7 +105,7 @@ void register_event(std::string package_name, std::string name, int evt, luabind
 void unregister_event(std::string package_name, std::string name, int evt) {
 	auto liter = lua_encounter_events_registered.find(package_name);
 	if(liter != lua_encounter_events_registered.end()) {
-		std::list<lua_registered_event> elist = liter->second;
+		std::list<lua_registered_event> &elist = liter->second;
 		auto iter = elist.begin();
 		while(iter != elist.end()) {
 			if(iter->event_id == evt && iter->encounter_name.compare(name) == 0) {
@@ -184,7 +114,10 @@ void unregister_event(std::string package_name, std::string name, int evt) {
 			}
 			++iter;
 		}
-		lua_encounter_events_registered[package_name] = elist;
+
+		if(elist.empty()) {
+			lua_encounter_events_registered.erase(liter);
+		}
 	}
 }
 
