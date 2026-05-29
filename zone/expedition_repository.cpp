@@ -353,11 +353,13 @@ uint32_t UpsertRequestNpc(
 	));
 }
 
-bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id)
+bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int32_t zone_version, uint32_t npc_type_id, uint32_t spawn2_id)
 {
 	return QueryOK(db, fmt::format(
-		"DELETE FROM expedition_template_request_npcs WHERE expedition_template_id = {} AND npc_type_id = {} AND spawn2_id = {}",
+		"DELETE FROM expedition_template_request_npcs WHERE expedition_template_id = {} AND zone_id = {} AND zone_version = {} AND npc_type_id = {} AND spawn2_id = {}",
 		template_id,
+		zone_id,
+		zone_version,
 		npc_type_id,
 		spawn2_id
 	));

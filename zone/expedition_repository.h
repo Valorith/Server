@@ -71,7 +71,7 @@ uint32_t UpsertRequestNpc(
 	bool enabled
 );
 
-bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id);
+bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int32_t zone_version, uint32_t npc_type_id, uint32_t spawn2_id);
 bool CopyRequestNpcs(Database& db, uint32_t src_template_id, uint32_t dst_template_id);
 
 // ============================================================================

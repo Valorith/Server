@@ -512,6 +512,28 @@ namespace {
 		return event_data.event_name;
 	}
 
+	bool IsLootProtected(const Event& event_data, const EventNpc& event_npc)
+	{
+		return event_data.loot_protected || event_npc.loot_protected;
+	}
+
+	void ApplyLootEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, NPC& npc)
+	{
+		if (!IsLootProtected(event_data, event_npc) || !MatchNpc(event_npc, npc)) {
+			return;
+		}
+
+		const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
+		if (event_npc.spawn2_id != 0) {
+			expedition.SetLootEvent(npc.GetID(), runtime_event_name, DzLootEvent::Type::Entity);
+			return;
+		}
+
+		if (event_npc.npc_type_id != 0) {
+			expedition.SetLootEvent(event_npc.npc_type_id, runtime_event_name, DzLootEvent::Type::NpcType);
+		}
+	}
+
 	bool TryMarkRuntimeEventComplete(DynamicZone& expedition, const std::string& runtime_event_name)
 	{
 		return g_completed_runtime_events[expedition.GetID()].insert(runtime_event_name).second;
@@ -907,9 +929,9 @@ uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, 
 	return id;
 }
 
-bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id)
+bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int32_t zone_version, uint32_t npc_type_id, uint32_t spawn2_id)
 {
-	const bool ok = ExpeditionRepository::DeleteRequestNpc(db, template_id, npc_type_id, spawn2_id);
+	const bool ok = ExpeditionRepository::DeleteRequestNpc(db, template_id, zone_id, zone_version, npc_type_id, spawn2_id);
 	Reload(db);
 	return ok;
 }
@@ -1409,21 +1431,24 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 			if (menu_template_id != 0) {
 				if (menu_template_id == template_data->id) {
-					return TryCreateTemplateRequest(client, *template_data);
+					TryCreateTemplateRequest(client, *template_data);
+					return true;
 				}
 				continue;
 			}
 
 			if (enter_template_id != 0) {
 				if (enter_template_id == template_data->id) {
-					return TryEnterTemplateRequest(client, *template_data);
+					TryEnterTemplateRequest(client, *template_data);
+					return true;
 				}
 				continue;
 			}
 
 			if (leave_template_id != 0) {
 				if (leave_template_id == template_data->id) {
-					return TryLeaveTemplateRequest(client, *template_data);
+					TryLeaveTemplateRequest(client, *template_data);
+					return true;
 				}
 
 				continue;
@@ -1431,7 +1456,8 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 			const std::string request_phrase = RequestPhrase(*template_data, *request_npc);
 			if (phrase == request_phrase || phrase == fmt::format("start {}", request_phrase)) {
-				return TryCreateTemplateRequest(client, *template_data);
+				TryCreateTemplateRequest(client, *template_data);
+				return false;
 			}
 		}
 	}
@@ -1493,11 +1519,14 @@ bool HandleNpcSpawn(NPC& npc)
 	bool handled = false;
 	for (const auto& event_data : template_data->events) {
 		for (const auto& event_npc : event_data.npcs) {
-			if (!event_npc.complete_on_spawn || !MatchNpc(event_npc, npc)) {
+			if (!MatchNpc(event_npc, npc)) {
 				continue;
 			}
 
-			handled = CompleteEventForNpc(*expedition, event_data, event_npc, nullptr) || handled;
+			ApplyLootEventForNpc(*expedition, event_data, event_npc, npc);
+			if (event_npc.complete_on_spawn) {
+				handled = CompleteEventForNpc(*expedition, event_data, event_npc, nullptr) || handled;
+			}
 		}
 	}
 
@@ -1730,7 +1759,14 @@ void ApplyLootEvents(DynamicZone& expedition)
 
 	for (const auto& event_data : template_data->events) {
 		for (const auto& event_npc : event_data.npcs) {
-			if (!event_data.loot_protected && !event_npc.loot_protected) {
+			if (!IsLootProtected(event_data, event_npc)) {
+				continue;
+			}
+
+			if (event_npc.spawn2_id != 0) {
+				if (NPC* npc = entity_list.GetNPCBySpawnID(event_npc.spawn2_id)) {
+					ApplyLootEventForNpc(expedition, event_data, event_npc, *npc);
+				}
 				continue;
 			}
 

@@ -124,7 +124,7 @@ bool SetDzTemplateSafeReturn(Database& db, uint32_t dz_template_id, uint32_t zon
 bool SetDzTemplateCompass(Database& db, uint32_t dz_template_id, uint32_t zone_id, float x, float y, float z);
 bool SetDzTemplateSwitchID(Database& db, uint32_t dz_template_id, uint32_t switch_id);
 uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase, int32_t zone_version = -1);
-bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t npc_type_id, uint32_t spawn2_id);
+bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int32_t zone_version, uint32_t npc_type_id, uint32_t spawn2_id);
 uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name);
 bool DeleteEvent(Database& db, uint32_t event_id);
 bool SetEventName(Database& db, uint32_t event_id, const std::string& event_name);

@@ -151,6 +151,19 @@ namespace {
 		return true;
 	}
 
+	bool IsStrictInteger(const char* value)
+	{
+		if (!value || value[0] == '\0') {
+			return false;
+		}
+
+		if (*value == '-') {
+			++value;
+		}
+
+		return IsStrictUnsigned(value);
+	}
+
 	bool ParseOnOffArg(const char* value, bool& out)
 	{
 		if (!value || value[0] == '\0') {
@@ -2080,7 +2093,13 @@ void ShowRequesterList(Client* c, const ExpeditionDB::Template& template_data)
 				actions.push_back({fmt::format("#expedition goto {}", request_npc.npc_type_id), "GoTo"});
 				actions.push_back({fmt::format("#expedition target {}", request_npc.npc_type_id), "Target"});
 			}
-			actions.push_back({fmt::format("#expedition request removeid {} {}", request_npc.npc_type_id, request_npc.spawn2_id), "Remove"});
+			actions.push_back({fmt::format(
+				"#expedition request removeid {} {} {} {}",
+				request_npc.npc_type_id,
+				request_npc.spawn2_id,
+				request_npc.zone_id,
+				request_npc.zone_version
+			), "Remove"});
 			SendActionRow(c, actions);
 		}
 		c->Message(Chat::White, ChatSeparator());
@@ -2121,15 +2140,26 @@ void HandleRequest(Client* c, const Seperator* sep)
 		}
 		const uint32_t type_id = Strings::ToUnsignedInt(sep->arg[3]);
 		const uint32_t spawn2_id = IsStrictUnsigned(sep->arg[4]) ? Strings::ToUnsignedInt(sep->arg[4]) : 0;
-		if (strcasecmp(sep->arg[5], "confirm") != 0) {
-			c->Message(Chat::Yellow, fmt::format("Remove requester (NPC type {}) from [{}]?", type_id, template_data->name).c_str());
+		if (!IsStrictUnsigned(sep->arg[5]) || !IsStrictInteger(sep->arg[6])) {
+			c->Message(Chat::Red, "Pick Remove from the requester list.");
+			return;
+		}
+		const uint32_t zone_id = Strings::ToUnsignedInt(sep->arg[5]);
+		const int32_t zone_version = Strings::ToInt(sep->arg[6]);
+		if (strcasecmp(sep->arg[7], "confirm") != 0) {
+			c->Message(Chat::Yellow, fmt::format(
+				"Remove requester (NPC type {}) from [{}] in {}?",
+				type_id,
+				template_data->name,
+				ZoneVersionLabel(zone_id, zone_version)
+			).c_str());
 			SendActionRow(c, {
-				{fmt::format("#expedition request removeid {} {} confirm", type_id, spawn2_id), "Confirm Remove"},
+				{fmt::format("#expedition request removeid {} {} {} {} confirm", type_id, spawn2_id, zone_id, zone_version), "Confirm Remove"},
 				{"#expedition request list", "Cancel"}
 			});
 			return;
 		}
-		if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, type_id, spawn2_id)) {
+		if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, zone_id, zone_version, type_id, spawn2_id)) {
 			c->Message(Chat::Red, "Failed to remove requester.");
 			return;
 		}
@@ -2153,7 +2183,14 @@ void HandleRequest(Client* c, const Seperator* sep)
 			c->Message(Chat::Yellow, "Type #expedition request remove confirm to remove the targeted request NPC mapping.");
 			return;
 		}
-		if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID())) {
+		if (!ExpeditionDB::DeleteRequestNpc(
+			content_db,
+			template_data->id,
+			zone->GetZoneID(),
+			zone->GetInstanceVersion(),
+			npc->GetNPCTypeID(),
+			npc->GetSpawnPointID()
+		)) {
 			c->Message(Chat::Red, "Failed to remove targeted request NPC mapping.");
 			return;
 		}
