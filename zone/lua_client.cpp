@@ -2098,24 +2098,24 @@ Lua_Expedition Lua_Client::CreateExpeditionFromTemplate(std::string template_nam
 	return self->CreateExpeditionFromTemplate(template_name);
 }
 
-Lua_Expedition Lua_Client::CreateExpeditionFromDBTemplate(uint32_t expedition_template_id) {
+Lua_Expedition Lua_Client::CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id) {
 	Lua_Safe_Call_Class(Lua_Expedition);
-	return self->CreateExpeditionFromDBTemplate(expedition_template_id);
+	return self->CreateExpeditionFromExpeditionTemplate(expedition_template_id);
 }
 
-Lua_Expedition Lua_Client::CreateExpeditionFromDBTemplate(std::string template_name) {
+Lua_Expedition Lua_Client::CreateExpeditionFromExpeditionTemplate(std::string template_name) {
 	Lua_Safe_Call_Class(Lua_Expedition);
-	return self->CreateExpeditionFromDBTemplate(template_name);
+	return self->CreateExpeditionFromExpeditionTemplate(template_name);
 }
 
-bool Lua_Client::CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id) {
+bool Lua_Client::CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id) {
 	Lua_Safe_Call_Bool();
-	return self->CanCreateExpeditionFromDBTemplate(expedition_template_id);
+	return self->CanCreateExpeditionFromExpeditionTemplate(expedition_template_id);
 }
 
-bool Lua_Client::CanCreateExpeditionFromDBTemplate(std::string template_name) {
+bool Lua_Client::CanCreateExpeditionFromExpeditionTemplate(std::string template_name) {
 	Lua_Safe_Call_Bool();
-	return self->CanCreateExpeditionFromDBTemplate(template_name);
+	return self->CanCreateExpeditionFromExpeditionTemplate(template_name);
 }
 
 luabind::object Lua_Client::GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id) {
@@ -3960,10 +3960,10 @@ luabind::scope lua_register_client() {
 	.def("CreateExpedition", (Lua_Expedition(Lua_Client::*)(std::string, uint32, uint32, std::string, uint32, uint32, bool))&Lua_Client::CreateExpedition)
 	.def("CreateExpeditionFromTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromTemplate)
 	.def("CreateExpeditionFromTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromTemplate)
-	.def("CreateExpeditionFromDBTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromDBTemplate)
-	.def("CreateExpeditionFromDBTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromDBTemplate)
-	.def("CanCreateExpeditionFromDBTemplate", (bool(Lua_Client::*)(uint32_t))&Lua_Client::CanCreateExpeditionFromDBTemplate)
-	.def("CanCreateExpeditionFromDBTemplate", (bool(Lua_Client::*)(std::string))&Lua_Client::CanCreateExpeditionFromDBTemplate)
+	.def("CreateExpeditionFromExpeditionTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromExpeditionTemplate)
+	.def("CreateExpeditionFromExpeditionTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromExpeditionTemplate)
+	.def("CanCreateExpeditionFromExpeditionTemplate", (bool(Lua_Client::*)(uint32_t))&Lua_Client::CanCreateExpeditionFromExpeditionTemplate)
+	.def("CanCreateExpeditionFromExpeditionTemplate", (bool(Lua_Client::*)(std::string))&Lua_Client::CanCreateExpeditionFromExpeditionTemplate)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::GetExpeditionTemplate)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::GetExpeditionTemplate)
 	.def("CreateTaskDynamicZone", &Lua_Client::CreateTaskDynamicZone)

@@ -1995,24 +1995,24 @@ DynamicZone* Perl_Client_CreateExpeditionFromTemplate(Client* self, std::string 
 	return self->CreateExpeditionFromTemplate(template_name);
 }
 
-DynamicZone* Perl_Client_CreateExpeditionFromDBTemplate(Client* self, uint32_t expedition_template_id)
+DynamicZone* Perl_Client_CreateExpeditionFromExpeditionTemplate(Client* self, uint32_t expedition_template_id)
 {
-	return self->CreateExpeditionFromDBTemplate(expedition_template_id);
+	return self->CreateExpeditionFromExpeditionTemplate(expedition_template_id);
 }
 
-DynamicZone* Perl_Client_CreateExpeditionFromDBTemplate(Client* self, std::string template_name)
+DynamicZone* Perl_Client_CreateExpeditionFromExpeditionTemplate(Client* self, std::string template_name)
 {
-	return self->CreateExpeditionFromDBTemplate(template_name);
+	return self->CreateExpeditionFromExpeditionTemplate(template_name);
 }
 
-bool Perl_Client_CanCreateExpeditionFromDBTemplate(Client* self, uint32_t expedition_template_id)
+bool Perl_Client_CanCreateExpeditionFromExpeditionTemplate(Client* self, uint32_t expedition_template_id)
 {
-	return self->CanCreateExpeditionFromDBTemplate(expedition_template_id);
+	return self->CanCreateExpeditionFromExpeditionTemplate(expedition_template_id);
 }
 
-bool Perl_Client_CanCreateExpeditionFromDBTemplate(Client* self, std::string template_name)
+bool Perl_Client_CanCreateExpeditionFromExpeditionTemplate(Client* self, std::string template_name)
 {
-	return self->CanCreateExpeditionFromDBTemplate(template_name);
+	return self->CanCreateExpeditionFromExpeditionTemplate(template_name);
 }
 
 perl::reference Perl_Client_GetExpeditionTemplate(Client* self, uint32_t expedition_template_id)
@@ -3710,10 +3710,10 @@ void perl_register_client()
 	package.add("CreateExpedition", (DynamicZone*(*)(Client*, std::string, uint32, uint32, std::string, uint32, uint32, bool))&Perl_Client_CreateExpedition);
 	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromTemplate);
 	package.add("CreateExpeditionFromTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromTemplate);
-	package.add("CreateExpeditionFromDBTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromDBTemplate);
-	package.add("CreateExpeditionFromDBTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromDBTemplate);
-	package.add("CanCreateExpeditionFromDBTemplate", (bool(*)(Client*, uint32_t))&Perl_Client_CanCreateExpeditionFromDBTemplate);
-	package.add("CanCreateExpeditionFromDBTemplate", (bool(*)(Client*, std::string))&Perl_Client_CanCreateExpeditionFromDBTemplate);
+	package.add("CreateExpeditionFromExpeditionTemplate", (DynamicZone*(*)(Client*, uint32_t))&Perl_Client_CreateExpeditionFromExpeditionTemplate);
+	package.add("CreateExpeditionFromExpeditionTemplate", (DynamicZone*(*)(Client*, std::string))&Perl_Client_CreateExpeditionFromExpeditionTemplate);
+	package.add("CanCreateExpeditionFromExpeditionTemplate", (bool(*)(Client*, uint32_t))&Perl_Client_CanCreateExpeditionFromExpeditionTemplate);
+	package.add("CanCreateExpeditionFromExpeditionTemplate", (bool(*)(Client*, std::string))&Perl_Client_CanCreateExpeditionFromExpeditionTemplate);
 	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, uint32_t))&Perl_Client_GetExpeditionTemplate);
 	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, std::string))&Perl_Client_GetExpeditionTemplate);
 	package.add("CreateTaskDynamicZone", &Perl_Client_CreateTaskDynamicZone);

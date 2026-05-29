@@ -10240,24 +10240,24 @@ DynamicZone* Client::CreateExpeditionFromTemplate(const std::string& template_na
 	return CreateExpeditionFromTemplateName(*this, template_name);
 }
 
-DynamicZone* Client::CreateExpeditionFromDBTemplate(uint32_t expedition_template_id)
+DynamicZone* Client::CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id)
 {
 	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
 	return template_data ? ExpeditionDB::CreateExpeditionFromTemplate(*this, *template_data) : nullptr;
 }
 
-DynamicZone* Client::CreateExpeditionFromDBTemplate(const std::string& template_name)
+DynamicZone* Client::CreateExpeditionFromExpeditionTemplate(const std::string& template_name)
 {
 	return ExpeditionDB::CreateExpeditionFromTemplate(*this, template_name);
 }
 
-bool Client::CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id)
+bool Client::CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id)
 {
 	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
 	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;
 }
 
-bool Client::CanCreateExpeditionFromDBTemplate(const std::string& template_name)
+bool Client::CanCreateExpeditionFromExpeditionTemplate(const std::string& template_name)
 {
 	const auto* template_data = ExpeditionDB::FindTemplate(template_name);
 	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;

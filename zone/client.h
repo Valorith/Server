@@ -1672,12 +1672,15 @@ public:
 	void AddDzLockoutDuration(const DzLockout& lockout, int seconds, const std::string& uuid = {}, bool update_db = false);
 	DynamicZone* CreateExpedition(DynamicZone& dz, bool silent = false);
 	DynamicZone* CreateExpedition(uint32 zone_id, uint32 version, uint32 duration, const std::string& name, uint32 min_players, uint32 max_players, bool silent = false);
+	// Two expedition-creation families exist; do not conflate them:
+	//   CreateExpeditionFromTemplate           = legacy dynamic_zone_templates (basic zone config)
+	//   CreateExpeditionFromExpeditionTemplate = DB-driven expedition_templates (events, request NPCs, loot, replay)
 	DynamicZone* CreateExpeditionFromTemplate(uint32_t dz_template_id);
 	DynamicZone* CreateExpeditionFromTemplate(const std::string& template_name);
-	DynamicZone* CreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
-	DynamicZone* CreateExpeditionFromDBTemplate(const std::string& template_name);
-	bool CanCreateExpeditionFromDBTemplate(uint32_t expedition_template_id);
-	bool CanCreateExpeditionFromDBTemplate(const std::string& template_name);
+	DynamicZone* CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
+	DynamicZone* CreateExpeditionFromExpeditionTemplate(const std::string& template_name);
+	bool CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
+	bool CanCreateExpeditionFromExpeditionTemplate(const std::string& template_name);
 	DynamicZone* GetExpedition() const;
 	uint32 GetExpeditionID() const;
 	const DzLockout* GetDzLockout(const std::string& expedition, const std::string& event) const;

@@ -1,5 +1,6 @@
 #include "zone/client.h"
 #include "zone/dialogue_window.h"
+#include "zone/entity.h"
 #include "zone/expedition_config.h"
 #include "zone/expedition_db.h"
 #include "zone/event_codes.h"
@@ -84,7 +85,7 @@ namespace {
 
 	void NeedSelection(Client* c)
 	{
-		c->Message(Chat::Red, "Select an expedition first: #expedition select <id|name>, or start one with #expedition setup \"Name\".");
+		c->Message(Chat::Red, "No expedition selected. Open #expedition to pick one, or start a new one with #expedition create \"Name\".");
 	}
 
 	void NeedTargetNpc(Client* c)
@@ -352,7 +353,7 @@ namespace {
 
 	std::string BossEventName(NPC& npc)
 	{
-		return fmt::format("{} Defeated", TargetBossName(npc));
+		return TargetBossName(npc);
 	}
 
 	std::string BossEventName(const ExpeditionDB::Event& event_data, const ExpeditionDB::EventNpc& event_npc)
@@ -362,7 +363,7 @@ namespace {
 		}
 
 		const std::string npc_name = ExpeditionDB::NpcTypeName(event_npc.npc_type_id);
-		return npc_name.empty() ? ExpeditionDB::kSimpleBossEventName : fmt::format("{} Defeated", npc_name);
+		return npc_name.empty() ? ExpeditionDB::kSimpleBossEventName : npc_name;
 	}
 
 	constexpr const char* ChatSeparator()
@@ -383,9 +384,14 @@ namespace {
 		}
 
 		SendSectionHeader(c, title);
-		for (const auto& action : actions) {
-			c->Message(Chat::White, fmt::format("  {}", Saylink::Silent(action.first, action.second)).c_str());
+		std::string line = "  ";
+		for (size_t i = 0; i < actions.size(); ++i) {
+			if (i != 0) {
+				line += "   ";
+			}
+			line += Saylink::Silent(actions[i].first, fmt::format("[ {} ]", actions[i].second));
 		}
+		c->Message(Chat::White, line.c_str());
 	}
 
 	void SendHelpLink(Client* c, const std::string& command, const std::string& description)
@@ -397,6 +403,58 @@ namespace {
 	{
 		c->Message(Chat::White, fmt::format("  {:<16} {}", label, value).c_str());
 	}
+
+	// --- Card framing: every menu is wrapped in a titled, ruled "card" so blocks stay visually
+	// distinct in the chat window instead of melding together. ---
+	constexpr const char* CardRule()
+	{
+		return "===========================================";
+	}
+
+	void SendCardTop(Client* c, const std::string& title)
+	{
+		c->Message(Chat::Yellow, CardRule());
+		c->Message(Chat::Yellow, fmt::format("   {}", title).c_str());
+		c->Message(Chat::Yellow, CardRule());
+	}
+
+	void SendCardBottom(Client* c)
+	{
+		c->Message(Chat::Yellow, CardRule());
+	}
+
+	// Render a row of clickable actions on a single line: "[ A ]   [ B ]   [ C ]".
+	void SendActionRow(Client* c, const std::vector<std::pair<std::string, std::string>>& actions)
+	{
+		if (!c || actions.empty()) {
+			return;
+		}
+		std::string line = "  ";
+		for (size_t i = 0; i < actions.size(); ++i) {
+			if (i != 0) {
+				line += "   ";
+			}
+			line += Saylink::Silent(actions[i].first, fmt::format("[ {} ]", actions[i].second));
+		}
+		c->Message(Chat::White, line.c_str());
+	}
+
+	// Persistent, unmistakable indicator (bright magenta) shown on every edit-mode surface so it is
+	// always obvious that edit mode is active and exactly which expedition is being edited.
+	void SendEditBanner(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		c->Message(Chat::Magenta, fmt::format(
+			">>>>>  EDIT MODE  --  editing: {} [{}] ({})  <<<<<",
+			template_data.name,
+			template_data.id,
+			template_data.enabled ? "published" : "draft"
+		).c_str());
+	}
+
+	// Forward declarations for the new-UX screens, referenced by helpers defined earlier than them.
+	void RenderHome(Client* c, bool all);
+	void RefreshBuilderView(Client* c);
+	void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data);
 
 	void SendScriptedRequestNpcWarning(Client* c, const ExpeditionDB::Template& template_data, NPC& npc)
 	{
@@ -458,30 +516,18 @@ namespace {
 
 	void ShowCreateHelp(Client* c)
 	{
-		SendSectionHeader(c, "Start Expedition Setup");
-		c->Message(Chat::White, "#expedition setup \"Name\" - Create or select a draft using your current zone and location.");
-		c->Message(Chat::White, "The builder uses your current zone/version, current location as zone-in and compass, zone safe point as return, group defaults, DB-only requests, and a 2 hour replay timer.");
-		c->Message(Chat::Yellow, "Examples:");
-		c->Message(Chat::White, "  #expedition setup \"Nagafen's Lair\"");
-		c->Message(Chat::White, "  #expedition setup \"Cazic Thule Trial\"");
-		c->Message(Chat::White, "  #expedition setup \"Plane of Hate Raid\"");
-
-		SendActionGroup(c, "After Create", {
-			{"#expedition request", "Use Target Request NPC"},
-			{"#expedition boss 6h loot", "Use Target Boss"},
-			{"#expedition menu", "Setup Checklist"}
-		});
+		SendCardTop(c, "Create An Expedition");
+		c->Message(Chat::White, "  #expedition create \"Name\"  -  create a draft from your current zone/location and start editing it.");
+		c->Message(Chat::White, "  It uses your current zone/version, your spot as the zone-in and compass, the zone safe point as the return, group size, and a 2h replay timer.");
+		c->Message(Chat::Yellow, "  Examples:");
+		c->Message(Chat::White, "    #expedition create \"Nagafen's Lair\"");
+		c->Message(Chat::White, "    #expedition create \"Cazic Thule Trial\"");
+		c->Message(Chat::White, "  After creating, you're in edit mode - target NPCs to add them as bosses or requesters.");
+		SendActionRow(c, {{"#expedition", "Back to List"}});
+		SendCardBottom(c);
 	}
 
-	struct ChecklistItem {
-		std::string label;
-		std::string state;
-		std::string detail;
-	};
 
-	std::vector<ChecklistItem> BuildChecklist(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation);
-	void SendChecklistChat(Client* c, const std::vector<ChecklistItem>& items);
-	void SendBossLockoutChat(Client* c, const ExpeditionDB::Template& template_data);
 	const ExpeditionDB::Event* FindBossEventForNpc(const ExpeditionDB::Template& template_data, NPC& npc);
 
 	struct WizardGuidance {
@@ -494,137 +540,9 @@ namespace {
 
 	WizardGuidance BuildWizardGuidance(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation);
 
-	void SendSelectedEventChatUi(Client* c, const ExpeditionDB::Template& template_data)
-	{
-		const auto* event_data = SelectedEvent(c, template_data);
-		if (!event_data) {
-			SendActionGroup(c, "Event Setup", {
-				{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
-				{"#expedition event list", "List Events"}
-			});
-			return;
-		}
 
-		c->Message(Chat::Yellow, fmt::format(
-			"Active event [{}] lockout [{}] replay [{}] NPCs [{}] actions [{}].",
-			event_data->event_name,
-			Duration(event_data->lockout_seconds),
-			Duration(event_data->replay_lockout_seconds),
-			event_data->npcs.size(),
-			event_data->actions.size()
-		).c_str());
-		if (NPC* npc = TargetNpc(c)) {
-			c->Message(Chat::Yellow, fmt::format("Event target candidate: {}.", NpcLabel(*npc)).c_str());
-			if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
-				c->Message(Chat::Yellow, fmt::format(
-					"Target event mapping: role [{}] loot [{}] complete-on-death [{}] complete-on-spawn [{}].",
-					mapped_npc->role,
-					OnOff(mapped_npc->loot_protected),
-					OnOff(mapped_npc->complete_on_death),
-					OnOff(mapped_npc->complete_on_spawn)
-				).c_str());
-			}
-			else {
-				c->Message(Chat::Yellow, "Target event mapping: not mapped yet.");
-			}
-		}
 
-		SendActionGroup(c, "Event Core Actions", {
-			{"#expedition event npc", "Add Target as Event NPC"},
-			{"#expedition event lockout 6h", "6h Lockout"},
-			{"#expedition event completeondeath on", "Target Completes Event"},
-			{"#expedition event loot on", "Protect Target Loot"}
-		});
 
-		SendActionGroup(c, "Event Drill-Down", {
-			{"#expedition event", "Event Command Catalog"},
-			{"#expedition action", "Runtime Action Catalog"},
-			{fmt::format("#expedition event remove {}", event_data->id), "Delete This Event..."}
-		});
-	}
-
-	void SendBuilderChatUi(Client* c, const ExpeditionDB::Template& template_data)
-	{
-		const auto validation = ExpeditionDB::ValidateTemplate(template_data);
-		const auto guidance = BuildWizardGuidance(c, template_data, validation);
-		const auto checklist = BuildChecklist(c, template_data, validation);
-		SendSectionHeader(c, "Expedition Setup");
-		SendInfoLine(c, "Selected", fmt::format("{} [{}]", template_data.name, template_data.id));
-		SendInfoLine(c, "State", template_data.enabled ? "published" : "draft");
-		SendInfoLine(c, "Next", guidance.focus);
-
-		if (NPC* npc = TargetNpc(c)) {
-			SendInfoLine(c, "Target", NpcLabel(*npc));
-		}
-		else {
-			SendInfoLine(c, "Target", "none");
-		}
-
-		SendChecklistChat(c, checklist);
-		SendBossLockoutChat(c, template_data);
-
-		if (NPC* npc = TargetNpc(c)) {
-			const auto* boss_event = FindBossEventForNpc(template_data, *npc);
-			SendInfoLine(c, "Target Boss", boss_event ?
-				fmt::format("updates [{}]", boss_event->event_name) :
-				"not mapped; boss command will add a separate lockout event"
-			);
-		}
-
-		SendActionGroup(c, "Primary Next Action", {
-			{guidance.next_command, guidance.next_label}
-		});
-
-		if (!validation.errors.empty()) {
-			SendSectionHeader(c, "Blocking Issues");
-			for (const auto& error : validation.errors) {
-				c->Message(Chat::Red, fmt::format("  {}", error).c_str());
-			}
-		}
-		else if (!validation.warnings.empty()) {
-			SendSectionHeader(c, "Warnings");
-			for (const auto& warning : validation.warnings) {
-				c->Message(Chat::Yellow, fmt::format("  {}", warning).c_str());
-			}
-		}
-
-		SendActionGroup(c, "Core Actions", {
-			{"#expedition request", "Use Target Request NPC"},
-			{"#expedition boss 6h loot", "Add/Update Target Boss With Loot"},
-			{"#expedition boss 6h chest", "Add/Update Target Boss With Dynamic Chest"},
-			{"#expedition chest loot", "Use Target Dynamic Chest"},
-			{"#expedition boss 6h", "Add/Update Target Boss"},
-			{"#expedition publish", "Publish"},
-			{"#expedition menu", "Refresh Checklist"}
-		});
-
-		SendActionGroup(c, "Manage Expedition", {
-			{"#expedition rename", "Rename Expedition"},
-			{fmt::format("#expedition delete {}", template_data.id), "Delete Expedition..."}
-		});
-
-		SendActionGroup(c, "Secondary Actions", {
-			{"#expedition preview", "Runtime Preview"},
-			{"#expedition validate", "Validate"},
-			{"#expedition test", "Testing Catalog"},
-			{"#expedition advanced", "Advanced Catalog"},
-			{"#expedition disable", "Disable"}
-		});
-	}
-
-	void SendCurrentBuilderChatUi(Client* c)
-	{
-		if (const auto* template_data = SelectedTemplate(c)) {
-			SendBuilderChatUi(c, *template_data);
-		}
-	}
-
-	void SendCurrentEventChatUi(Client* c)
-	{
-		if (const auto* template_data = SelectedTemplate(c)) {
-			SendSelectedEventChatUi(c, *template_data);
-		}
-	}
 
 	void AppendPopupText(std::string& body, const std::string& text)
 	{
@@ -660,16 +578,21 @@ namespace {
 		return DialogueWindow::TableRow(DialogueWindow::TableCell(PopupSafe(label)) + DialogueWindow::TableCell(PopupSafe(value)));
 	}
 
+	// One friendly zone format used on every screen: "Nagafen's Lair (soldungb)".
 	std::string ZoneLabel(uint32_t zone_id)
 	{
-		return zone_id ? fmt::format("{} ({})", ZoneName(zone_id, true), zone_id) : "unset";
+		return zone_id ? fmt::format("{} ({})", ZoneLongName(zone_id), ZoneName(zone_id, true)) : "unset";
 	}
 
+	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) v0".
 	std::string ZoneVersionLabel(uint32_t zone_id, int32_t zone_version)
 	{
+		if (!zone_id) {
+			return "unset";
+		}
 		return zone_version == -1 ?
-			fmt::format("{}:*", ZoneLabel(zone_id)) :
-			fmt::format("{}:{}", ZoneLabel(zone_id), zone_version);
+			fmt::format("{} v*", ZoneLabel(zone_id)) :
+			fmt::format("{} v{}", ZoneLabel(zone_id), zone_version);
 	}
 
 	std::string NpcMappingLabel(uint32_t npc_type_id, uint32_t spawn2_id)
@@ -679,26 +602,6 @@ namespace {
 			fmt::format("{} | spawn {}", ExpeditionDB::NpcTypeLabel(npc_type_id), spawn2_id);
 	}
 
-	std::string NextStep(const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
-	{
-		if (template_data.request_mode == "db_only" && template_data.request_npcs.empty()) {
-			return "Target the request NPC, then use #expedition request.";
-		}
-
-		if (template_data.events.empty()) {
-			return "Target the boss, then use #expedition boss 6h or #expedition boss 6h loot.";
-		}
-
-		if (!validation.errors.empty()) {
-			return "Fix validation errors before publishing.";
-		}
-
-		if (!template_data.enabled) {
-			return "Ready to publish. Use #expedition publish.";
-		}
-
-		return "Published. Clone or disable before making risky live changes.";
-	}
 
 	bool HasMappedNpc(const ExpeditionDB::Event& event_data)
 	{
@@ -816,178 +719,11 @@ namespace {
 		);
 	}
 
-	std::vector<ChecklistItem> BuildChecklist(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
-	{
-		const bool entrance_ready =
-			template_data.dz_template.zone_id != 0 &&
-			ZoneName(template_data.dz_template.zone_id) &&
-			template_data.dz_template.duration_seconds > 0 &&
-			template_data.dz_template.min_players > 0 &&
-			template_data.dz_template.max_players >= template_data.dz_template.min_players;
-		const bool request_ready = Strings::EqualFold(template_data.request_mode, "db_only") ? HasEnabledRequestNpc(template_data) : true;
-		const uint32_t boss_count = BossCompletionEventCount(template_data);
-		const bool completion_ready = boss_count > 0;
-		const bool has_target = TargetNpc(c) != nullptr;
 
-		std::vector<ChecklistItem> items;
-		items.push_back({
-			"Draft",
-			template_data.enabled ? "done" : "ready",
-			fmt::format("{} [{}] is selected.", template_data.name, template_data.id)
-		});
-		items.push_back({
-			"Entrance",
-			entrance_ready ? "done" : "needs fix",
-			entrance_ready ?
-				fmt::format("{}:{} | {} | {}-{} players",
-					ZoneName(template_data.dz_template.zone_id, true),
-					template_data.dz_template.zone_version,
-					Duration(template_data.dz_template.duration_seconds),
-					template_data.dz_template.min_players,
-					template_data.dz_template.max_players
-				) :
-				"Use #expedition setup again or the advanced set commands to repair base zone, duration, or player bounds."
-		});
-		items.push_back({
-			"Request NPC",
-			request_ready ? "done" : (has_target ? "ready" : "needs target"),
-			request_ready ?
-				fmt::format(
-					"{} request NPC(s), mode {}{}",
-					template_data.request_npcs.size(),
-					template_data.request_mode,
-					HasScriptedDbOnlyRequestNpc(template_data) ? ", scripts preserved" : ""
-				) :
-				"Target the NPC players should talk to, then use #expedition request."
-		});
-		items.push_back({
-			"Completion",
-			completion_ready ? "done" : (has_target ? "ready" : "needs target"),
-			BossCompletionSummary(template_data)
-		});
-		items.push_back({
-			"Publish",
-			template_data.enabled ? "done" : (validation.errors.empty() ? "ready" : "needs fix"),
-			template_data.enabled ?
-				"Published and available to runtime request handling." :
-				(validation.errors.empty() ?
-					"Use #expedition publish when ready." :
-					fmt::format("{} blocking issue(s) must be fixed.", validation.errors.size()))
-		});
 
-		return items;
-	}
 
-	void SendChecklistChat(Client* c, const std::vector<ChecklistItem>& items)
-	{
-		SendSectionHeader(c, "Setup Checklist");
-		for (const auto& item : items) {
-			SendInfoLine(c, item.label, fmt::format("{} - {}", item.state, item.detail));
-		}
-	}
 
-	void SendBossLockoutChat(Client* c, const ExpeditionDB::Template& template_data)
-	{
-		if (BossCompletionEventCount(template_data) == 0) {
-			return;
-		}
 
-		SendSectionHeader(c, "Boss Lockouts");
-		for (const auto& event_data : template_data.events) {
-			if (!IsBossCompletionEvent(event_data)) {
-				continue;
-			}
-
-			for (const auto& event_npc : event_data.npcs) {
-				if (event_npc.npc_type_id == 0 || (!event_npc.complete_on_death && !event_npc.complete_on_spawn && !Strings::EqualFold(event_npc.role, "boss"))) {
-					continue;
-				}
-
-				const std::string trigger =
-					event_npc.complete_on_spawn ? "spawn" :
-					(event_npc.complete_on_death ? "death" : "manual");
-				SendInfoLine(c, BossEventName(event_data, event_npc), fmt::format("{} | trigger {} | lockout {} | replay {}",
-					NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
-					trigger,
-					Duration(event_data.lockout_seconds),
-					Duration(event_data.replay_lockout_seconds)
-				));
-			}
-		}
-	}
-
-	void AppendChecklistPopup(std::string& body, const std::vector<ChecklistItem>& items)
-	{
-		std::string table;
-		for (const auto& item : items) {
-			table += SnapshotRow(item.label, fmt::format("{} - {}", item.state, item.detail));
-		}
-		AppendPopupText(body, DialogueWindow::Table(table));
-	}
-
-	void AppendRequestNpcPopup(std::string& body, const ExpeditionDB::Template& template_data)
-	{
-		if (template_data.request_npcs.empty()) {
-			return;
-		}
-
-		AppendPopupSection(body, "Request NPCs");
-		std::string table;
-		for (const auto& request_npc : template_data.request_npcs) {
-			table += SnapshotRow(
-				request_npc.enabled ? "Request NPC" : "Request NPC off",
-				fmt::format(
-					"{} | zone {} | phrase {}",
-					NpcMappingLabel(request_npc.npc_type_id, request_npc.spawn2_id),
-					ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version),
-					request_npc.phrase.empty() ? "(none)" : request_npc.phrase
-				)
-			);
-		}
-		AppendPopupText(body, DialogueWindow::Table(table));
-	}
-
-	void AppendBossesPopup(std::string& body, const ExpeditionDB::Template& template_data)
-	{
-		AppendPopupSection(body, "Bosses");
-
-		std::string table;
-		uint32_t boss_index = 1;
-		for (const auto& event_data : template_data.events) {
-			if (!IsBossCompletionEvent(event_data)) {
-				continue;
-			}
-
-			for (const auto& event_npc : event_data.npcs) {
-				if (event_npc.npc_type_id == 0 || (!event_npc.complete_on_death && !event_npc.complete_on_spawn && !Strings::EqualFold(event_npc.role, "boss"))) {
-					continue;
-				}
-
-				const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
-				const std::string trigger =
-					event_npc.complete_on_spawn ? "spawn" :
-					(event_npc.complete_on_death ? "death" : "manual");
-				table += SnapshotRow(
-					fmt::format("Boss {}", boss_index++),
-					fmt::format(
-						"{} | event {} | trigger {} | lockout {} | replay {} | loot {}",
-						NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
-						BossEventName(event_data, event_npc),
-						trigger,
-						Duration(event_data.lockout_seconds),
-						Duration(event_data.replay_lockout_seconds),
-						loot_protected ? "protected" : "not protected"
-					)
-				);
-			}
-		}
-
-		if (table.empty()) {
-			table += SnapshotRow("Bosses", "none configured; target a boss and use #expedition boss 6h loot");
-		}
-
-		AppendPopupText(body, DialogueWindow::Table(table));
-	}
 
 	WizardGuidance BuildWizardGuidance(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation)
 	{
@@ -1143,7 +879,7 @@ namespace {
 				{
 					{"#expedition validate", "Show Validation"},
 					{"#expedition fix", "Show Fixes"},
-					{"#expedition menu", "Snapshot"}
+					{"#expedition show", "Show"}
 				}
 			};
 		}
@@ -1185,47 +921,11 @@ namespace {
 				{"#expedition test request", "Simulate Request"},
 				{"#expedition test create confirm", "Create Live Test"},
 				{"#expedition test move confirm", "Move Into Expedition"},
-				{"#expedition menu", "Snapshot"}
+				{"#expedition show", "Show"}
 			}
 		};
 	}
 
-	void ShowHelp(Client* c)
-	{
-		SendSectionHeader(c, "Expedition Builder");
-		c->Message(Chat::White, "Normal DB expeditions use a short setup flow. Advanced catalogs are still available for custom layouts.");
-
-		SendSectionHeader(c, "Happy Path");
-		SendHelpLink(c, "#expedition setup \"Name\"", "create or select a disabled draft from your current zone/location");
-		SendHelpLink(c, "#expedition request [phrase]", "use targeted NPC as the request NPC");
-		SendHelpLink(c, "#expedition boss [lockout] [loot|chest]", "add/update targeted NPC as a boss-specific completion and lockout");
-		SendHelpLink(c, "#expedition chest [loot]", "use targeted dynamic chest as spawn-completion and loot NPC for selected event");
-		SendHelpLink(c, "#expedition chest type <npc_type_id> [loot]", "preconfigure a dynamic chest before it spawns");
-		SendHelpLink(c, "#expedition publish", "validate and enable when setup is ready");
-
-		SendSectionHeader(c, "Review");
-		SendHelpLink(c, "#expedition list", "list templates in this zone");
-		SendHelpLink(c, "#expedition select <id|name>", "select a template");
-		SendHelpLink(c, "#expedition menu", "show the compact setup checklist");
-		SendHelpLink(c, "#expedition wizard", "same compact checklist plus next action");
-		SendHelpLink(c, "#expedition validate", "check errors and warnings");
-		SendHelpLink(c, "#expedition preview", "preview runtime behavior");
-
-		SendSectionHeader(c, "Manage");
-		SendHelpLink(c, "#expedition rename", "rename the selected expedition");
-		SendHelpLink(c, "#expedition rename <id|name> \"New Name\"", "rename a specific expedition");
-		SendHelpLink(c, "#expedition delete <id|name>", "review delete for a disabled expedition");
-		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition before deleting it");
-
-		SendSectionHeader(c, "Advanced Catalogs");
-		SendHelpLink(c, "#expedition set", "base setup, locations, player counts, replay, request mode");
-		SendHelpLink(c, "#expedition requestnpc help", "request NPC setup");
-		SendHelpLink(c, "#expedition event", "event, NPC, lockout, loot, and completion setup");
-		SendHelpLink(c, "#expedition action", "runtime actions fired by events");
-		SendHelpLink(c, "#expedition test", "testing commands");
-		SendHelpLink(c, "#expedition advanced", "rename, clone, reload, delete, and other advanced actions");
-		SendHelpLink(c, "#expedition disable", "unpublish the selected expedition");
-	}
 
 	void ShowSetHelp(Client* c)
 	{
@@ -1261,7 +961,7 @@ namespace {
 			{"#expedition set safereturn", "Current Safe Return"},
 			{"#expedition set compass", "Current Compass"},
 			{"#expedition preset group", "Group Preset"},
-			{"#expedition wizard", "Guided Next Step"}
+			{"#expedition", "Home / Overview"}
 		});
 	}
 
@@ -1271,14 +971,13 @@ namespace {
 		c->Message(Chat::White, "Request NPC commands use your selected expedition and current NPC target unless the command is list/help.");
 
 		SendSectionHeader(c, "Targeted Setup");
-		SendHelpLink(c, "#expedition request", "preferred simple flow: use targeted NPC with phrase 'expedition'");
-		SendHelpLink(c, "#expedition request <phrase>", "preferred simple flow with a custom phrase");
-		SendHelpLink(c, "#expedition requestnpc", "use targeted NPC with phrase 'expedition'");
-		SendHelpLink(c, "#expedition requestnpc <phrase>", "use targeted NPC with a custom request phrase");
-		SendHelpLink(c, "#expedition requestnpc remove", "prompt before removing targeted request NPC mapping");
+		SendHelpLink(c, "#expedition request", "use targeted NPC with phrase 'expedition'");
+		SendHelpLink(c, "#expedition request <phrase>", "use targeted NPC with a custom request phrase");
+		SendHelpLink(c, "#expedition request add <phrase>", "explicit add with a custom request phrase");
+		SendHelpLink(c, "#expedition request remove confirm", "remove targeted request NPC mapping");
 
 		SendSectionHeader(c, "Review");
-		SendHelpLink(c, "#expedition requestnpc list", "list configured request NPCs");
+		SendHelpLink(c, "#expedition request list", "list configured request NPCs");
 
 		SendSectionHeader(c, "Request Mode");
 		SendHelpLink(c, "#expedition set requestmode db_only", "DB offers request options on hail and handles request links/phrases");
@@ -1287,9 +986,9 @@ namespace {
 
 		SendActionGroup(c, "Request NPC Actions", {
 			{"#expedition request", "Add Target as Request NPC"},
-			{"#expedition requestnpc list", "List Request NPCs"},
+			{"#expedition request list", "List Request NPCs"},
 			{"#expedition set requestmode db_only", "DB Only"},
-			{"#expedition wizard", "Guided Next Step"}
+			{"#expedition", "Home / Overview"}
 		});
 	}
 
@@ -1326,10 +1025,10 @@ namespace {
 			{"#expedition event list", "List Events"},
 			{"#expedition event npc", "Add Target as Event NPC"},
 			{"#expedition event lockout 6h", "6h Lockout"},
-			{"#expedition wizard", "Guided Next Step"}
+			{"#expedition", "Home / Overview"}
 		});
 		if (const auto* template_data = SelectedTemplate(c)) {
-			SendSelectedEventChatUi(c, *template_data);
+			RefreshBuilderView(c);
 		}
 	}
 
@@ -1401,17 +1100,17 @@ namespace {
 
 	void ShowAdvancedHelp(Client* c)
 	{
-		SendSectionHeader(c, "Advanced Expedition Catalog");
-		c->Message(Chat::White, "Advanced commands are intentionally outside the top-level menu to keep normal setup focused.");
+		SendCardTop(c, "Advanced Expedition Catalog");
+		c->Message(Chat::White, "  Advanced commands are intentionally outside the top-level menu to keep normal setup focused.");
 
 		SendSectionHeader(c, "Identity And Copies");
-		SendHelpLink(c, "#expedition create \"Name\"", "legacy alias for starting a draft; prefer setup");
-		SendHelpLink(c, "#expedition rename", "rename command catalog");
+		SendHelpLink(c, "#expedition create \"Name\"", "create or select a draft from your current zone/location");
+		SendHelpLink(c, "#expedition rename", "rename command catalog (alias of set name)");
 		SendHelpLink(c, "#expedition clone <id|name|current> \"New Name\"", "copy an existing setup");
 
 		SendSectionHeader(c, "Detailed Editing");
 		SendHelpLink(c, "#expedition set", "explicit coordinates, player counts, replay, request modes, and switch IDs");
-		SendHelpLink(c, "#expedition requestnpc help", "request NPC list/remove and advanced request mapping");
+		SendHelpLink(c, "#expedition request help", "request NPC list/remove and advanced request mapping");
 		SendHelpLink(c, "#expedition event", "multi-event editing, event NPC roles, lockouts, and completion controls");
 		SendHelpLink(c, "#expedition action", "runtime actions fired by DB events");
 		SendHelpLink(c, "#expedition preset", "solo/group/raid/boss/chest presets");
@@ -1429,8 +1128,9 @@ namespace {
 			{"#expedition rename", "Rename Catalog"},
 			{"#expedition list all", "List All Templates"},
 			{"#expedition reload", "Reload DB Templates"},
-			{"#expedition menu", "Back To Core Menu"}
+			{"#expedition", "Back To Home"}
 		});
+		SendCardBottom(c);
 	}
 
 	void PrintValidation(Client* c, const ExpeditionDB::Template& template_data)
@@ -1448,31 +1148,85 @@ namespace {
 		}
 	}
 
+	// Render one numbered roster NPC line, plus a clickable GoTo/Target row when it is currently spawned in-zone.
+	void RenderRosterNpc(Client* c, uint32_t number, const std::string& label, uint32_t npc_type_id, const std::string& extra)
+	{
+		NPC* live = entity_list.GetNPCByNPCTypeID(npc_type_id);
+		std::string name = ExpeditionDB::NpcTypeName(npc_type_id);
+		if (name.empty()) {
+			name = "unknown";
+		}
+		c->Message(live ? Chat::Green : Chat::Gray, fmt::format(
+			"   {:>2}. {}: {} ({}){}  -  {}",
+			number, label, name, npc_type_id, extra, live ? "SPAWNED" : "not spawned"
+		).c_str());
+		if (live) {
+			c->Message(Chat::White, fmt::format("       {}    {}",
+				Saylink::Silent(fmt::format("#expedition goto {}", npc_type_id), "[ GoTo ]"),
+				Saylink::Silent(fmt::format("#expedition target {}", npc_type_id), "[ Target ]")
+			).c_str());
+		}
+	}
+
 	void ShowTemplate(Client* c, const ExpeditionDB::Template& template_data)
 	{
-		c->Message(Chat::White, fmt::format(
-			"Expedition [{}] id [{}] dz_template [{}] enabled [{}] request_mode [{}]",
-			template_data.name,
-			template_data.id,
-			template_data.dz_template_id,
-			OnOff(template_data.enabled),
-			template_data.request_mode
-		).c_str());
-		c->Message(Chat::White, fmt::format(
-			"Zone [{}:{}] duration [{}] players [{}-{}] replay [{}] silent [{}]",
-			ZoneName(template_data.dz_template.zone_id, true),
-			template_data.dz_template.zone_version,
-			Duration(template_data.dz_template.duration_seconds),
-			template_data.dz_template.min_players,
-			template_data.dz_template.max_players,
-			Duration(template_data.replay_lockout_seconds),
-			OnOff(template_data.silent)
-		).c_str());
-		c->Message(Chat::White, fmt::format(
-			"Request NPCs [{}] events [{}]",
-			template_data.request_npcs.size(),
-			template_data.events.size()
-		).c_str());
+		SendCardTop(c, fmt::format("Expedition: {} [{}]   ({})",
+			template_data.name, template_data.id, template_data.enabled ? "published" : "draft"));
+		SendInfoLine(c, "Zone", ZoneVersionLabel(template_data.dz_template.zone_id, template_data.dz_template.zone_version));
+		SendInfoLine(c, "Players", fmt::format("{} - {}", template_data.dz_template.min_players, template_data.dz_template.max_players));
+		SendInfoLine(c, "Duration", Duration(template_data.dz_template.duration_seconds));
+		SendInfoLine(c, "Replay", Duration(template_data.replay_lockout_seconds));
+		SendInfoLine(c, "Requests", template_data.request_mode);
+		c->Message(Chat::White, ChatSeparator());
+
+		c->Message(Chat::Yellow, "Bosses & Chests:");
+		if (template_data.events.empty()) {
+			c->Message(Chat::Gray, "  (none yet)");
+		}
+		uint32_t roster_index = 0;
+		for (const auto& event_data : template_data.events) {
+			c->Message(Chat::LightBlue, fmt::format("  Event: {}   -   lockout {}",
+				event_data.event_name, Duration(event_data.lockout_seconds)).c_str());
+			bool any_npc = false;
+			for (const auto& event_npc : event_data.npcs) {
+				if (Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn) {
+					continue;
+				}
+				RenderRosterNpc(c, ++roster_index, "Boss", event_npc.npc_type_id,
+					fmt::format(" - trigger {}", event_npc.complete_on_death ? "death" : "manual"));
+				any_npc = true;
+			}
+			for (const auto& event_npc : event_data.npcs) {
+				if (!(Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn)) {
+					continue;
+				}
+				RenderRosterNpc(c, ++roster_index, "Chest", event_npc.npc_type_id,
+					fmt::format(" - completes \"{}\" on spawn, loot protected", event_data.event_name));
+				any_npc = true;
+			}
+			if (!any_npc) {
+				c->Message(Chat::Gray, "    (no NPCs mapped)");
+			}
+		}
+		c->Message(Chat::White, ChatSeparator());
+
+		c->Message(Chat::Yellow, "Requesters:");
+		if (template_data.request_npcs.empty()) {
+			c->Message(Chat::Gray, "  (none yet)");
+		}
+		uint32_t requester_index = 0;
+		for (const auto& request_npc : template_data.request_npcs) {
+			RenderRosterNpc(c, ++requester_index, "Requester", request_npc.npc_type_id,
+				fmt::format(" @ {} - phrase '{}'", ZoneLabel(request_npc.zone_id), request_npc.phrase));
+		}
+
+		c->Message(Chat::White, ChatSeparator());
+		SendActionRow(c, {
+			{fmt::format("#expedition edit on {}", template_data.id), "Edit This"},
+			{fmt::format("#expedition delete {}", template_data.id), "Delete"},
+			{"#expedition", "Back to List"}
+		});
+		SendCardBottom(c);
 	}
 
 	void ShowPreview(Client* c, const ExpeditionDB::Template& template_data)
@@ -1543,162 +1297,8 @@ namespace {
 		c->Message(Chat::White, fmt::format("{} - Apply group defaults.", Saylink::Silent("#expedition preset group", "#expedition preset group")).c_str());
 	}
 
-	void SendWizardChatUi(Client* c, const ExpeditionDB::Template& template_data, const ExpeditionDB::ValidationResult& validation, const WizardGuidance& guidance)
-	{
-		SendSectionHeader(c, "Wizard Next Step");
-		c->Message(Chat::Yellow, fmt::format("Focus: {}", guidance.focus).c_str());
-		c->Message(Chat::White, fmt::format("Why: {}", guidance.why).c_str());
-		c->Message(Chat::White, fmt::format("Next: {}", Saylink::Silent(guidance.next_command, guidance.next_label)).c_str());
 
-		SendActionGroup(c, "Recommended Actions", guidance.actions);
 
-		SendSectionHeader(c, "Wizard State");
-		c->Message(Chat::White, fmt::format("Expedition: [{}] id [{}] status [{}] enabled [{}].",
-			template_data.name,
-			template_data.id,
-			validation.StatusName(),
-			OnOff(template_data.enabled)
-		).c_str());
-		c->Message(Chat::White, fmt::format("Request mode [{}], request NPCs [{}], events [{}].",
-			template_data.request_mode,
-			template_data.request_npcs.size(),
-			template_data.events.size()
-		).c_str());
-		if (const auto* event_data = SelectedEvent(c, template_data)) {
-			c->Message(Chat::White, fmt::format("Active event [{}] lockout [{}] replay [{}] NPCs [{}] actions [{}].",
-				event_data->event_name,
-				Duration(event_data->lockout_seconds),
-				Duration(event_data->replay_lockout_seconds),
-				event_data->npcs.size(),
-				event_data->actions.size()
-			).c_str());
-		}
-		if (NPC* npc = TargetNpc(c)) {
-			c->Message(Chat::White, fmt::format("Current target: {}.", NpcLabel(*npc)).c_str());
-		}
-		else {
-			c->Message(Chat::White, "Current target: none.");
-		}
-
-		SendActionGroup(c, "Review", {
-			{"#expedition wizard", "Refresh Wizard"},
-			{"#expedition menu", "Full Snapshot"},
-			{"#expedition validate", "Validate"},
-			{"#expedition preview", "Preview"}
-		});
-	}
-
-	void ShowWizard(Client* c, const ExpeditionDB::Template* template_data)
-	{
-		std::string body;
-		body += DialogueWindow::CenterMessage(DialogueWindow::ColorMessage("gold", "Expedition Wizard"));
-		body += DialogueWindow::Break(2);
-		if (!template_data) {
-			body += "Start by creating an expedition draft from your current zone and location.";
-			body += DialogueWindow::Break(2);
-			body += "Use #expedition setup \"Name\".";
-			c->SendPopupToClient("Expedition Wizard", body.c_str());
-			SendActionGroup(c, "Expedition Wizard", {
-				{"#expedition setup", "Start Setup..."},
-				{"#expedition list", "Select Existing Expedition"}
-			});
-			return;
-		}
-
-		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
-		const auto guidance = BuildWizardGuidance(c, *template_data, validation);
-		const auto checklist = BuildChecklist(c, *template_data, validation);
-
-		std::string table;
-		table += SnapshotRow("Expedition", fmt::format("{} [{}]", template_data->name, template_data->id));
-		table += SnapshotRow("State", template_data->enabled ? "published" : "draft");
-		table += SnapshotRow("Target", TargetNpc(c) ? NpcLabel(*TargetNpc(c)) : "none");
-		table += SnapshotRow("Next", guidance.focus);
-		table += SnapshotRow("Why", guidance.why);
-		table += SnapshotRow("Next Command", guidance.next_command);
-		AppendPopupText(body, DialogueWindow::Table(table));
-
-		AppendPopupSection(body, "Checklist");
-		AppendChecklistPopup(body, checklist);
-
-		AppendRequestNpcPopup(body, *template_data);
-		AppendBossesPopup(body, *template_data);
-
-		if (!validation.errors.empty()) {
-			AppendPopupSection(body, "Blocking Issues");
-			for (const auto& error : validation.errors) {
-				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", PopupSafe(error)));
-			}
-		}
-		else if (!validation.warnings.empty()) {
-			AppendPopupSection(body, "Warnings");
-			for (const auto& warning : validation.warnings) {
-				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", PopupSafe(warning)));
-			}
-		}
-
-		AppendPopupSection(body, "Chat Actions");
-		AppendPopupText(body, "Recommended command links were sent to your chat window.");
-		c->SendPopupToClient("Expedition Wizard", body.c_str());
-		SendBuilderChatUi(c, *template_data);
-	}
-
-	void ShowMenu(Client* c)
-	{
-		const auto* template_data = SelectedTemplate(c);
-		std::string body;
-		body += DialogueWindow::CenterMessage(DialogueWindow::ColorMessage("gold", "Expedition Builder"));
-		body += DialogueWindow::Break(2);
-
-		if (!template_data) {
-			body += "No expedition selected.";
-			body += DialogueWindow::Break(2);
-			body += "Use #expedition setup \"Name\" to start a draft or select an existing expedition.";
-			c->SendPopupToClient("Expedition Builder", body.c_str());
-			SendActionGroup(c, "Expedition Builder", {
-				{"#expedition setup", "Start Setup..."},
-				{"#expedition list", "List Expeditions"},
-				{"#expedition help", "Command Menu"}
-			});
-			return;
-		}
-
-		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
-		const auto guidance = BuildWizardGuidance(c, *template_data, validation);
-		const auto checklist = BuildChecklist(c, *template_data, validation);
-		std::string table;
-		table += SnapshotRow("Expedition", fmt::format("{} [{}]", template_data->name, template_data->id));
-		table += SnapshotRow("State", template_data->enabled ? "published" : "draft");
-		table += SnapshotRow("Target", TargetNpc(c) ? NpcLabel(*TargetNpc(c)) : "none");
-		table += SnapshotRow("Next", guidance.focus);
-		table += SnapshotRow("Next Command", guidance.next_command);
-		AppendPopupText(body, DialogueWindow::Table(table));
-
-		AppendPopupSection(body, "Checklist");
-		AppendChecklistPopup(body, checklist);
-
-		AppendRequestNpcPopup(body, *template_data);
-		AppendBossesPopup(body, *template_data);
-
-		if (!validation.errors.empty()) {
-			AppendPopupSection(body, "Blocking Issues");
-			for (const auto& error : validation.errors) {
-				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("red", PopupSafe(error)));
-			}
-		}
-		else if (!validation.warnings.empty()) {
-			AppendPopupSection(body, "Warnings");
-			for (const auto& warning : validation.warnings) {
-				AppendPopupText(body, DialogueWindow::Break() + DialogueWindow::ColorMessage("gold", PopupSafe(warning)));
-			}
-		}
-
-		AppendPopupSection(body, "Chat Actions");
-		AppendPopupText(body, "Clickable command links for the next action were sent to your chat window. Use #expedition preview for detailed runtime data.");
-
-		c->SendPopupToClient("Expedition Builder", body.c_str());
-		SendBuilderChatUi(c, *template_data);
-	}
 
 	uint32_t ParseZoneArg(const char* arg)
 	{
@@ -1708,6 +1308,119 @@ namespace {
 
 		return IsStrictUnsigned(arg) ? Strings::ToUnsignedInt(arg) : ZoneID(arg);
 	}
+
+	// Shared guard helpers: return the resolved object, or nullptr (after messaging the
+	// player) when the precondition is not met. Callers bail on nullptr.
+	const ExpeditionDB::Template* RequireSelectedTemplate(Client* c)
+	{
+		const auto* template_data = SelectedTemplate(c);
+		if (!template_data) {
+			NeedSelection(c);
+		}
+
+		return template_data;
+	}
+
+	NPC* RequireTargetNpc(Client* c, const char* extra_message = nullptr)
+	{
+		NPC* npc = TargetNpc(c);
+		if (!npc) {
+			NeedTargetNpc(c);
+			if (extra_message) {
+				c->Message(Chat::Yellow, extra_message);
+			}
+		}
+
+		return npc;
+	}
+
+	const ExpeditionDB::Event* RequireSelectedEvent(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		const auto* event_data = SelectedEvent(c, template_data);
+		if (!event_data) {
+			c->Message(Chat::Red, "Add or select an event first.");
+		}
+
+		return event_data;
+	}
+
+	// Shared tail for the 'rename' verb and 'set name': persist the new name, keep it selected, and
+	// confirm. Returns false (with an error already messaged) if the save failed so the caller bails.
+	bool ApplyTemplateRename(Client* c, uint32_t template_id, const std::string& old_name, const std::string& new_name)
+	{
+		if (!ExpeditionDB::SetTemplateName(content_db, template_id, new_name)) {
+			c->Message(Chat::Red, fmt::format("Failed to rename expedition [{}].", old_name).c_str());
+			return false;
+		}
+
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
+		c->Message(Chat::Green, fmt::format("Saved: renamed expedition [{}] to [{}].", old_name, new_name).c_str());
+		return true;
+	}
+
+	// Find an existing event NPC mapping for the target, or create one with an inferred role.
+	// Returns the npc_type_id/spawn2_id to operate on and whether the lookup succeeded. On a
+	// creation failure ok is false and the caller bails.
+	struct EventNpcMapping {
+		uint32_t npc_type_id = 0;
+		uint32_t spawn2_id = 0;
+		bool ok = false;
+	};
+
+	EventNpcMapping GetOrCreateEventNpcMapping(
+		Client* c,
+		uint32_t event_id,
+		const ExpeditionDB::Event& event_data,
+		NPC& target_npc,
+		const std::string& event_name
+	)
+	{
+		if (const auto* mapped_npc = FindEventNpc(event_data, target_npc)) {
+			return {mapped_npc->npc_type_id, mapped_npc->spawn2_id, true};
+		}
+
+		const uint32_t npc_type_id = target_npc.GetNPCTypeID();
+		const uint32_t spawn2_id = target_npc.GetSpawnPointID();
+		const std::string inferred_role = ExpeditionDB::RoleFromTarget(target_npc);
+		if (!ExpeditionDB::SetEventNpc(content_db, event_id, npc_type_id, spawn2_id, inferred_role)) {
+			c->Message(Chat::Red, fmt::format("Failed to create target NPC mapping for event [{}].", event_name).c_str());
+			return {};
+		}
+
+		c->Message(Chat::Green, fmt::format("Saved: created event NPC mapping for [{}] as [{}].", NpcLabel(target_npc), inferred_role).c_str());
+		return {npc_type_id, spawn2_id, true};
+	}
+}
+
+// Per-verb handler functions. The dispatcher in command_expedition routes to these.
+namespace {
+	void HandleReload(Client* c, const Seperator* sep);
+	void HandleGoto(Client* c, const Seperator* sep);
+	void HandleTargetNpc(Client* c, const Seperator* sep);
+	void HandleHome(Client* c, const Seperator* sep);
+	void RenderHome(Client* c, bool all);
+	void RefreshBuilderView(Client* c);
+	void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data);
+	void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data);
+	void HandleConfig(Client* c, const Seperator* sep);
+	void HandleCreate(Client* c, const Seperator* sep);
+	void HandleClone(Client* c, const Seperator* sep);
+	void HandleSelect(Client* c, const Seperator* sep);
+	void HandleRequest(Client* c, const Seperator* sep);
+	void HandleBoss(Client* c, const Seperator* sep);
+	void HandleChest(Client* c, const Seperator* sep);
+	void HandlePublish(Client* c, const Seperator* sep);
+	void HandleShow(Client* c, const Seperator* sep);
+	void HandlePreview(Client* c, const Seperator* sep);
+	void HandleValidate(Client* c, const Seperator* sep);
+	void HandleDisable(Client* c, const Seperator* sep);
+	void HandleDelete(Client* c, const Seperator* sep);
+	void HandleSet(Client* c, const Seperator* sep);
+	void HandleEvent(Client* c, const Seperator* sep);
+	void HandleAction(Client* c, const Seperator* sep);
+	void HandlePreset(Client* c, const Seperator* sep);
+	void HandleTest(Client* c, const Seperator* sep);
+	void HandleEdit(Client* c, const Seperator* sep);
 }
 
 void command_expedition(Client* c, const Seperator* sep)
@@ -1717,243 +1430,778 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 
 	const std::string sub = Strings::ToLower(sep->arg[1]);
-	if (sub.empty() || sub == "help") {
-		ShowHelp(c);
-		return;
+
+	// Core verbs (in-zone happy path).
+	if (sub == "create" || sub == "setup") {
+		return HandleCreate(c, sep);
+	}
+	if (sub == "boss") {
+		return HandleBoss(c, sep);
+	}
+	if (sub == "request") {
+		return HandleRequest(c, sep);
+	}
+	if (sub == "chest") {
+		return HandleChest(c, sep);
+	}
+	if (sub == "show") {
+		return HandleShow(c, sep);
+	}
+	if (sub == "publish") {
+		return HandlePublish(c, sep);
 	}
 
+	// Drill-down namespaced configuration.
+	if (sub == "set") {
+		return HandleSet(c, sep);
+	}
+	if (sub == "event") {
+		return HandleEvent(c, sep);
+	}
+	if (sub == "action") {
+		return HandleAction(c, sep);
+	}
+	if (sub == "config") {
+		return HandleConfig(c, sep);
+	}
+	if (sub == "edit") {
+		return HandleEdit(c, sep);
+	}
+
+	// Home / overview is the single top-level surface.
+	if (sub.empty() || sub == "list" || sub == "home") {
+		return HandleHome(c, sep);
+	}
+
+	// Utility / advanced.
+	if (sub == "select") {
+		return HandleSelect(c, sep);
+	}
+	if (sub == "clone") {
+		return HandleClone(c, sep);
+	}
+	if (sub == "rename") {
+		// "rename" is now an alias of "set name".
+		return HandleSet(c, sep);
+	}
+	if (sub == "delete") {
+		return HandleDelete(c, sep);
+	}
+	if (sub == "enable" || sub == "disable") {
+		return HandleDisable(c, sep);
+	}
+	if (sub == "validate") {
+		return HandleValidate(c, sep);
+	}
+	if (sub == "fix") {
+		// Fix shortcuts live under set's quick-repair flow.
+		return HandleSet(c, sep);
+	}
+	if (sub == "preview") {
+		return HandlePreview(c, sep);
+	}
+	if (sub == "preset") {
+		return HandlePreset(c, sep);
+	}
+	if (sub == "test") {
+		return HandleTest(c, sep);
+	}
+	if (sub == "menu" || sub == "wizard") {
+		// Legacy entry points now land on the new Home overview.
+		return HandleHome(c, sep);
+	}
 	if (sub == "reload") {
-		zone->LoadDynamicZoneTemplates();
-		c->Message(Chat::Green, fmt::format("Reloaded [{}] DB expedition template(s).", ExpeditionDB::Templates().size()).c_str());
-		ShowMenu(c);
-		return;
+		return HandleReload(c, sep);
 	}
-
-	if (sub == "menu") {
-		if (sep->arg[2][0] != '\0') {
-			const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
-			if (!template_data) {
-				c->Message(Chat::Red, "Expedition template not found.");
-				return;
-			}
-			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
-		}
-		ShowMenu(c);
-		return;
+	if (sub == "goto") {
+		return HandleGoto(c, sep);
 	}
-
-	if (sub == "list") {
-		SendSectionHeader(c, strcasecmp(sep->arg[2], "all") == 0 ? "All Expedition Templates" : "Zone Expedition Templates");
-		c->Message(Chat::White, fmt::format("DB expedition templates: [{}]", ExpeditionDB::Templates().size()).c_str());
-		for (const auto& [id, template_data] : ExpeditionDB::Templates()) {
-			if (strcasecmp(sep->arg[2], "all") != 0 && template_data.dz_template.zone_id != zone->GetZoneID()) {
-				continue;
-			}
-			c->Message(Chat::White, ChatSeparator());
-			SendInfoLine(c, "Template", fmt::format("{} [{}]", template_data.name, id));
-			SendInfoLine(c, "Zone", fmt::format("{}:{}", ZoneName(template_data.dz_template.zone_id, true), template_data.dz_template.zone_version));
-			SendInfoLine(c, "Status", template_data.enabled ? "enabled" : "disabled");
-			SendHelpLink(c, fmt::format("#expedition select {}", id), "select this template");
-			SendHelpLink(c, fmt::format("#expedition menu {}", id), "open menu for this template");
-			SendHelpLink(c, fmt::format("#expedition rename {} \"New Name\"", id), "rename this template");
-			SendHelpLink(c, fmt::format("#expedition delete {}", id), template_data.enabled ? "review delete; disable first if live" : "review delete this draft");
-		}
-		return;
+	if (sub == "target") {
+		return HandleTargetNpc(c, sep);
 	}
-
 	if (sub == "advanced") {
 		ShowAdvancedHelp(c);
 		return;
 	}
 
-	if (sub == "setup") {
-		std::string name = CommandTail(sep, 2);
-		if (name.empty()) {
-			ShowCreateHelp(c);
-			return;
+	// help / unknown -> the home overview
+	HandleHome(c, sep);
+}
+
+namespace {
+
+void HandleReload(Client* c, const Seperator* /*sep*/)
+{
+	zone->LoadDynamicZoneTemplates();
+	c->Message(Chat::Green, fmt::format("Reloaded [{}] DB expedition template(s).", ExpeditionDB::Templates().size()).c_str());
+	RefreshBuilderView(c);
+}
+
+
+// Top-level home/overview: the single entry point. Lists expeditions in the current zone with a
+// compact, organized action row per expedition, plus a Create action. Each rendered as a framed card.
+void HandleHome(Client* c, const Seperator* sep)
+{
+		RenderHome(c, strcasecmp(sep->arg[2], "all") == 0);
+}
+
+// After any mutation, land the user on the screen they're on: the edit card while editing, else home.
+void RefreshBuilderView(Client* c)
+{
+		const auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		if (builder_state.edit_mode) {
+			if (const auto* template_data = ExpeditionDB::FindTemplate(builder_state.selected_template_id)) {
+				ShowEditScreen(c, *template_data);
+				return;
+			}
+		}
+		RenderHome(c, false);
+}
+
+void RenderHome(Client* c, bool all)
+{
+		const auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		const uint32_t editing_id = builder_state.edit_mode ? builder_state.selected_template_id : 0;
+		const std::string zone_name = ZoneName(zone->GetZoneID(), true);
+
+		if (editing_id != 0) {
+			if (const auto* editing_template = ExpeditionDB::FindTemplate(editing_id)) {
+				SendEditBanner(c, *editing_template);
+			}
 		}
 
-		const ExpeditionDB::Template* existing_template = nullptr;
-		for (const auto& [id, candidate] : ExpeditionDB::Templates()) {
-			if (
-				candidate.dz_template.zone_id == zone->GetZoneID() &&
-				candidate.dz_template.zone_version == zone->GetInstanceVersion() &&
-				(
-					Strings::EqualFold(candidate.name, name) ||
-					Strings::EqualFold(candidate.slug, name) ||
-					Strings::EqualFold(candidate.dz_template.name, name)
-				)
-			) {
-				if (!existing_template || (!existing_template->enabled && candidate.enabled) || (existing_template->enabled == candidate.enabled && candidate.id < existing_template->id)) {
-					existing_template = &candidate;
+		SendCardTop(c, all ? "Expeditions - All Zones" : fmt::format("Expeditions - {}", zone_name));
+
+		SendActionRow(c, {{"#expedition create", "+ Create New Expedition"}});
+		c->Message(Chat::White, "  Creating drops you into edit mode: target NPCs to add bosses / requesters.");
+		c->Message(Chat::White, ChatSeparator());
+
+		uint32_t shown = 0;
+		for (const auto& [id, template_data] : ExpeditionDB::Templates()) {
+			if (!all && template_data.dz_template.zone_id != zone->GetZoneID()) {
+				continue;
+			}
+			++shown;
+			const bool editing = (editing_id == id);
+			c->Message(editing ? Chat::Green : Chat::White, fmt::format(
+				"  {} [{}]   -   {}{}",
+				template_data.name,
+				id,
+				template_data.enabled ? "published" : "draft",
+				editing ? "   *** EDITING ***" : ""
+			).c_str());
+
+			// Compact content summary so the zone's expeditions are scannable without opening each.
+			uint32_t boss_count = 0;
+			for (const auto& event_data : template_data.events) {
+				for (const auto& event_npc : event_data.npcs) {
+					if (Strings::EqualFold(event_npc.role, "boss")) {
+						++boss_count;
+					}
+				}
+			}
+			const bool ready = ExpeditionDB::ValidateTemplate(template_data).IsValid();
+			c->Message(Chat::Gray, fmt::format("     Bosses: {}  |  Requesters: {}  |  {}",
+				boss_count, template_data.request_npcs.size(),
+				ready ? "Ready to publish" : "Needs setup").c_str());
+
+			std::vector<std::pair<std::string, std::string>> actions;
+			actions.push_back(editing
+				? std::pair<std::string, std::string>{"#expedition edit off", "Stop Editing"}
+				: std::pair<std::string, std::string>{fmt::format("#expedition edit on {}", id), "Edit"});
+			actions.push_back({fmt::format("#expedition show {}", id), "Show"});
+			actions.push_back(template_data.enabled
+				? std::pair<std::string, std::string>{fmt::format("#expedition disable {}", id), "Unpublish"}
+				: std::pair<std::string, std::string>{fmt::format("#expedition publish {}", id), "Publish"});
+			SendActionRow(c, actions);
+			c->Message(Chat::White, ChatSeparator());
+		}
+
+		if (shown == 0) {
+			const std::string empty = all
+				? std::string("  No expeditions exist yet.")
+				: fmt::format("  No expeditions in {} yet - create one above.", zone_name);
+			c->Message(Chat::White, empty.c_str());
+			c->Message(Chat::White, ChatSeparator());
+		}
+
+		std::vector<std::pair<std::string, std::string>> footer;
+		footer.push_back(all
+			? std::pair<std::string, std::string>{"#expedition", "This Zone Only"}
+			: std::pair<std::string, std::string>{"#expedition list all", "Other Zones"});
+		footer.push_back({"#expedition advanced", "Advanced Commands"});
+		SendActionRow(c, footer);
+		SendCardBottom(c);
+}
+
+// The per-expedition working screen shown while in edit mode.
+void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
+{
+		// Re-arm the target menu so re-clicking the NPC you just added re-opens its manage card.
+		ExpeditionDB::ResetTargetMenu(c->CharacterID());
+		SendEditBanner(c, template_data);
+		SendCardTop(c, fmt::format("Editing: {} [{}]   ({})",
+			template_data.name, template_data.id, template_data.enabled ? "published" : "draft"));
+		c->Message(Chat::White, "  Target any NPC to add it (Boss / Requester), or manage it if it's already part of this expedition.");
+
+		// Roster summary so you always know what's in the expedition while editing.
+		uint32_t boss_count = 0;
+		for (const auto& event_data : template_data.events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (Strings::EqualFold(event_npc.role, "boss")) {
+					++boss_count;
 				}
 			}
 		}
+		c->Message(Chat::White, fmt::format("  Contents:   Bosses: {}  |  Requesters: {}  |  Events: {}",
+			boss_count, template_data.request_npcs.size(), template_data.events.size()).c_str());
 
-		if (existing_template) {
-			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), existing_template->id);
-			c->Message(Chat::Green, fmt::format("Selected existing expedition [{}] ({}).", existing_template->id, existing_template->name).c_str());
-			ShowMenu(c);
+		// Publish readiness + the single next step needed.
+		const auto validation = ExpeditionDB::ValidateTemplate(template_data);
+		if (validation.IsValid()) {
+			c->Message(Chat::Green, "  Ready to publish.");
+		}
+		else {
+			const auto guidance = BuildWizardGuidance(c, template_data, validation);
+			c->Message(Chat::Yellow, fmt::format("  Not ready yet - next: {}", guidance.focus).c_str());
+		}
+		c->Message(Chat::White, ChatSeparator());
+
+		// Build/publish actions on one row, navigation on the next, so the row never wraps awkwardly.
+		c->Message(Chat::White, "  Build:");
+		SendActionRow(c, {
+			{"#expedition config", "Configure"},
+			{fmt::format("#expedition show {}", template_data.id), "Show"},
+			template_data.enabled
+				? std::pair<std::string, std::string>{"#expedition disable", "Unpublish"}
+				: std::pair<std::string, std::string>{"#expedition publish", "Publish"}
+		});
+		c->Message(Chat::White, "  Navigate:");
+		SendActionRow(c, {
+			{"#expedition edit off", "Stop Editing"},
+			{"#expedition", "Back to List"}
+		});
+		// Rename uses a non-silent saylink: clicking pre-fills the command in your input box to edit the name.
+		c->Message(Chat::White, fmt::format("  Rename:  {}",
+			Saylink::Create(fmt::format("#expedition rename {} \"New Name\"", template_data.id), false, "[ Rename ]")).c_str());
+		SendCardBottom(c);
+}
+
+// Click-driven configuration card: shows current values and applies changes via buttons (no typing).
+// Drill-down time picker: a minute/hour/day matrix of clickable presets. Each option re-runs
+// command_prefix with the chosen value (e.g. "#expedition event lockout 6h").
+void ShowTimeMatrix(Client* c, const std::string& title, const std::string& command_prefix, const std::string& current, bool allow_none)
+{
+		SendCardTop(c, title);
+		SendInfoLine(c, "Current", current);
+		c->Message(Chat::White, "  Minutes:");
+		SendActionRow(c, {
+			{command_prefix + " 5m", "5m"}, {command_prefix + " 10m", "10m"},
+			{command_prefix + " 15m", "15m"}, {command_prefix + " 30m", "30m"},
+			{command_prefix + " 45m", "45m"}
+		});
+		c->Message(Chat::White, "  Hours:");
+		SendActionRow(c, {
+			{command_prefix + " 1h", "1h"}, {command_prefix + " 2h", "2h"},
+			{command_prefix + " 3h", "3h"}, {command_prefix + " 4h", "4h"},
+			{command_prefix + " 6h", "6h"}, {command_prefix + " 8h", "8h"},
+			{command_prefix + " 12h", "12h"}, {command_prefix + " 18h", "18h"}
+		});
+		c->Message(Chat::White, "  Days:");
+		SendActionRow(c, {
+			{command_prefix + " 1d", "1d"}, {command_prefix + " 2d", "2d"},
+			{command_prefix + " 3d", "3d"}, {command_prefix + " 5d", "5d"},
+			{command_prefix + " 7d", "7d"}, {command_prefix + " 14d", "14d"}
+		});
+		c->Message(Chat::White, ChatSeparator());
+		if (allow_none) {
+			SendActionRow(c, {{command_prefix + " none", "No Lockout (clear)"}});
+		}
+		SendCardBottom(c);
+}
+
+// Drill-down player-count picker: a group/raid matrix of clickable counts. Each option re-runs
+// command_prefix with the chosen value (e.g. "#expedition config minplayers 3").
+void ShowCountMatrix(Client* c, const std::string& title, const std::string& command_prefix, uint32_t current)
+{
+		SendCardTop(c, title);
+		SendInfoLine(c, "Current", fmt::format("{}", current));
+		c->Message(Chat::White, "  Group:");
+		SendActionRow(c, {
+			{command_prefix + " 1", "1"}, {command_prefix + " 2", "2"},
+			{command_prefix + " 3", "3"}, {command_prefix + " 4", "4"},
+			{command_prefix + " 5", "5"}, {command_prefix + " 6", "6"}
+		});
+		c->Message(Chat::White, "  Raid:");
+		SendActionRow(c, {
+			{command_prefix + " 12", "12"}, {command_prefix + " 18", "18"},
+			{command_prefix + " 24", "24"}, {command_prefix + " 30", "30"},
+			{command_prefix + " 36", "36"}, {command_prefix + " 42", "42"},
+			{command_prefix + " 48", "48"}, {command_prefix + " 54", "54"}
+		});
+		SendCardBottom(c);
+}
+
+void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
+{
+		if (ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode) {
+			SendEditBanner(c, template_data);
+		}
+		SendCardTop(c, fmt::format("Configure: {} [{}]", template_data.name, template_data.id));
+
+		const auto& dz = template_data.dz_template;
+		SendInfoLine(c, "Zone", ZoneVersionLabel(dz.zone_id, dz.zone_version));
+		SendInfoLine(c, "Duration", Duration(dz.duration_seconds));
+		SendInfoLine(c, "Replay", Duration(template_data.replay_lockout_seconds));
+		SendInfoLine(c, "Players", fmt::format("{} - {}", dz.min_players, dz.max_players));
+		SendInfoLine(c, "Zone-in", dz.override_zone_in ? "set" : "NOT SET");
+		SendInfoLine(c, "Safe return", dz.return_zone_id ? "set" : "default");
+		c->Message(Chat::White, ChatSeparator());
+
+		c->Message(Chat::White, "  Duration (how long the instance stays open):");
+		SendActionRow(c, {
+			{"#expedition config duration 1h", "1h"},
+			{"#expedition config duration 3h", "3h"},
+			{"#expedition config duration 6h", "6h"},
+			{"#expedition config duration 12h", "12h"},
+			{"#expedition config duration", "More..."}
+		});
+		c->Message(Chat::White, "  Replay timer (how long before players can re-run it):");
+		SendActionRow(c, {
+			{"#expedition config replay 6h", "6h"},
+			{"#expedition config replay 1d", "1d"},
+			{"#expedition config replay 3d", "3d"},
+			{"#expedition config replay 7d", "7d"},
+			{"#expedition config replay", "More..."}
+		});
+		c->Message(Chat::White, "  Min players (fewest needed to form):");
+		SendActionRow(c, {
+			{"#expedition config minplayers 1", "1"},
+			{"#expedition config minplayers 2", "2"},
+			{"#expedition config minplayers 3", "3"},
+			{"#expedition config minplayers 6", "6"},
+			{"#expedition config minplayers", "More..."}
+		});
+		c->Message(Chat::White, "  Max players (largest allowed):");
+		SendActionRow(c, {
+			{"#expedition config maxplayers 1", "1"},
+			{"#expedition config maxplayers 6", "6"},
+			{"#expedition config maxplayers 12", "12"},
+			{"#expedition config maxplayers 24", "24"},
+			{"#expedition config maxplayers 54", "54"},
+			{"#expedition config maxplayers", "More..."}
+		});
+		c->Message(Chat::White, "  Locations (captures your current spot):");
+		SendActionRow(c, {
+			{"#expedition config zonein", "Set Zone-in Here"},
+			{"#expedition config safereturn", "Set Safe Return Here"},
+			{"#expedition config compass", "Set Compass Here"}
+		});
+		c->Message(Chat::White, ChatSeparator());
+		SendActionRow(c, {
+			{fmt::format("#expedition edit on {}", template_data.id), "Back to Edit"},
+			{fmt::format("#expedition show {}", template_data.id), "Show"}
+		});
+		SendCardBottom(c);
+}
+
+void HandleConfig(Client* c, const Seperator* sep)
+{
+		const auto* template_data = RequireSelectedTemplate(c);
+		if (!template_data) {
+			return;
+		}
+		const std::string action = Strings::ToLower(sep->arg[2]);
+		if (action.empty() || action == "help") {
+			ShowConfigScreen(c, *template_data);
 			return;
 		}
 
-		const uint32_t id = ExpeditionDB::CreateTemplateFromClient(content_db, *c, name);
-		if (!id) {
-			c->Message(Chat::Red, "Failed to create DB expedition draft.");
-			return;
-		}
+		const uint32_t template_id = template_data->id;
+		const uint32_t dz_template_id = template_data->dz_template_id;
+		const auto& pos = c->GetPosition();
 
-		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
-		c->Message(Chat::Green, fmt::format(
-			"Created draft expedition [{}] with group defaults, DB-only requests, and a [{}] replay timer.",
-			id,
-			Duration(ExpeditionDB::kSimpleSetupReplaySeconds)
-		).c_str());
-		ShowMenu(c);
-		return;
-	}
-
-	if (sub == "create") {
-		std::string name = CommandTail(sep, 2);
-		if (name.empty()) {
-			ShowCreateHelp(c);
-			return;
-		}
-
-		const uint32_t id = ExpeditionDB::CreateTemplateFromClient(content_db, *c, name);
-		if (!id) {
-			c->Message(Chat::Red, "Failed to create DB expedition template.");
-			return;
-		}
-
-		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
-		c->Message(Chat::Green, fmt::format("Created and selected DB expedition [{}].", id).c_str());
-		ShowMenu(c);
-		return;
-	}
-
-	if (sub == "clone") {
-		const auto* source = strcasecmp(sep->arg[2], "current") == 0 ? SelectedTemplate(c) : ExpeditionDB::FindTemplate(sep->arg[2]);
-		std::string name = CommandTail(sep, 3);
-		if (!source || name.empty()) {
-			c->Message(Chat::Red, "Usage: #expedition clone <id|name|current> \"New Name\"");
-			return;
-		}
-
-		const std::string source_name = source->name;
-		const uint32_t id = ExpeditionDB::CloneTemplate(content_db, source->id, name);
-		if (!id) {
-			c->Message(Chat::Red, "Failed to clone DB expedition template.");
-			return;
-		}
-
-		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
-		c->Message(Chat::Green, fmt::format("Cloned expedition [{}] into [{}].", source_name, name).c_str());
-		ShowMenu(c);
-		return;
-	}
-
-	if (sub == "rename") {
-		if (sep->arg[2][0] == '\0' || strcasecmp(sep->arg[2], "help") == 0) {
-			ShowRenameHelp(c);
-			return;
-		}
-
-		const bool has_target = sep->arg[3][0] != '\0';
-		const auto* rename_template = has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c);
-		const std::string new_name = has_target ? CommandTail(sep, 3) : CommandTail(sep, 2);
-		if (!rename_template || new_name.empty()) {
-			c->Message(Chat::Red, "Usage: #expedition rename \"New Name\" OR #expedition rename <id|name> \"New Name\"");
-			if (!rename_template) {
-				NeedSelection(c);
+		if (action == "duration") {
+			if (sep->arg[3][0] == '\0') {
+				ShowTimeMatrix(c, fmt::format("Duration: {}", template_data->name),
+					"#expedition config duration", Duration(template_data->dz_template.duration_seconds), false);
+				return;
 			}
+			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3]);
+			if (!seconds) {
+				c->Message(Chat::Red, "Usage: #expedition config duration <duration>");
+				return;
+			}
+			ExpeditionDB::SetDzTemplateDuration(content_db, dz_template_id, seconds);
+			c->Message(Chat::Green, fmt::format("Set duration to {}.", Duration(seconds)).c_str());
+		}
+		else if (action == "replay") {
+			if (sep->arg[3][0] == '\0') {
+				ShowTimeMatrix(c, fmt::format("Replay Timer: {}", template_data->name),
+					"#expedition config replay", Duration(template_data->replay_lockout_seconds), true);
+				return;
+			}
+			const bool clear = IsClearDurationArg(sep->arg[3]);
+			const uint32_t seconds = clear ? 0 : ParseExpeditionDuration(sep->arg[3]);
+			if (!seconds && !clear) {
+				c->Message(Chat::Red, "Usage: #expedition config replay none|<duration>");
+				return;
+			}
+			ExpeditionDB::SetTemplateReplay(content_db, template_id, seconds);
+			c->Message(Chat::Green, fmt::format("Set replay timer to {}.", Duration(seconds)).c_str());
+		}
+		else if (action == "minplayers") {
+			if (sep->arg[3][0] == '\0') {
+				ShowCountMatrix(c, fmt::format("Min Players: {}", template_data->name),
+					"#expedition config minplayers", template_data->dz_template.min_players);
+				return;
+			}
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition config minplayers <count>");
+				return;
+			}
+			uint32_t new_min = Strings::ToUnsignedInt(sep->arg[3]);
+			if (new_min < 1) {
+				new_min = 1;
+			}
+			const uint32_t cur_max = template_data->dz_template.max_players;
+			const uint32_t new_max = (new_min > cur_max) ? new_min : cur_max;
+			ExpeditionDB::SetDzTemplatePlayers(content_db, dz_template_id, new_min, new_max);
+			if (new_max != cur_max) {
+				c->Message(Chat::Green, fmt::format("Set min players to {} (raised max to {} to stay valid).", new_min, new_max).c_str());
+			}
+			else {
+				c->Message(Chat::Green, fmt::format("Set min players to {}.", new_min).c_str());
+			}
+		}
+		else if (action == "maxplayers") {
+			if (sep->arg[3][0] == '\0') {
+				ShowCountMatrix(c, fmt::format("Max Players: {}", template_data->name),
+					"#expedition config maxplayers", template_data->dz_template.max_players);
+				return;
+			}
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition config maxplayers <count>");
+				return;
+			}
+			uint32_t new_max = Strings::ToUnsignedInt(sep->arg[3]);
+			if (new_max < 1) {
+				new_max = 1;
+			}
+			const uint32_t cur_min = template_data->dz_template.min_players ? template_data->dz_template.min_players : 1;
+			const uint32_t new_min = (cur_min > new_max) ? new_max : cur_min;
+			ExpeditionDB::SetDzTemplatePlayers(content_db, dz_template_id, new_min, new_max);
+			if (new_min != template_data->dz_template.min_players) {
+				c->Message(Chat::Green, fmt::format("Set max players to {} (lowered min to {} to stay valid).", new_max, new_min).c_str());
+			}
+			else {
+				c->Message(Chat::Green, fmt::format("Set max players to {}.", new_max).c_str());
+			}
+		}
+		else if (action == "size") {
+			const std::string size = Strings::ToLower(sep->arg[3]);
+			uint32_t min_players = 0;
+			uint32_t max_players = 0;
+			if (size == "solo") { min_players = 1; max_players = 1; }
+			else if (size == "group") { min_players = 1; max_players = 6; }
+			else if (size == "raid") { min_players = 6; max_players = 54; }
+			else {
+				c->Message(Chat::Red, "Usage: #expedition config size <solo|group|raid>");
+				return;
+			}
+			ExpeditionDB::SetDzTemplatePlayers(content_db, dz_template_id, min_players, max_players);
+			c->Message(Chat::Green, fmt::format("Set group size to {} ({}-{} players).", size, min_players, max_players).c_str());
+		}
+		else if (action == "zonein") {
+			ExpeditionDB::SetDzTemplateZoneIn(content_db, dz_template_id, pos.x, pos.y, pos.z, pos.w);
+			c->Message(Chat::Green, "Set the zone-in point to your current location.");
+		}
+		else if (action == "safereturn") {
+			ExpeditionDB::SetDzTemplateSafeReturn(content_db, dz_template_id, zone->GetZoneID(), pos.x, pos.y, pos.z, pos.w);
+			c->Message(Chat::Green, "Set the safe return to your current location.");
+		}
+		else if (action == "compass") {
+			ExpeditionDB::SetDzTemplateCompass(content_db, dz_template_id, zone->GetZoneID(), pos.x, pos.y, pos.z);
+			c->Message(Chat::Green, "Set the compass marker to your current location.");
+		}
+		else {
+			ShowConfigScreen(c, *template_data);
 			return;
 		}
 
-		const uint32_t template_id = rename_template->id;
-		const std::string old_name = rename_template->name;
-		if (!ExpeditionDB::SetTemplateName(content_db, template_id, new_name)) {
-			c->Message(Chat::Red, fmt::format("Failed to rename expedition [{}].", old_name).c_str());
-			return;
+		if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
+			ShowConfigScreen(c, *refreshed);
 		}
+}
 
-		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
-		c->Message(Chat::Green, fmt::format("Saved: renamed expedition [{}] to [{}].", old_name, new_name).c_str());
-		ShowMenu(c);
+// Merge of the old 'setup' and 'create' verbs: create or select a draft from the
+// current zone/location with sane defaults.
+void HandleCreate(Client* c, const Seperator* sep)
+{
+	std::string name = CommandTail(sep, 2);
+	if (Strings::EqualFold(name, "help")) {
+		ShowCreateHelp(c);
+		return;
+	}
+	if (name.empty()) {
+		// No name given (e.g. the "+ Create New Expedition" button) -> default to the zone name,
+		// appending an incrementing number if that name is already taken. The user can rename after.
+		std::string base = ZoneLongName(zone->GetZoneID());
+		if (base.empty()) {
+			base = ZoneName(zone->GetZoneID(), true);
+		}
+		if (base.empty()) {
+			base = "Expedition";
+		}
+		const auto name_taken = [](const std::string& candidate) {
+			for (const auto& [id, candidate_template] : ExpeditionDB::Templates()) {
+				if (Strings::EqualFold(candidate_template.name, candidate)) {
+					return true;
+				}
+			}
+			return false;
+		};
+		name = base;
+		uint32_t suffix = 1;
+		while (name_taken(name)) {
+			++suffix;
+			name = fmt::format("{} {}", base, suffix);
+		}
+	}
+
+	const ExpeditionDB::Template* existing_template = nullptr;
+	for (const auto& [id, candidate] : ExpeditionDB::Templates()) {
+		if (
+			candidate.dz_template.zone_id == zone->GetZoneID() &&
+			candidate.dz_template.zone_version == zone->GetInstanceVersion() &&
+			(
+				Strings::EqualFold(candidate.name, name) ||
+				Strings::EqualFold(candidate.slug, name) ||
+				Strings::EqualFold(candidate.dz_template.name, name)
+			)
+		) {
+			if (!existing_template || (!existing_template->enabled && candidate.enabled) || (existing_template->enabled == candidate.enabled && candidate.id < existing_template->id)) {
+				existing_template = &candidate;
+			}
+		}
+	}
+
+	if (existing_template) {
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), existing_template->id);
+		ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode = true;
+		c->Message(Chat::Green, fmt::format("Selected existing expedition [{}] ({}) - now editing.", existing_template->id, existing_template->name).c_str());
+		ShowEditScreen(c, *existing_template);
 		return;
 	}
 
-	if (sub == "select") {
-		const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
-		if (!template_data) {
-			c->Message(Chat::Red, "Expedition template not found.");
-			return;
-		}
-
-		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
-		c->Message(Chat::Green, fmt::format("Selected expedition [{}] ({}).", template_data->id, template_data->name).c_str());
-		ShowMenu(c);
+	const uint32_t id = ExpeditionDB::CreateTemplateFromClient(content_db, *c, name);
+	if (!id) {
+		c->Message(Chat::Red, "Failed to create DB expedition draft.");
 		return;
 	}
 
-	if (sub == "request") {
-		if (strcasecmp(sep->arg[2], "help") == 0) {
-			ShowRequestNpcHelp(c);
+	ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
+	ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode = true;
+	c->Message(Chat::Green, fmt::format(
+		"Created expedition [{}] \"{}\" with group defaults - now in edit mode. Use [ Rename ] below to change the name, or target NPCs to add bosses / requesters.",
+		id, name
+	).c_str());
+	if (const auto* created = ExpeditionDB::FindTemplate(id)) {
+		ShowEditScreen(c, *created);
+	}
+}
+
+void HandleClone(Client* c, const Seperator* sep)
+{
+	const auto* source = strcasecmp(sep->arg[2], "current") == 0 ? SelectedTemplate(c) : ExpeditionDB::FindTemplate(sep->arg[2]);
+	std::string name = CommandTail(sep, 3);
+	if (!source || name.empty()) {
+		c->Message(Chat::Red, "Usage: #expedition clone <id|name|current> \"New Name\"");
+		return;
+	}
+
+	const std::string source_name = source->name;
+	const uint32_t id = ExpeditionDB::CloneTemplate(content_db, source->id, name);
+	if (!id) {
+		c->Message(Chat::Red, "Failed to clone DB expedition template.");
+		return;
+	}
+
+	ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
+	c->Message(Chat::Green, fmt::format("Cloned expedition [{}] into [{}].", source_name, name).c_str());
+	RefreshBuilderView(c);
+}
+
+void HandleSelect(Client* c, const Seperator* sep)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(CommandTail(sep, 2));
+	if (!template_data) {
+		c->Message(Chat::Red, "Expedition template not found.");
+		return;
+	}
+
+	ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
+	c->Message(Chat::Green, fmt::format("Selected expedition [{}] ({}).", template_data->id, template_data->name).c_str());
+	RefreshBuilderView(c);
+}
+
+// Merge of the old 'request' (simple) and 'requestnpc' (advanced) verbs.
+//   #expedition request [phrase]           - add targeted NPC as request NPC
+//   #expedition request list               - list configured request NPCs
+//   #expedition request remove [confirm]    - remove targeted request NPC mapping
+//   #expedition request add [phrase]        - explicit add (alias of bare form)
+//   #expedition request help                - request NPC catalog
+// Polished requester roster card: each requester shows spawn status, phrase, and GoTo/Target/Remove.
+void ShowRequesterList(Client* c, const ExpeditionDB::Template& template_data)
+{
+		SendCardTop(c, fmt::format("Requesters: {} [{}]", template_data.name, template_data.id));
+		if (template_data.request_npcs.empty()) {
+			c->Message(Chat::Gray, "  No requesters configured yet.");
+			c->Message(Chat::White, "  In edit mode, target the NPC players should hail and answer the Requester prompt.");
+			SendCardBottom(c);
 			return;
 		}
+		uint32_t requester_index = 0;
+		for (const auto& request_npc : template_data.request_npcs) {
+			NPC* live = entity_list.GetNPCByNPCTypeID(request_npc.npc_type_id);
+			std::string name = ExpeditionDB::NpcTypeName(request_npc.npc_type_id);
+			if (name.empty()) {
+				name = "unknown";
+			}
+			c->Message(Chat::White, ChatSeparator());
+			c->Message(live ? Chat::Green : Chat::Gray, fmt::format(
+				"  {:>2}. {} ({})   @ {}   -   {}",
+				++requester_index, name, request_npc.npc_type_id, ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version),
+				live ? "SPAWNED" : "not spawned"
+			).c_str());
+			SendInfoLine(c, "Phrase", fmt::format("\"{}\"   ({})", request_npc.phrase, request_npc.enabled ? "enabled" : "disabled"));
+			std::vector<std::pair<std::string, std::string>> actions;
+			if (live) {
+				actions.push_back({fmt::format("#expedition goto {}", request_npc.npc_type_id), "GoTo"});
+				actions.push_back({fmt::format("#expedition target {}", request_npc.npc_type_id), "Target"});
+			}
+			actions.push_back({fmt::format("#expedition request removeid {} {}", request_npc.npc_type_id, request_npc.spawn2_id), "Remove"});
+			SendActionRow(c, actions);
+		}
+		c->Message(Chat::White, ChatSeparator());
+		SendActionRow(c, {{"#expedition", "Back to List"}});
+		SendCardBottom(c);
+}
 
-		const auto* template_data = SelectedTemplate(c);
-		if (!template_data) {
+void HandleRequest(Client* c, const Seperator* sep)
+{
+	const std::string action = Strings::ToLower(sep->arg[2]);
+	if (action == "help") {
+		ShowRequestNpcHelp(c);
+		return;
+	}
+
+	const auto* template_data = SelectedTemplate(c);
+	if (!template_data) {
+		if (action.empty()) {
 			NeedSelection(c);
-			return;
-		}
-
-		NPC* npc = TargetNpc(c);
-		if (!npc) {
-			NeedTargetNpc(c);
 			c->Message(Chat::Yellow, "Target the NPC players should talk to, then run #expedition request.");
-			return;
 		}
-
-		std::string phrase = CommandTail(sep, 2);
-		if (phrase.empty()) {
-			phrase = ExpeditionDB::kSimpleRequestPhrase;
+		else {
+			NeedSelection(c);
 		}
-
-		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase, zone->GetInstanceVersion());
-		if (!request_npc_id) {
-			c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
-			return;
-		}
-
-		c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}].", NpcLabel(*npc), phrase).c_str());
-		SendScriptedRequestNpcWarning(c, *template_data, *npc);
-		ShowMenu(c);
 		return;
 	}
 
-	if (sub == "boss") {
-		if (strcasecmp(sep->arg[2], "help") == 0) {
-			c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot|chest]");
-			c->Message(Chat::White, "Example: #expedition boss 6h loot");
-			c->Message(Chat::White, "Example: #expedition boss 6h chest");
+	if (action == "list") {
+		ShowRequesterList(c, *template_data);
+		return;
+	}
+
+	// Remove a requester by NPC type id (from the requester list's Remove button - no target needed).
+	if (action == "removeid") {
+		if (!IsStrictUnsigned(sep->arg[3])) {
+			c->Message(Chat::Red, "Pick Remove from the requester list.");
 			return;
 		}
-
-		const auto* template_data = SelectedTemplate(c);
-		if (!template_data) {
-			NeedSelection(c);
+		const uint32_t type_id = Strings::ToUnsignedInt(sep->arg[3]);
+		const uint32_t spawn2_id = IsStrictUnsigned(sep->arg[4]) ? Strings::ToUnsignedInt(sep->arg[4]) : 0;
+		if (strcasecmp(sep->arg[5], "confirm") != 0) {
+			c->Message(Chat::Yellow, fmt::format("Remove requester (NPC type {}) from [{}]?", type_id, template_data->name).c_str());
+			SendActionRow(c, {
+				{fmt::format("#expedition request removeid {} {} confirm", type_id, spawn2_id), "Confirm Remove"},
+				{"#expedition request list", "Cancel"}
+			});
 			return;
 		}
-
-		NPC* npc = TargetNpc(c);
-		if (!npc) {
-			NeedTargetNpc(c);
-			c->Message(Chat::Yellow, "Target the boss NPC, then run #expedition boss 6h or #expedition boss 6h loot.");
+		if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, type_id, spawn2_id)) {
+			c->Message(Chat::Red, "Failed to remove requester.");
 			return;
 		}
+		c->Message(Chat::Green, "Removed requester.");
+		if (NPC* live = entity_list.GetNPCByNPCTypeID(type_id)) {
+			ExpeditionDB::ApplyRequesterLastName(*live);
+		}
+		if (const auto* refreshed = ExpeditionDB::FindTemplate(template_data->id)) {
+			ShowRequesterList(c, *refreshed);
+		}
+		return;
+	}
 
-		uint32_t lockout_seconds = ExpeditionDB::kSimpleBossLockoutSeconds;
+	NPC* npc = RequireTargetNpc(c, "Target the NPC players should talk to, then run #expedition request.");
+	if (!npc) {
+		return;
+	}
+
+	if (action == "remove") {
+		if (strcasecmp(sep->arg[3], "confirm") != 0) {
+			c->Message(Chat::Yellow, "Type #expedition request remove confirm to remove the targeted request NPC mapping.");
+			return;
+		}
+		if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID())) {
+			c->Message(Chat::Red, "Failed to remove targeted request NPC mapping.");
+			return;
+		}
+		c->Message(Chat::Green, fmt::format("Saved: removed request NPC [{}] from expedition [{}].", NpcLabel(*npc), template_data->name).c_str());
+		ExpeditionDB::ApplyRequesterLastName(*npc);
+		RefreshBuilderView(c);
+		return;
+	}
+
+	// Bare phrase or explicit 'add' sub-action: upsert the targeted request NPC.
+	const int phrase_index = action == "add" ? 3 : 2;
+	std::string phrase = CommandTail(sep, phrase_index);
+	if (phrase.empty()) {
+		phrase = ExpeditionDB::kSimpleRequestPhrase;
+	}
+
+	const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase, zone->GetInstanceVersion());
+	if (!request_npc_id) {
+		c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
+		return;
+	}
+
+	c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}].", NpcLabel(*npc), phrase).c_str());
+	ExpeditionDB::ApplyRequesterLastName(*npc);
+	SendScriptedRequestNpcWarning(c, *template_data, *npc);
+	RefreshBuilderView(c);
+}
+
+void HandleBoss(Client* c, const Seperator* sep)
+{
+	if (strcasecmp(sep->arg[2], "help") == 0) {
+		c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot|chest]");
+		c->Message(Chat::White, "Example: #expedition boss 6h loot");
+		c->Message(Chat::White, "Example: #expedition boss 6h chest");
+		return;
+	}
+
+	const auto* template_data = RequireSelectedTemplate(c);
+	if (!template_data) {
+		return;
+	}
+
+	NPC* npc = RequireTargetNpc(c, "Target the boss NPC, then run #expedition boss 6h or #expedition boss 6h loot.");
+	if (!npc) {
+		return;
+	}
+
+	uint32_t lockout_seconds = ExpeditionDB::kSimpleBossLockoutSeconds;
 		int loot_mode = -1;
 		bool chest_completion = false;
 		for (int i = 2; i < 10 && sep->arg[i][0] != '\0'; ++i) {
@@ -2033,20 +2281,19 @@ void command_expedition(Client* c, const Seperator* sep)
 		else if (loot_mode == 0) {
 			c->Message(Chat::Yellow, "Loot protection is disabled for this boss mapping.");
 		}
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "chest") {
+void HandleChest(Client* c, const Seperator* sep)
+{
 		if (strcasecmp(sep->arg[2], "help") == 0) {
 			c->Message(Chat::White, "Usage: #expedition chest [loot|noloot]");
 			c->Message(Chat::White, "Usage: #expedition chest type <npc_type_id> [loot|noloot]");
 			return;
 		}
 
-		const auto* template_data = SelectedTemplate(c);
+		const auto* template_data = RequireSelectedTemplate(c);
 		if (!template_data) {
-			NeedSelection(c);
 			return;
 		}
 
@@ -2069,10 +2316,8 @@ void command_expedition(Client* c, const Seperator* sep)
 			arg_index = 4;
 		}
 		else {
-			NPC* npc = TargetNpc(c);
+			NPC* npc = RequireTargetNpc(c, "Target the dynamic loot chest, or use #expedition chest type <npc_type_id> before it spawns.");
 			if (!npc) {
-				NeedTargetNpc(c);
-				c->Message(Chat::Yellow, "Target the dynamic loot chest, or use #expedition chest type <npc_type_id> before it spawns.");
 				return;
 			}
 			npc_type_id = npc->GetNPCTypeID();
@@ -2110,20 +2355,24 @@ void command_expedition(Client* c, const Seperator* sep)
 			event_data->event_name,
 			loot_mode == 1 ? "on" : "off"
 		).c_str());
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "publish") {
-		const auto* template_data = SelectedTemplate(c);
+void HandlePublish(Client* c, const Seperator* sep)
+{
+		const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
+
+		const uint32_t template_id = template_data->id;
+		const std::string template_name = template_data->name;
 
 		const auto validation = ExpeditionDB::ValidateTemplate(*template_data);
 		if (!validation.errors.empty()) {
-			c->Message(Chat::Red, fmt::format("Publish blocked: [{}] has [{}] blocking issue(s).", template_data->name, validation.errors.size()).c_str());
+			c->Message(Chat::Red, fmt::format("Publish blocked: [{}] has [{}] blocking issue(s).", template_name, validation.errors.size()).c_str());
 			for (const auto& error : validation.errors) {
 				c->Message(Chat::Red, fmt::format("Error: {}", error).c_str());
 			}
@@ -2138,51 +2387,323 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Yellow, fmt::format("Warning: {}", warning).c_str());
 		}
 
-		if (!ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, true)) {
-			c->Message(Chat::Red, fmt::format("Failed to publish expedition [{}].", template_data->name).c_str());
+		if (!ExpeditionDB::SetTemplateEnabled(content_db, template_id, true)) {
+			c->Message(Chat::Red, fmt::format("Failed to publish expedition [{}].", template_name).c_str());
 			return;
 		}
 
-		c->Message(Chat::Green, fmt::format("Published expedition [{}].", template_data->name).c_str());
-		ShowMenu(c);
-		return;
-	}
+		auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		if (builder_state.selected_template_id == template_id) {
+			builder_state.edit_mode = false;
+		}
+		c->Message(Chat::Green, fmt::format("Published expedition [{}] - edit mode closed.", template_name).c_str());
+		HandleHome(c, sep);
+}
 
-	const auto* template_data = ResolveTemplate(c, sep->arg[2]);
-	if (sub == "show") {
+// --- Expedition edit mode: guided 3-step add flow (target NPC -> Yes/No -> role -> confirm) ---
+// Each step is a framing popup window plus clickable Saylink "buttons" in chat (the codebase's
+// convention: popups are read-only, chat saylinks carry the clickable actions).
+// One Yes/No popup per NPC role, asked in sequence. "Yes" adds the NPC as that role; "No" advances
+// to the next role (Boss -> Chest -> Requester -> skip). Extend by adding roles to the chain.
+void ShowRoleQuestion(Client* c, const ExpeditionDB::Template& template_data, NPC& npc, uint32_t entity_id, const std::string& role)
+{
+		SendEditBanner(c, template_data);
+		const uint16 eid = static_cast<uint16>(entity_id);
+		std::string title;
+		std::string body;
+		uint32_t yes_id = 0;
+		uint32_t no_id = 0;
+
+		if (role == "boss") {
+			title = "Add NPC - Boss?";
+			body = fmt::format(
+				"Add {} (NPC type {}) to {} as a Boss?<br><br>"
+				"Defeating it completes its event (default {} lockout). Choose No to consider other roles.",
+				npc.GetCleanName(), npc.GetNPCTypeID(), template_data.name,
+				Duration(ExpeditionDB::kSimpleBossLockoutSeconds));
+			yes_id = ExpeditionEditPopup::Make(ExpeditionEditPopup::AddBoss, eid);
+			no_id  = ExpeditionEditPopup::Make(ExpeditionEditPopup::AskChest, eid);
+		}
+		else if (role == "chest") {
+			title = "Add NPC - Loot Chest?";
+			body = fmt::format(
+				"Not a boss. Add {} (NPC type {}) as a loot Chest?<br><br>"
+				"Its spawn completes the selected event and its loot is protected. Choose No for other roles.",
+				npc.GetCleanName(), npc.GetNPCTypeID());
+			yes_id = ExpeditionEditPopup::Make(ExpeditionEditPopup::AddChest, eid);
+			no_id  = ExpeditionEditPopup::Make(ExpeditionEditPopup::AskRequester, eid);
+		}
+		else { // requester
+			title = "Add NPC - Requester?";
+			body = fmt::format(
+				"Add {} (NPC type {}) as the Requester?<br><br>"
+				"Players hail or say to it to request and enter the expedition. Choose No to skip this NPC.",
+				npc.GetCleanName(), npc.GetNPCTypeID());
+			yes_id = ExpeditionEditPopup::Make(ExpeditionEditPopup::AddRequester, eid);
+			no_id  = ExpeditionEditPopup::Make(ExpeditionEditPopup::Skip, eid);
+		}
+
+		c->SendFullPopup(title.c_str(), body.c_str(), yes_id, no_id, 1, 0, "Yes", "No");
+}
+
+// Links a loot chest to a specific boss event: its spawn completes that event (and fires that
+// boss's lockout), with loot protection. Used for both the single-boss auto-link and the chooser.
+void ApplyChestToEvent(Client* c, uint32_t entity_id, uint32_t event_id)
+{
+		const auto* template_data = RequireSelectedTemplate(c);
+		if (!template_data) {
+			return;
+		}
+		NPC* npc = entity_list.GetNPCByID(static_cast<uint16>(entity_id));
+		if (!npc) {
+			c->Message(Chat::Red, "That NPC is no longer present. Target a current NPC and try again.");
+			return;
+		}
+
+		const ExpeditionDB::Event* event_data = nullptr;
+		for (const auto& candidate : template_data->events) {
+			if (candidate.id == event_id) {
+				event_data = &candidate;
+				break;
+			}
+		}
+		if (!event_data) {
+			c->Message(Chat::Red, "That boss event no longer exists - re-target the chest to link it.");
+			return;
+		}
+
+		const uint32_t template_id = template_data->id;
+		const std::string event_name = event_data->event_name;
+		if (
+			!ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "chest") ||
+			!ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), false) ||
+			!ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), true) ||
+			!ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), true)
+		) {
+			c->Message(Chat::Red, fmt::format("Failed to save loot chest setup for event [{}].", event_name).c_str());
+			return;
+		}
+		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+		c->Message(Chat::Green, fmt::format(
+			"Saved: loot chest [{}] is linked to [{}] - its spawn now completes that boss's event and fires its lockout (loot protected).",
+			NpcLabel(*npc), event_name).c_str());
+		if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
+			ShowEditScreen(c, *refreshed);
+		}
+}
+
+// When an expedition has more than one boss, ask which boss's event this chest should complete.
+void ShowChestLinkChooser(Client* c, const ExpeditionDB::Template& template_data, NPC& npc, uint32_t entity_id)
+{
+		SendEditBanner(c, template_data);
+		SendCardTop(c, "Link Loot Chest To Boss");
+		c->Message(Chat::White, fmt::format("  Which boss should [{}] be linked to? Its spawn will complete that boss's event and trigger its lockout.",
+			NpcLabel(npc)).c_str());
+		c->Message(Chat::White, ChatSeparator());
+		for (const auto& event_data : template_data.events) {
+			c->Message(Chat::White, ("  " + Saylink::Silent(
+				fmt::format("#expedition edit chestlink {} {}", entity_id, event_data.id),
+				fmt::format("[ {} ]", event_data.event_name))).c_str());
+		}
+		c->Message(Chat::White, ChatSeparator());
+		SendActionRow(c, {{"#expedition edit on", "Cancel"}});
+		SendCardBottom(c);
+}
+
+void ApplyEditAdd(Client* c, uint32_t entity_id, const std::string& role)
+{
+		const auto* template_data = RequireSelectedTemplate(c);
+		if (!template_data) {
+			return;
+		}
+		NPC* npc = entity_list.GetNPCByID(static_cast<uint16>(entity_id));
+		if (!npc) {
+			c->Message(Chat::Red, "That NPC is no longer present. Target a current NPC and try again.");
+			return;
+		}
+
+		const uint32_t template_id = template_data->id;
+		const std::string template_name = template_data->name;
+
+		if (role == "requester") {
+			const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(
+				content_db, template_id, zone->GetZoneID(),
+				npc->GetNPCTypeID(), npc->GetSpawnPointID(),
+				ExpeditionDB::kSimpleRequestPhrase, zone->GetInstanceVersion());
+			if (!request_npc_id) {
+				c->Message(Chat::Red, "Failed to save requester NPC mapping.");
+				return;
+			}
+			c->Message(Chat::Green, fmt::format(
+				"Saved: requester [{}] added to [{}] with phrase [{}].",
+				NpcLabel(*npc), template_name, ExpeditionDB::kSimpleRequestPhrase).c_str());
+			ExpeditionDB::ApplyRequesterLastName(*npc);
+			if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
+				SendScriptedRequestNpcWarning(c, *refreshed, *npc);
+				ShowEditScreen(c, *refreshed);
+			}
+			return;
+		}
+
+		if (role == "chest") {
+			// A chest must be linked to a boss event (its spawn completes that event). Auto-link when
+			// there is exactly one boss; otherwise ask which boss it belongs to.
+			if (template_data->events.empty()) {
+				c->Message(Chat::Red, "Add a boss first - a loot chest completes an existing boss event when it spawns.");
+				RefreshBuilderView(c);
+				return;
+			}
+			if (template_data->events.size() == 1) {
+				ApplyChestToEvent(c, entity_id, template_data->events.front().id);
+				return;
+			}
+			ShowChestLinkChooser(c, *template_data, *npc, entity_id);
+			return;
+		}
+
+		const auto* event_data = FindBossEventForNpc(*template_data, *npc);
+		const std::string event_name = event_data ? event_data->event_name : UniqueEventName(*template_data, BossEventName(*npc));
+		const uint32_t event_id = event_data ? event_data->id : ExpeditionDB::AddEvent(content_db, template_id, event_name);
+		if (!event_id) {
+			c->Message(Chat::Red, "Failed to create boss completion event.");
+			return;
+		}
+		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+		if (
+			!ExpeditionDB::SetEventNpc(content_db, event_id, npc->GetNPCTypeID(), npc->GetSpawnPointID(), "boss") ||
+			!ExpeditionDB::SetEventLockout(content_db, event_id, ExpeditionDB::kSimpleBossLockoutSeconds) ||
+			!ExpeditionDB::SetEventReplay(content_db, event_id, ExpeditionDB::kSimpleBossReplaySeconds)
+		) {
+			c->Message(Chat::Red, fmt::format("Failed to save boss setup for event [{}].", event_name).c_str());
+			return;
+		}
+		c->Message(Chat::Green, fmt::format(
+			"Saved: boss [{}] added to [{}] via event [{}] (lockout {}, replay {}).",
+			NpcLabel(*npc), template_name, event_name,
+			Duration(ExpeditionDB::kSimpleBossLockoutSeconds), Duration(ExpeditionDB::kSimpleBossReplaySeconds)).c_str());
+		if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
+			ShowEditScreen(c, *refreshed);
+		}
+}
+
+void HandleEdit(Client* c, const Seperator* sep)
+{
+		const std::string action = Strings::ToLower(sep->arg[2]);
+
+		if (action.empty() || action == "on") {
+			if (sep->arg[3][0] != '\0') {
+				const auto* picked = ExpeditionDB::FindTemplate(sep->arg[3]);
+				if (!picked) {
+					c->Message(Chat::Red, "Expedition not found.");
+					return;
+				}
+				ExpeditionDB::SetSelectedTemplate(c->CharacterID(), picked->id);
+			}
+			const auto* template_data = RequireSelectedTemplate(c);
+			if (!template_data) {
+				return;
+			}
+			ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode = true;
+			ShowEditScreen(c, *template_data);
+			return;
+		}
+
+		if (action == "off") {
+			ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode = false;
+			c->Message(Chat::Yellow, "Stopped editing.");
+			HandleHome(c, sep);
+			return;
+		}
+
+		// Internal: chest-link chooser callback (#expedition edit chestlink <chest_entity_id> <event_id>).
+		if (action == "chestlink") {
+			if (!IsStrictUnsigned(sep->arg[3]) || !IsStrictUnsigned(sep->arg[4])) {
+				c->Message(Chat::Red, "Pick a boss from the chest link menu.");
+				return;
+			}
+			ApplyChestToEvent(c, Strings::ToUnsignedInt(sep->arg[3]), Strings::ToUnsignedInt(sep->arg[4]));
+			return;
+		}
+
+		if (action == "help") {
+			SendSectionHeader(c, "Expedition Edit Mode");
+			c->Message(Chat::White, "Toggle a guided add flow for the selected expedition.");
+			SendHelpLink(c, "#expedition edit on", "enable edit mode for the selected expedition");
+			SendHelpLink(c, "#expedition edit off", "disable edit mode");
+			c->Message(Chat::White, "While on, target any NPC to get role popups (Boss / Chest / Requester). A chest links to the boss whose event it completes.");
+			return;
+		}
+
+		c->Message(Chat::Red, "Usage: #expedition edit on|off   (with edit mode on, target NPCs to add them)");
+}
+
+void HandleShow(Client* c, const Seperator* sep)
+{
+		const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
 		ShowTemplate(c, *template_data);
-		return;
-	}
+}
 
-	if (sub == "preview") {
+// Teleport the GM to a spawned NPC (used by the Show roster's GoTo links).
+void HandleGoto(Client* c, const Seperator* sep)
+{
+		if (!IsStrictUnsigned(sep->arg[2])) {
+			c->Message(Chat::Red, "Usage: #expedition goto <npc_type_id>");
+			return;
+		}
+		NPC* npc = entity_list.GetNPCByNPCTypeID(Strings::ToUnsignedInt(sep->arg[2]));
+		if (!npc) {
+			c->Message(Chat::Yellow, "That NPC is not spawned in this zone right now.");
+			return;
+		}
+		c->MovePC(zone->GetZoneID(), zone->GetInstanceID(), npc->GetX(), npc->GetY(), npc->GetZ(), npc->GetHeading());
+		c->Message(Chat::Green, fmt::format("Teleported to {}.", npc->GetCleanName()).c_str());
+}
+
+// Target a spawned NPC (used by the Show roster's Target links).
+void HandleTargetNpc(Client* c, const Seperator* sep)
+{
+		if (!IsStrictUnsigned(sep->arg[2])) {
+			c->Message(Chat::Red, "Usage: #expedition target <npc_type_id>");
+			return;
+		}
+		NPC* npc = entity_list.GetNPCByNPCTypeID(Strings::ToUnsignedInt(sep->arg[2]));
+		if (!npc) {
+			c->Message(Chat::Yellow, "That NPC is not spawned in this zone right now.");
+			return;
+		}
+		c->SetTarget(npc);
+		c->SendTargetCommand(npc->GetID());
+		c->Message(Chat::Green, fmt::format("Targeted {}.", npc->GetCleanName()).c_str());
+}
+
+void HandlePreview(Client* c, const Seperator* sep)
+{
+		const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
 		ShowPreview(c, *template_data);
-		return;
-	}
+}
 
-	if (sub == "wizard") {
-		ShowWizard(c, SelectedTemplate(c));
-		return;
-	}
-
-	if (sub == "validate") {
+void HandleValidate(Client* c, const Seperator* sep)
+{
+		const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
 		PrintValidation(c, *template_data);
-		return;
-	}
+}
 
-	if (sub == "fix") {
-		template_data = SelectedTemplate(c);
+// 'fix' quick-repair flow, reachable via #expedition fix (routed through the set verb).
+void HandleFix(Client* c, const Seperator* sep)
+{
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -2222,11 +2743,13 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowFixes(c, *template_data);
 		}
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "enable" || sub == "disable") {
+void HandleDisable(Client* c, const Seperator* sep)
+{
+		const std::string sub = Strings::ToLower(sep->arg[1]);
+		const auto* template_data = ResolveTemplate(c, sep->arg[2]);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -2236,44 +2759,101 @@ void command_expedition(Client* c, const Seperator* sep)
 			if (!validation.IsValid()) {
 				PrintValidation(c, *template_data);
 				c->Message(Chat::Red, "Fix validation errors before enabling this expedition.");
-				SendBuilderChatUi(c, *template_data);
 				return;
 			}
+		}
+		// Unpublishing a live expedition can affect players currently inside it - confirm first.
+		if (sub == "disable" && template_data->enabled && strcasecmp(sep->arg[3], "confirm") != 0) {
+			c->Message(Chat::Yellow, fmt::format("Unpublish live expedition [{}]? Players may be inside it.", template_data->name).c_str());
+			SendActionRow(c, {
+				{fmt::format("#expedition disable {} confirm", template_data->id), "Confirm Unpublish"},
+				{"#expedition", "Cancel"}
+			});
+			return;
 		}
 		const std::string template_name = template_data->name;
 		ExpeditionDB::SetTemplateEnabled(content_db, template_data->id, sub == "enable");
 		c->Message(Chat::Green, fmt::format("{} expedition [{}].", sub == "enable" ? "Enabled" : "Disabled", template_name).c_str());
-		ShowMenu(c);
-		return;
-	}
+		HandleHome(c, sep);
+}
 
-	if (sub == "delete") {
+void HandleDelete(Client* c, const Seperator* sep)
+{
 		const auto* delete_template = ResolveTemplate(c, sep->arg[2]);
 		if (!delete_template) {
 			NeedSelection(c);
 			return;
 		}
 		if (delete_template->enabled) {
-			c->Message(Chat::Red, "Disable this expedition before deleting it. This prevents accidental deletion of live DB templates.");
+			c->Message(Chat::Red, fmt::format("[{}] is published. Unpublish it before deleting.", delete_template->name).c_str());
+			SendActionRow(c, {
+				{fmt::format("#expedition disable {}", delete_template->id), "Unpublish"},
+				{"#expedition", "Cancel"}
+			});
 			return;
 		}
 		if (strcasecmp(sep->arg[3], "confirm") != 0 && strcasecmp(sep->arg[4], "confirm") != 0) {
-			c->Message(Chat::Yellow, fmt::format("Type #expedition delete {} confirm to permanently delete this unpublished template.", delete_template->id).c_str());
+			c->Message(Chat::Yellow, fmt::format("Permanently delete draft expedition [{}]?", delete_template->name).c_str());
+			SendActionRow(c, {
+				{fmt::format("#expedition delete {} confirm", delete_template->id), "Confirm Delete"},
+				{"#expedition", "Cancel"}
+			});
 			return;
 		}
-		ExpeditionDB::DeleteTemplate(content_db, delete_template->id);
-		c->Message(Chat::Green, "Deleted DB expedition template.");
-		ShowMenu(c);
-		return;
-	}
+		const uint32_t deleted_id = delete_template->id;
+		ExpeditionDB::DeleteTemplate(content_db, deleted_id);
+		auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		if (builder_state.selected_template_id == deleted_id) {
+			builder_state.selected_template_id = 0;
+			builder_state.selected_event_id = 0;
+			builder_state.edit_mode = false;
+		}
+		c->Message(Chat::Green, "Deleted expedition template.");
+		HandleHome(c, sep);
+}
 
-	if (sub == "set") {
+void HandleSet(Client* c, const Seperator* sep)
+{
+		const std::string sub = Strings::ToLower(sep->arg[1]);
+
+		// 'rename' is an alias of 'set name'; rewrite its arguments before dispatching.
+		if (sub == "rename") {
+			if (sep->arg[2][0] == '\0' || strcasecmp(sep->arg[2], "help") == 0) {
+				ShowRenameHelp(c);
+				return;
+			}
+
+			const bool has_target = sep->arg[3][0] != '\0';
+			const auto* rename_template = has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c);
+			const std::string new_name = has_target ? CommandTail(sep, 3) : CommandTail(sep, 2);
+			if (!rename_template || new_name.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition rename \"New Name\" OR #expedition rename <id|name> \"New Name\"");
+				if (!rename_template) {
+					NeedSelection(c);
+				}
+				return;
+			}
+
+			if (!ApplyTemplateRename(c, rename_template->id, rename_template->name, new_name)) {
+				return;
+			}
+
+			RefreshBuilderView(c);
+			return;
+		}
+
+		// 'fix' quick-repair shortcuts are reachable via the set verb.
+		if (sub == "fix") {
+			HandleFix(c, sep);
+			return;
+		}
+
 		const std::string field = Strings::ToLower(sep->arg[2]);
 		if (field.empty() || field == "help") {
 			ShowSetHelp(c);
 			return;
 		}
-		template_data = SelectedTemplate(c);
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -2284,14 +2864,9 @@ void command_expedition(Client* c, const Seperator* sep)
 				c->Message(Chat::Red, "Usage: #expedition set name \"New Name\"");
 				return;
 			}
-			const uint32_t template_id = template_data->id;
-			const std::string old_name = template_data->name;
-			if (!ExpeditionDB::SetTemplateName(content_db, template_id, new_name)) {
-				c->Message(Chat::Red, fmt::format("Failed to rename expedition [{}].", old_name).c_str());
+			if (!ApplyTemplateRename(c, template_data->id, template_data->name, new_name)) {
 				return;
 			}
-			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
-			c->Message(Chat::Green, fmt::format("Saved: renamed expedition [{}] to [{}].", old_name, new_name).c_str());
 		}
 		else if (field == "zone") {
 			const uint32_t zone_id = ParseZoneArg(sep->arg[3]);
@@ -2454,80 +3029,11 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Red, "Unknown #expedition set option.");
 			ShowSetHelp(c);
 		}
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "requestnpc") {
-		const std::string action = Strings::ToLower(sep->arg[2]);
-		if (action == "help") {
-			ShowRequestNpcHelp(c);
-			return;
-		}
-
-		template_data = SelectedTemplate(c);
-		if (!template_data) {
-			if (action.empty()) {
-				ShowRequestNpcHelp(c);
-			}
-			NeedSelection(c);
-			return;
-		}
-
-		if (action == "list") {
-			if (template_data->request_npcs.empty()) {
-				c->Message(Chat::White, "No request NPCs are configured for the selected expedition.");
-				ShowRequestNpcHelp(c);
-				return;
-			}
-			SendSectionHeader(c, "Configured Request NPCs");
-			for (const auto& request_npc : template_data->request_npcs) {
-				c->Message(Chat::White, ChatSeparator());
-				SendInfoLine(c, "NPC", fmt::format("type {} | spawn {} | zone {}", request_npc.npc_type_id, request_npc.spawn2_id, ZoneVersionLabel(request_npc.zone_id, request_npc.zone_version)));
-				SendInfoLine(c, "Phrase", request_npc.phrase);
-				SendInfoLine(c, "Enabled", OnOff(request_npc.enabled));
-			}
-			ShowRequestNpcHelp(c);
-			return;
-		}
-
-		NPC* npc = TargetNpc(c);
-		if (!npc) {
-			NeedTargetNpc(c);
-			ShowRequestNpcHelp(c);
-			return;
-		}
-
-		if (action == "remove") {
-			if (strcasecmp(sep->arg[3], "confirm") != 0) {
-				c->Message(Chat::Yellow, "Type #expedition requestnpc remove confirm to remove the targeted request NPC mapping.");
-				return;
-			}
-			if (!ExpeditionDB::DeleteRequestNpc(content_db, template_data->id, npc->GetNPCTypeID(), npc->GetSpawnPointID())) {
-				c->Message(Chat::Red, "Failed to remove targeted request NPC mapping.");
-				return;
-			}
-			c->Message(Chat::Green, fmt::format("Saved: removed request NPC [{}] from expedition [{}].", NpcLabel(*npc), template_data->name).c_str());
-			ShowMenu(c);
-			return;
-		}
-
-		std::string phrase = CommandTail(sep, 2);
-		if (phrase.empty()) {
-			phrase = ExpeditionDB::kSimpleRequestPhrase;
-		}
-		const uint32_t request_npc_id = ExpeditionDB::UpsertRequestNpc(content_db, template_data->id, zone->GetZoneID(), npc->GetNPCTypeID(), npc->GetSpawnPointID(), phrase, zone->GetInstanceVersion());
-		if (!request_npc_id) {
-			c->Message(Chat::Red, "Failed to save targeted request NPC mapping.");
-			return;
-		}
-		c->Message(Chat::Green, fmt::format("Saved: request NPC [{}] uses phrase [{}] for expedition [{}].", NpcLabel(*npc), phrase, template_data->name).c_str());
-		SendScriptedRequestNpcWarning(c, *template_data, *npc);
-		ShowMenu(c);
-		return;
-	}
-
-	if (sub == "event") {
+void HandleEvent(Client* c, const Seperator* sep)
+{
 		const std::string action = Strings::ToLower(sep->arg[2]);
 		if (action.empty() || action == "help") {
 			ShowEventHelp(c);
@@ -2537,7 +3043,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			ShowEventRenameHelp(c);
 			return;
 		}
-		template_data = SelectedTemplate(c);
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -2555,7 +3061,7 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
 			c->Message(Chat::Green, fmt::format("Saved: added and selected event [{}] id [{}].", event_name, event_id).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
@@ -2567,14 +3073,14 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_data->id);
 			c->Message(Chat::Green, fmt::format("Selected event [{}].", event_data->event_name).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
 		if (action == "list") {
 			if (template_data->events.empty()) {
 				c->Message(Chat::White, "No events are configured for the selected expedition.");
-				SendSelectedEventChatUi(c, *template_data);
+				RefreshBuilderView(c);
 				return;
 			}
 			SendSectionHeader(c, "Configured Events");
@@ -2587,7 +3093,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				SendHelpLink(c, "#expedition event rename", "show rename commands");
 				SendHelpLink(c, fmt::format("#expedition event remove {}", event_data.id), "review delete");
 			}
-			SendCurrentEventChatUi(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
@@ -2609,13 +3115,13 @@ void command_expedition(Client* c, const Seperator* sep)
 
 			if (sep->arg[3][0] == '\0' || new_name.empty()) {
 				c->Message(Chat::Red, "Usage: #expedition event rename \"New Name\" OR #expedition event rename <id> \"New Name\"");
-				SendSelectedEventChatUi(c, *template_data);
+				RefreshBuilderView(c);
 				return;
 			}
 
 			if (!rename_event) {
 				c->Message(Chat::Red, "Select exactly one event first, or use #expedition event rename <id> \"New Name\".");
-				SendSelectedEventChatUi(c, *template_data);
+				RefreshBuilderView(c);
 				return;
 			}
 
@@ -2627,13 +3133,12 @@ void command_expedition(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
 			c->Message(Chat::Green, fmt::format("Saved: renamed event [{}] to [{}].", old_name, new_name).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
-		const auto* event_data = SelectedEvent(c, *template_data);
+		const auto* event_data = RequireSelectedEvent(c, *template_data);
 		if (!event_data) {
-			c->Message(Chat::Red, "Add or select an event first.");
 			return;
 		}
 		const uint32_t selected_event_id = event_data->id;
@@ -2652,7 +3157,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				else {
 					c->Message(Chat::Red, "Event not found. Use #expedition event list, then #expedition event remove <id>.");
 				}
-				SendSelectedEventChatUi(c, *template_data);
+				RefreshBuilderView(c);
 				return;
 			}
 
@@ -2682,14 +3187,21 @@ void command_expedition(Client* c, const Seperator* sep)
 				ExpeditionDB::SetSelectedEvent(c->CharacterID(), next_event_id);
 			}
 			c->Message(Chat::Green, fmt::format("Saved: removed event [{}] id [{}].", deleted_event_name, deleted_event_id).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
 		if (action == "lockout") {
-			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3]);
-			if (!seconds) {
-				c->Message(Chat::Red, "Usage: #expedition event lockout <duration>");
+			if (sep->arg[3][0] == '\0') {
+				const auto* ev = ExpeditionDB::FindEvent(selected_event_id);
+				ShowTimeMatrix(c, fmt::format("Boss Lockout: {}", selected_event_name),
+					"#expedition event lockout", Duration(ev ? ev->lockout_seconds : 0), true);
+				return;
+			}
+			const bool clear = IsClearDurationArg(sep->arg[3]);
+			const uint32_t seconds = clear ? 0 : ParseExpeditionDuration(sep->arg[3]);
+			if (!seconds && !clear) {
+				c->Message(Chat::Red, "Usage: #expedition event lockout none|<duration>");
 				return;
 			}
 			if (!ExpeditionDB::SetEventLockout(content_db, selected_event_id, seconds)) {
@@ -2697,7 +3209,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: event [{}] lockout is now [{}].", selected_event_name, Duration(seconds)).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
@@ -2716,14 +3228,13 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: event [{}] replay lockout is now [{}].", selected_event_name, Duration(seconds)).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
 		if (action == "npc" || action == "loot" || action == "completeondeath" || action == "completeonspawn") {
-			NPC* npc = TargetNpc(c);
+			NPC* npc = RequireTargetNpc(c);
 			if (!npc) {
-				NeedTargetNpc(c);
 				return;
 			}
 
@@ -2743,7 +3254,7 @@ void command_expedition(Client* c, const Seperator* sep)
 						return;
 					}
 					c->Message(Chat::Green, fmt::format("Saved: removed target NPC mapping from event [{}].", selected_event_name).c_str());
-					ShowMenu(c);
+					RefreshBuilderView(c);
 					return;
 				}
 
@@ -2769,20 +3280,12 @@ void command_expedition(Client* c, const Seperator* sep)
 					c->Message(Chat::Red, "Usage: #expedition event loot on|off");
 					return;
 				}
-				uint32_t mapping_npc_type_id = npc->GetNPCTypeID();
-				uint32_t mapping_spawn2_id = npc->GetSpawnPointID();
-				if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
-					mapping_npc_type_id = mapped_npc->npc_type_id;
-					mapping_spawn2_id = mapped_npc->spawn2_id;
+				const EventNpcMapping mapping = GetOrCreateEventNpcMapping(c, selected_event_id, *event_data, *npc, selected_event_name);
+				if (!mapping.ok) {
+					return;
 				}
-				else {
-					const std::string inferred_role = ExpeditionDB::RoleFromTarget(*npc);
-					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, inferred_role)) {
-						c->Message(Chat::Red, fmt::format("Failed to create target NPC mapping for event [{}].", selected_event_name).c_str());
-						return;
-					}
-					c->Message(Chat::Green, fmt::format("Saved: created event NPC mapping for [{}] as [{}].", NpcLabel(*npc), inferred_role).c_str());
-				}
+				const uint32_t mapping_npc_type_id = mapping.npc_type_id;
+				const uint32_t mapping_spawn2_id = mapping.spawn2_id;
 				if (!ExpeditionDB::SetEventNpcLoot(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled)) {
 					c->Message(Chat::Red, fmt::format("Failed to set loot protection for event [{}].", selected_event_name).c_str());
 					return;
@@ -2800,20 +3303,12 @@ void command_expedition(Client* c, const Seperator* sep)
 					c->Message(Chat::Red, action == "completeonspawn" ? "Usage: #expedition event completeonspawn on|off" : "Usage: #expedition event completeondeath on|off");
 					return;
 				}
-				uint32_t mapping_npc_type_id = npc->GetNPCTypeID();
-				uint32_t mapping_spawn2_id = npc->GetSpawnPointID();
-				if (const auto* mapped_npc = FindEventNpc(*event_data, *npc)) {
-					mapping_npc_type_id = mapped_npc->npc_type_id;
-					mapping_spawn2_id = mapped_npc->spawn2_id;
+				const EventNpcMapping mapping = GetOrCreateEventNpcMapping(c, selected_event_id, *event_data, *npc, selected_event_name);
+				if (!mapping.ok) {
+					return;
 				}
-				else {
-					const std::string inferred_role = ExpeditionDB::RoleFromTarget(*npc);
-					if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, inferred_role)) {
-						c->Message(Chat::Red, fmt::format("Failed to create target NPC mapping for event [{}].", selected_event_name).c_str());
-						return;
-					}
-					c->Message(Chat::Green, fmt::format("Saved: created event NPC mapping for [{}] as [{}].", NpcLabel(*npc), inferred_role).c_str());
-				}
+				const uint32_t mapping_npc_type_id = mapping.npc_type_id;
+				const uint32_t mapping_spawn2_id = mapping.spawn2_id;
 				const bool ok = action == "completeonspawn" ?
 					ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled) :
 					ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, selected_event_id, mapping_npc_type_id, mapping_spawn2_id, enabled);
@@ -2829,29 +3324,28 @@ void command_expedition(Client* c, const Seperator* sep)
 					OnOff(enabled)
 				).c_str());
 			}
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
 		c->Message(Chat::Red, "Unknown #expedition event option.");
 		ShowEventHelp(c);
-		return;
-	}
+}
 
-	if (sub == "action") {
+void HandleAction(Client* c, const Seperator* sep)
+{
 		const std::string action = Strings::ToLower(sep->arg[2]);
 		if (action.empty() || action == "help") {
 			ShowActionHelp(c);
 			return;
 		}
-		template_data = SelectedTemplate(c);
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
 		}
-		const auto* event_data = SelectedEvent(c, *template_data);
+		const auto* event_data = RequireSelectedEvent(c, *template_data);
 		if (!event_data) {
-			c->Message(Chat::Red, "Add or select an event first.");
 			return;
 		}
 		const uint32_t selected_event_id = event_data->id;
@@ -2860,13 +3354,13 @@ void command_expedition(Client* c, const Seperator* sep)
 		if (action == "list") {
 			if (event_data->actions.empty()) {
 				c->Message(Chat::White, "Selected event has no runtime actions.");
-				SendSelectedEventChatUi(c, *template_data);
+				RefreshBuilderView(c);
 				return;
 			}
 			for (const auto& event_action : event_data->actions) {
 				c->Message(Chat::White, fmt::format("[{}] {} [{}]", event_action.id, event_action.action_type, event_action.action_value).c_str());
 			}
-			SendSelectedEventChatUi(c, *template_data);
+			RefreshBuilderView(c);
 			return;
 		}
 
@@ -2880,7 +3374,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				return;
 			}
 			c->Message(Chat::Green, fmt::format("Saved: cleared runtime actions for event [{}].", selected_event_name).c_str());
-			ShowMenu(c);
+			RefreshBuilderView(c);
 			return;
 		}
 
@@ -2971,17 +3465,17 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowActionHelp(c);
 		}
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "preset") {
+void HandlePreset(Client* c, const Seperator* sep)
+{
 		const std::string preset = Strings::ToLower(sep->arg[2]);
 		if (preset.empty() || preset == "help") {
 			ShowPresetHelp(c);
 			return;
 		}
-		template_data = SelectedTemplate(c);
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -3038,14 +3532,14 @@ void command_expedition(Client* c, const Seperator* sep)
 			const auto* event_data = SelectedEvent(c, *template_data);
 			if (!event_data) {
 				c->Message(Chat::Red, "Add or select an event first.");
-				SendCurrentEventChatUi(c);
+				RefreshBuilderView(c);
 				return;
 			}
 			const uint32_t event_id = event_data->id;
 			NPC* npc = TargetNpc(c);
 			if (!npc) {
 				NeedTargetNpc(c);
-				SendCurrentEventChatUi(c);
+				RefreshBuilderView(c);
 				return;
 			}
 			if (
@@ -3061,17 +3555,17 @@ void command_expedition(Client* c, const Seperator* sep)
 		else {
 			ShowPresetHelp(c);
 		}
-		ShowMenu(c);
-		return;
-	}
+		RefreshBuilderView(c);
+}
 
-	if (sub == "test") {
+void HandleTest(Client* c, const Seperator* sep)
+{
 		const std::string action = Strings::ToLower(sep->arg[2]);
 		if (action.empty() || action == "help") {
 			ShowTestHelp(c);
 			return;
 		}
-		template_data = SelectedTemplate(c);
+		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
 			return;
@@ -3097,9 +3591,8 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Green, "Move request sent for your current expedition.");
 		}
 		else if (action == "request") {
-			NPC* npc = TargetNpc(c);
+			NPC* npc = RequireTargetNpc(c);
 			if (!npc) {
-				NeedTargetNpc(c);
 				return;
 			}
 
@@ -3171,7 +3664,7 @@ void command_expedition(Client* c, const Seperator* sep)
 				}
 				else {
 					c->Message(Chat::Red, "Add or select an event first.");
-					SendCurrentEventChatUi(c);
+					RefreshBuilderView(c);
 				}
 			}
 			else {
@@ -3195,8 +3688,54 @@ void command_expedition(Client* c, const Seperator* sep)
 			c->Message(Chat::Red, "Unknown #expedition test option.");
 			ShowTestHelp(c);
 		}
+}
+
+} // namespace
+
+
+// Routes a two-button edit-mode popup response (from Handle_OP_PopupResponse) to the next dialog
+// step or the apply. The popup id encodes the step and the targeted NPC's entity id (stateless).
+void ExpeditionEditPopupResponse(Client* c, uint32_t popup_id)
+{
+	if (!c || !c->GetGM()) {
 		return;
 	}
 
-	ShowHelp(c);
+	const uint32_t step = ExpeditionEditPopup::StepOf(popup_id);
+	const uint16_t entity_id = ExpeditionEditPopup::EntityOf(popup_id);
+
+	if (step == ExpeditionEditPopup::Skip) {
+		c->Message(Chat::Yellow, "NPC not added. Target another NPC to add it, or use the buttons below.");
+		RefreshBuilderView(c);
+		return;
+	}
+
+	const auto* template_data = RequireSelectedTemplate(c);
+	if (!template_data) {
+		return;
+	}
+
+	NPC* npc = entity_list.GetNPCByID(entity_id);
+	if (!npc) {
+		c->Message(Chat::Red, "That NPC is no longer present. Target a current NPC and try again.");
+		return;
+	}
+
+	switch (step) {
+		case ExpeditionEditPopup::AddBoss:      ApplyEditAdd(c, entity_id, "boss"); break;
+		case ExpeditionEditPopup::AskChest:
+			// A chest can only complete an existing boss event - skip the chest question entirely
+			// when no boss exists yet and go straight to the Requester question.
+			if (template_data->events.empty()) {
+				ShowRoleQuestion(c, *template_data, *npc, entity_id, "requester");
+			}
+			else {
+				ShowRoleQuestion(c, *template_data, *npc, entity_id, "chest");
+			}
+			break;
+		case ExpeditionEditPopup::AddChest:     ApplyEditAdd(c, entity_id, "chest"); break;
+		case ExpeditionEditPopup::AskRequester: ShowRoleQuestion(c, *template_data, *npc, entity_id, "requester"); break;
+		case ExpeditionEditPopup::AddRequester: ApplyEditAdd(c, entity_id, "requester"); break;
+		default: break;
+	}
 }

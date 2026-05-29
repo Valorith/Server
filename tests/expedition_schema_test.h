@@ -15,9 +15,7 @@ public:
 	ExpeditionSchemaTest()
 	{
 		TEST_ADD(ExpeditionSchemaTest::ContentSchemaIncludesExpeditionAuthoringTables);
-		TEST_ADD(ExpeditionSchemaTest::InitialMigrationIncludesRequestMode);
-		TEST_ADD(ExpeditionSchemaTest::FollowupMigrationAddsRequestMode);
-		TEST_ADD(ExpeditionSchemaTest::FollowupMigrationAddsVersionedRequestsAndSpawnCompletion);
+		TEST_ADD(ExpeditionSchemaTest::CreationMigrationHasFinalSchema);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 	}
@@ -37,49 +35,30 @@ private:
 		TEST_ASSERT(has_table("expedition_template_actions"));
 	}
 
-	void InitialMigrationIncludesRequestMode()
+	void CreationMigrationHasFinalSchema()
 	{
+		// The DB-driven expedition feature ships as a single creation migration that
+		// already contains the final schema (request_mode, versioned requests, and
+		// spawn-completion); there are no follow-up ALTER migrations to apply.
 		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
-			return e.version == 9342 && e.description == "2026_05_09_db_driven_expeditions.sql";
+			return e.version == 9344 && e.description == "2026_05_21_db_driven_expeditions.sql";
 		});
 
 		TEST_ASSERT(entry != manifest_entries.end());
 		TEST_ASSERT(entry->content_schema_update);
+		TEST_ASSERT(entry->check == "SHOW TABLES LIKE 'expedition_templates'");
+		TEST_ASSERT(entry->condition == "empty");
 		TEST_ASSERT(entry->sql.find("request_mode") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("db_only") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("zone_version") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("complete_on_spawn") != std::string::npos);
-	}
-
-	void FollowupMigrationAddsRequestMode()
-	{
-		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
-			return e.version == 9343;
-		});
-
-		TEST_ASSERT(entry != manifest_entries.end());
-		TEST_ASSERT(entry->content_schema_update);
-		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_templates` LIKE 'request_mode'");
-		TEST_ASSERT(entry->condition == "empty");
-		TEST_ASSERT(entry->sql.find("ADD COLUMN IF NOT EXISTS `request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only'") != std::string::npos);
-	}
-
-	void FollowupMigrationAddsVersionedRequestsAndSpawnCompletion()
-	{
-		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
-			return e.version == 9344;
-		});
-
-		TEST_ASSERT(entry != manifest_entries.end());
-		TEST_ASSERT(entry->content_schema_update);
-		TEST_ASSERT(entry->check.find("expedition_template_request_npcs") != std::string::npos);
-		TEST_ASSERT(entry->check.find("zone_version") != std::string::npos);
-		TEST_ASSERT(entry->check.find("expedition_template_event_npcs") != std::string::npos);
-		TEST_ASSERT(entry->check.find("complete_on_spawn") != std::string::npos);
-		TEST_ASSERT(entry->condition == "empty");
-		TEST_ASSERT(entry->sql.find("ADD COLUMN IF NOT EXISTS `zone_version` INT(11) NOT NULL DEFAULT '-1'") != std::string::npos);
-		TEST_ASSERT(entry->sql.find("complete_on_spawn") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("idx_expedition_request_lookup") != std::string::npos);
+
+		// The redundant follow-up migrations were consolidated away.
+		auto followup = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
+			return e.version == 9342 || e.version == 9343;
+		});
+		TEST_ASSERT(followup == manifest_entries.end());
 	}
 
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()

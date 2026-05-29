@@ -44,6 +44,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
 #include "zone/event_codes.h"
+#include "zone/expedition_config.h"
 #include "zone/expedition_db.h"
 #include "zone/gm_commands/door_manipulation.h"
 #include "zone/gm_commands/object_manipulation.h"
@@ -12022,6 +12023,12 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 	}
 
 	PopupResponse_Struct *popup_response = (PopupResponse_Struct *) app->pBuffer;
+
+	// Expedition edit-mode two-button popups (Yes/No, Boss/Requester, Confirm/Cancel).
+	if (ExpeditionEditPopup::Owns(popup_response->popupid)) {
+		ExpeditionEditPopupResponse(this, popup_response->popupid);
+		return;
+	}
 
 	//Get Item Details if POPUPID_REPLACE_SPELLWINDOW was used
 

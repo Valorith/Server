@@ -22,6 +22,7 @@ inline constexpr uint32_t kSimpleSetupReplaySeconds = 7200;
 inline constexpr uint32_t kSimpleBossLockoutSeconds = 21600;
 inline constexpr uint32_t kSimpleBossReplaySeconds = 7200;
 inline constexpr const char* kSimpleRequestPhrase = "expedition";
+inline constexpr const char* kRequesterLastName = "Expeditions";
 inline constexpr const char* kSimpleRequestMode = "db_only";
 inline constexpr const char* kSimpleBossEventName = "Boss Defeated";
 
@@ -104,6 +105,7 @@ struct ValidationResult {
 struct BuilderState {
 	uint32_t selected_template_id = 0;
 	uint32_t selected_event_id = 0;
+	bool edit_mode = false;
 };
 
 uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::string& name);
@@ -153,7 +155,11 @@ bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_da
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
 bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
+// Stamps the "Expeditions" surname on configured requester NPCs (and clears a stale one when an
+// NPC is no longer a requester). Safe to call for any NPC spawn in any zone.
+void ApplyRequesterLastName(NPC& npc);
 void MaybeShowGmTargetMenu(Client& client, NPC& npc);
+void ResetTargetMenu(uint32_t character_id);
 void ApplyLootEvents(DynamicZone& expedition);
 void ClearRuntimeEventState(uint32_t dz_id);
 

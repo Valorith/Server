@@ -735,6 +735,7 @@ void EntityList::AddNPC(NPC *npc, bool send_spawn_packet, bool dont_queue)
 	}
 
 	ExpeditionDB::HandleNpcSpawn(*npc);
+	ExpeditionDB::ApplyRequesterLastName(*npc);
 
 	if (zone->HasMap() && zone->HasWaterMap()) {
 		npc->SetSpawnedInWater(false);

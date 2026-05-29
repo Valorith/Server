@@ -3238,6 +3238,10 @@ void NPC::DoQuestPause(Mob* m)
 
 void NPC::ChangeLastName(std::string last_name)
 {
+	// Persist to the member so respawns and clients that zone in later still see the change
+	// (the spawn struct is built from this field).
+	strn0cpy(lastname, last_name.c_str(), sizeof(lastname));
+
 	auto outapp = new EQApplicationPacket(OP_GMLastName, sizeof(GMLastName_Struct));
 	auto gmn = (GMLastName_Struct*) outapp->pBuffer;
 

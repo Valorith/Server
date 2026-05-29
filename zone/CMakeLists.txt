@@ -42,6 +42,7 @@ set(zone_sources
     exp.cpp
     expedition_config.cpp
     expedition_db.cpp
+    expedition_repository.cpp
     expedition_request.cpp
     fastmath.cpp
     fearpath.cpp
@@ -146,6 +147,7 @@ set(zone_headers
     event_codes.h
     expedition_config.h
     expedition_db.h
+    expedition_repository.h
     expedition_request.h
     fastmath.h
     forage.h
