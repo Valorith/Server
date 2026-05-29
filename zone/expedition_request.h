@@ -43,6 +43,7 @@ public:
 	const std::string& GetLeaderName() const { return m_leader_name; }
 	const std::vector<DynamicZoneMember>& GetMembers() const { return m_members; }
 	const std::vector<DzLockout>& GetLockouts() const { return m_lockouts; }
+	const std::string& GetFailureReason() const { return m_failure_reason; }
 	bool IsRaid() const { return m_is_raid; }
 
 private:
@@ -64,6 +65,7 @@ private:
 	bool     m_silent               = false;
 	bool     m_is_raid              = false;
 	std::string m_leader_name;
+	std::string m_failure_reason;
 	std::vector<DynamicZoneMember> m_members;
 	std::vector<DzLockout> m_lockouts;
 };

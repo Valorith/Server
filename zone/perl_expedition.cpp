@@ -173,6 +173,40 @@ void Perl_Expedition_SetLootEventBySpawnID(DynamicZone* self, uint32_t entity_id
 	self->SetLootEvent(entity_id, event_name, DzLootEvent::Type::Entity);
 }
 
+static void SetPerlLootEventsFromArray(DynamicZone* self, perl::scalar value, const std::string& event_name, DzLootEvent::Type type)
+{
+	if (!value.is_array_ref()) {
+		return;
+	}
+
+	perl::array ids = value;
+	for (const auto& id : ids) {
+		self->SetLootEvent(id.as<uint32_t>(), event_name, type);
+	}
+}
+
+void Perl_Expedition_SetLootEvents(DynamicZone* self, perl::reference table_ref)
+{
+	perl::hash events = table_ref;
+	for (const auto& [event_name, event_config] : events) {
+		if (!event_config.is_hash_ref()) {
+			continue;
+		}
+
+		perl::hash config = event_config;
+		if (config.exists("npc_type_id")) {
+			self->SetLootEvent(config["npc_type_id"].as<uint32_t>(), event_name, DzLootEvent::Type::NpcType);
+		}
+
+		if (config.exists("spawn_id")) {
+			self->SetLootEvent(config["spawn_id"].as<uint32_t>(), event_name, DzLootEvent::Type::Entity);
+		}
+
+		SetPerlLootEventsFromArray(self, config["npc_type_ids"], event_name, DzLootEvent::Type::NpcType);
+		SetPerlLootEventsFromArray(self, config["spawn_ids"], event_name, DzLootEvent::Type::Entity);
+	}
+}
+
 void Perl_Expedition_SetReplayLockoutOnMemberJoin(DynamicZone* self, bool enable)
 {
 	self->SetReplayOnJoin(enable, true);
@@ -246,6 +280,7 @@ void perl_register_expedition()
 	package.add("SetLocked", (void(*)(DynamicZone*, bool, int, uint32_t))&Perl_Expedition_SetLocked);
 	package.add("SetLootEventByNPCTypeID", &Perl_Expedition_SetLootEventByNPCTypeID);
 	package.add("SetLootEventBySpawnID", &Perl_Expedition_SetLootEventBySpawnID);
+	package.add("SetLootEvents", &Perl_Expedition_SetLootEvents);
 	package.add("SetReplayLockoutOnMemberJoin", &Perl_Expedition_SetReplayLockoutOnMemberJoin);
 	package.add("SetSafeReturn", &Perl_Expedition_SetSafeReturn);
 	package.add("SetSecondsRemaining", &Perl_Expedition_SetSecondsRemaining);

@@ -42,6 +42,7 @@
 #include "common/serverinfo.h"
 #include "common/strings.h"
 #include "zone/dynamic_zone.h"
+#include "zone/expedition_db.h"
 #include "zone/guild_mgr.h"
 #include "zone/map.h"
 #include "zone/mob_movement_manager.h"
@@ -2900,6 +2901,7 @@ void Zone::LoadDynamicZoneTemplates()
 	{
 		dz_template_cache[dz_template.id] = dz_template;
 	}
+	ExpeditionDB::Reload(content_db);
 }
 
 std::string Zone::GetAAName(int aa_id)

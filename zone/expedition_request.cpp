@@ -123,6 +123,7 @@ bool ExpeditionRequest::CanMembersJoin(const std::vector<std::string>& member_na
 {
 	if (member_names.empty())
 	{
+		m_failure_reason = "no_members";
 		return false;
 	}
 
@@ -171,6 +172,7 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 	if (entries.empty())
 	{
 		LogExpeditions("Failed to load members for expedition request");
+		m_failure_reason = "member_lookup_failed";
 		return true;
 	}
 
@@ -184,6 +186,7 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 		{
 			// live doesn't bother checking replay lockout here
 			SendLeaderMemberInExpedition(character.name, is_solo);
+			m_failure_reason = "member_already_in_expedition";
 			return true;
 		}
 
@@ -206,6 +209,7 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 		if (character.dz_id != 0)
 		{
 			has_conflicts = true;
+			m_failure_reason = "member_already_in_expedition";
 			SendLeaderMemberInExpedition(character.name, is_solo);
 		}
 
@@ -222,12 +226,14 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 					if (lockout.IsReplay())
 					{
 						has_conflicts = true;
+						m_failure_reason = "replay_lockout";
 						SendLeaderMemberReplayLockout(character.name, lockout, is_solo);
 					}
 					else if (!leader_replay && character.id != m_leader_id && std::ranges::none_of(m_lockouts, is_event))
 					{
 						// leader doesn't have this lockout
 						has_conflicts = true;
+						m_failure_reason = "event_lockout_conflict";
 						SendLeaderMemberEventLockout(character.name, lockout);
 					}
 				}
@@ -305,6 +311,7 @@ bool ExpeditionRequest::IsPlayerCountValidated()
 	if (!gm_bypass && m_members.size() < m_dz->GetMinPlayers())
 	{
 		requirements_met = false;
+		m_failure_reason = "player_count";
 
 		SendLeaderMessage(Chat::System, DZ_PLAYER_COUNT, {
 			fmt::format_int(m_members.size()).str(),
@@ -313,7 +320,7 @@ bool ExpeditionRequest::IsPlayerCountValidated()
 		});
 	}
 
-	if (gm_bypass) {
+	if (gm_bypass && !m_silent) {
 		m_requester->Message(Chat::White, "Your GM Status allows you to bypass expedition minimum and maximum player restrictions.");
 	}
 

@@ -40,6 +40,9 @@ set(zone_sources
     encounter.cpp
     entity.cpp
     exp.cpp
+    expedition_config.cpp
+    expedition_db.cpp
+    expedition_repository.cpp
     expedition_request.cpp
     fastmath.cpp
     fearpath.cpp
@@ -142,6 +145,9 @@ set(zone_headers
     encounter.h
     entity.h
     event_codes.h
+    expedition_config.h
+    expedition_db.h
+    expedition_repository.h
     expedition_request.h
     fastmath.h
     forage.h
@@ -403,6 +409,7 @@ set(gm_command_sources
     gm_commands/dye.cpp
     gm_commands/dz.cpp
     gm_commands/dzkickplayers.cpp
+    gm_commands/expedition.cpp
     gm_commands/editmassrespawn.cpp
     gm_commands/emote.cpp
     gm_commands/emptyinventory.cpp

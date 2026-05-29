@@ -622,6 +622,14 @@ public:
 	Lua_Expedition  CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players);
 	Lua_Expedition  CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players, bool disable_messages);
 	Lua_Expedition  CreateExpeditionFromTemplate(uint32_t dz_template_id);
+	Lua_Expedition  CreateExpeditionFromTemplate(std::string template_name);
+	Lua_Expedition  CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
+	Lua_Expedition  CreateExpeditionFromExpeditionTemplate(std::string template_name);
+	bool            CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
+	bool            CanCreateExpeditionFromExpeditionTemplate(std::string template_name);
+	luabind::object GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id);
+	luabind::object GetExpeditionTemplate(lua_State* L, std::string template_name);
+	luabind::object CanCreateExpedition(lua_State* L, luabind::object expedition_info);
 	Lua_Expedition  GetExpedition();
 	luabind::object GetExpeditionLockouts(lua_State* L);
 	luabind::object GetExpeditionLockouts(lua_State* L, std::string expedition_name);
@@ -640,6 +648,8 @@ public:
 	void            MovePCDynamicZone(std::string zone_name);
 	void            MovePCDynamicZone(std::string zone_name, int zone_version);
 	void            MovePCDynamicZone(std::string zone_name, int zone_version, bool msg_if_invalid);
+	bool            MovePCExpedition();
+	bool            MovePCExpedition(bool msg_if_invalid);
 	void            CreateTaskDynamicZone(int task_id, luabind::object dz_table);
 	void            Fling(float target_x, float target_y, float target_z);
 	void            Fling(float target_x, float target_y, float target_z, bool ignore_los);

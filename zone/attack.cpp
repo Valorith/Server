@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "common/spdat.h"
 #include "common/strings.h"
 #include "zone/bot.h"
+#include "zone/expedition_db.h"
 #include "zone/fastmath.h"
 #include "zone/lua_parser.h"
 #include "zone/mob.h"
@@ -3009,6 +3010,10 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 		},
 		0, &args
 	);
+
+	if (IsNPC()) {
+		ExpeditionDB::HandleNpcDeath(*CastToNPC(), give_exp_client);
+	}
 
 	// Zone controller process EVENT_DEATH_ZONE (Death events)
 	if (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_DEATH_ZONE)) {

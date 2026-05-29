@@ -50,6 +50,8 @@
 #include "zone/command.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
+#include "zone/expedition_config.h"
+#include "zone/expedition_db.h"
 #include "zone/expedition_request.h"
 #include "zone/guild_mgr.h"
 #include "zone/lua_parser.h"
@@ -1639,6 +1641,11 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 			if (t->IsNPC() && !is_engaged) {
 				CheckLDoNHail(t->CastToNPC());
 				CheckEmoteHail(t->CastToNPC(), message);
+				const bool handled_expedition_request = ExpeditionDB::HandleRequestSay(*this, *t->CastToNPC(), message);
+
+				if (handled_expedition_request) {
+					break;
+				}
 
 				if (RuleB(TaskSystem, EnableTaskSystem)) {
 					if (UpdateTasksOnSpeakWith(t->CastToNPC())) {
@@ -10191,6 +10198,7 @@ void Client::SendDynamicZoneUpdates()
 		if (dz->IsCurrentZoneDz())
 		{
 			dz->SyncCharacterLockouts(CharacterID(), m_dz_lockouts);
+			ExpeditionDB::ApplyLootEvents(*dz);
 		}
 	}
 
@@ -10225,6 +10233,34 @@ DynamicZone* Client::CreateExpeditionFromTemplate(uint32_t dz_template_id)
 		return DynamicZone::TryCreate(*this, dz, false);
 	}
 	return nullptr;
+}
+
+DynamicZone* Client::CreateExpeditionFromTemplate(const std::string& template_name)
+{
+	return CreateExpeditionFromTemplateName(*this, template_name);
+}
+
+DynamicZone* Client::CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	return template_data ? ExpeditionDB::CreateExpeditionFromTemplate(*this, *template_data) : nullptr;
+}
+
+DynamicZone* Client::CreateExpeditionFromExpeditionTemplate(const std::string& template_name)
+{
+	return ExpeditionDB::CreateExpeditionFromTemplate(*this, template_name);
+}
+
+bool Client::CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(expedition_template_id);
+	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;
+}
+
+bool Client::CanCreateExpeditionFromExpeditionTemplate(const std::string& template_name)
+{
+	const auto* template_data = ExpeditionDB::FindTemplate(template_name);
+	return template_data ? ExpeditionDB::CanCreateExpeditionFromTemplate(*this, *template_data) : false;
 }
 
 void Client::CreateTaskDynamicZone(int task_id, DynamicZone& dz_request)
@@ -10703,6 +10739,31 @@ void Client::MovePCDynamicZone(const std::string& zone_name, int zone_version, b
 {
 	auto zone_id = ZoneID(zone_name.c_str());
 	MovePCDynamicZone(zone_id, zone_version, msg_if_invalid);
+}
+
+bool Client::MovePCExpedition(bool msg_if_invalid)
+{
+	DynamicZone* expedition = GetExpedition();
+	if (!expedition) {
+		if (msg_if_invalid) {
+			Message(Chat::Red, "You are not currently assigned to an expedition.");
+		}
+		return false;
+	}
+
+	const auto zone_id = expedition->GetZoneID();
+	const auto zone_version = static_cast<int>(expedition->GetZoneVersion());
+	const auto client_dzs = GetDynamicZones(zone_id, zone_version);
+	if (client_dzs.size() != 1) {
+		MovePCDynamicZone(zone_id, zone_version, msg_if_invalid);
+		return false;
+	}
+
+	const auto* dz = client_dzs.front();
+	const DynamicZoneLocation zonein = dz->GetZoneInLocation();
+	const ZoneMode zone_mode = dz->HasZoneInLocation() ? ZoneMode::ZoneSolicited : ZoneMode::ZoneToSafeCoords;
+	MovePC(zone_id, dz->GetInstanceID(), zonein.x, zonein.y, zonein.z, zonein.heading, 0, zone_mode);
+	return true;
 }
 
 void Client::Fling(float value, float target_x, float target_y, float target_z, bool ignore_los, bool clip_through_walls, bool calculate_speed) {
