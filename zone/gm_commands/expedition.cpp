@@ -1758,6 +1758,78 @@ void ShowCountMatrix(Client* c, const std::string& title, const std::string& com
 		SendCardBottom(c);
 }
 
+std::vector<uint32_t> ExistingZoneVersions(uint32_t zone_id)
+{
+	std::vector<uint32_t> versions;
+	for (const auto& zone_entry : ZoneStore::Instance()->GetZones()) {
+		if (zone_entry.zoneidnumber == zone_id) {
+			versions.push_back(zone_entry.version);
+		}
+	}
+
+	std::sort(versions.begin(), versions.end());
+	versions.erase(std::unique(versions.begin(), versions.end()), versions.end());
+
+	return versions;
+}
+
+bool ZoneVersionExists(uint32_t zone_id, uint32_t zone_version)
+{
+	const auto versions = ExistingZoneVersions(zone_id);
+	return std::ranges::find(versions, zone_version) != versions.end();
+}
+
+void ShowVersionScreen(Client* c, const ExpeditionDB::Template& template_data)
+{
+	if (ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode) {
+		SendEditBanner(c, template_data);
+	}
+
+	SendCardTop(c, fmt::format("Zone Version: {} [{}]", template_data.name, template_data.id));
+
+	const auto& dz = template_data.dz_template;
+	if (dz.zone_id == 0 || !ZoneName(dz.zone_id)) {
+		c->Message(Chat::Red, "The selected expedition has no valid destination zone. Use #expedition set zone first.");
+		SendActionRow(c, {
+			{"#expedition set zone", "Use Current Zone"},
+			{"#expedition config", "Back to Config"}
+		});
+		SendCardBottom(c);
+		return;
+	}
+
+	c->Message(Chat::White, fmt::format("  Current Version: {}", dz.zone_version).c_str());
+
+	const auto versions = ExistingZoneVersions(dz.zone_id);
+	if (versions.empty()) {
+		c->Message(Chat::Yellow, fmt::format(
+			"  No loaded zone versions were found for {}. Use #expedition set zone <zone|id> [version].",
+			ZoneLabel(dz.zone_id)
+		).c_str());
+	}
+	else {
+		std::string line = "  Zone Versions: ";
+		for (size_t i = 0; i < versions.size(); ++i) {
+			if (i != 0) {
+				line += " ";
+			}
+
+			const auto version = versions[i];
+			const bool is_current = static_cast<int32_t>(version) == dz.zone_version;
+			const std::string label = is_current ?
+				fmt::format("[{}]", version) :
+				fmt::format("{}", version);
+
+			line += Saylink::Silent(fmt::format("#expedition config version {}", version), label);
+		}
+
+		c->Message(Chat::White, line.c_str());
+	}
+
+	SendActionRow(c, {{"#expedition config", "Back to Config"}});
+	SendCardBottom(c);
+}
+
 void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 {
 		if (ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode) {
@@ -1775,6 +1847,10 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
 		c->Message(Chat::White, ChatSeparator());
 
+		c->Message(Chat::White, "  Destination:");
+		SendActionRow(c, {
+			{"#expedition config version", "Version"}
+		});
 		c->Message(Chat::White, "  Duration (how long the instance stays open):");
 		SendActionRow(c, {
 			{"#expedition config duration 1h", "1h"},
@@ -1871,6 +1947,41 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetTemplateReplay(content_db, template_id, seconds);
 			c->Message(Chat::Green, fmt::format("Set replay timer to {}.", Duration(seconds)).c_str());
+		}
+		else if (action == "version") {
+			const auto& dz = template_data->dz_template;
+			if (dz.zone_id == 0 || !ZoneName(dz.zone_id)) {
+				ShowVersionScreen(c, *template_data);
+				return;
+			}
+
+			if (sep->arg[3][0] == '\0') {
+				ShowVersionScreen(c, *template_data);
+				return;
+			}
+
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition config version <version>");
+				return;
+			}
+
+			const uint32_t version = Strings::ToUnsignedInt(sep->arg[3]);
+			if (!ZoneVersionExists(dz.zone_id, version)) {
+				c->Message(Chat::Red, fmt::format(
+					"Zone version [{}] does not exist for {}.",
+					version,
+					ZoneLabel(dz.zone_id)
+				).c_str());
+				ShowVersionScreen(c, *template_data);
+				return;
+			}
+
+			ExpeditionDB::SetDzTemplateZone(content_db, dz_template_id, dz.zone_id, version);
+			c->Message(Chat::Green, fmt::format("Set zone version to [{}].", version).c_str());
+			if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
+				ShowVersionScreen(c, *refreshed);
+			}
+			return;
 		}
 		else if (action == "minplayers") {
 			if (sep->arg[3][0] == '\0') {
