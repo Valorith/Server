@@ -491,12 +491,11 @@ bool Zone::LoadZoneState(
 
 		const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
 		if (boss_only_filter.enabled) {
-			const auto allowed_it = boss_only_filter.npc_type_ids_by_spawn2_id.find(s.spawn2_id);
-			if (allowed_it == boss_only_filter.npc_type_ids_by_spawn2_id.end()) {
+			if (!boss_only_filter.AllowsSpawn2(s.spawn2_id)) {
 				spawn_enabled = false;
 			}
 			else {
-				allowed_npc_type_ids = &allowed_it->second;
+				allowed_npc_type_ids = boss_only_filter.AllowedNPCTypeIDs(s.spawn2_id);
 			}
 		}
 
@@ -585,12 +584,11 @@ bool Zone::LoadZoneState(
 
 			const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
 			if (boss_only_filter.enabled) {
-				const auto allowed_it = boss_only_filter.npc_type_ids_by_spawn2_id.find(s.id);
-				if (allowed_it == boss_only_filter.npc_type_ids_by_spawn2_id.end()) {
+				if (!boss_only_filter.AllowsSpawn2(s.id)) {
 					spawn_enabled = false;
 				}
 				else {
-					allowed_npc_type_ids = &allowed_it->second;
+					allowed_npc_type_ids = boss_only_filter.AllowedNPCTypeIDs(s.id);
 				}
 			}
 
