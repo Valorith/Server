@@ -1558,30 +1558,12 @@ bool HandleNpcSpawn(NPC& npc)
 
 BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition)
 {
-	BossOnlySpawnFilter filter;
 	if (!expedition || !expedition->IsExpedition()) {
-		return filter;
+		return {};
 	}
 
 	const Template* template_data = FindTemplateByDz(*expedition);
-	if (!template_data || !template_data->boss_only_spawn) {
-		return filter;
-	}
-
-	for (const auto& event_data : template_data->events) {
-		for (const auto& event_npc : event_data.npcs) {
-			if (
-				Strings::EqualFold(event_npc.role, "boss") &&
-				event_npc.npc_type_id != 0 &&
-				event_npc.spawn2_id != 0
-			) {
-				filter.npc_type_ids_by_spawn2_id[event_npc.spawn2_id].insert(event_npc.npc_type_id);
-			}
-		}
-	}
-
-	filter.enabled = !filter.npc_type_ids_by_spawn2_id.empty();
-	return filter;
+	return template_data ? BuildBossOnlySpawnFilter(*template_data) : BossOnlySpawnFilter{};
 }
 
 void ApplyRequesterLastName(NPC& npc)

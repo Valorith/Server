@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/repositories/dynamic_zone_templates_repository.h"
+#include "common/strings.h"
 
 #include <cstdint>
 #include <optional>
@@ -113,7 +114,54 @@ struct BuilderState {
 struct BossOnlySpawnFilter {
 	bool enabled = false;
 	std::unordered_map<uint32_t, std::unordered_set<uint32_t>> npc_type_ids_by_spawn2_id;
+	std::unordered_set<uint32_t> unrestricted_spawn2_ids;
+
+	bool AllowsSpawn2(uint32_t spawn2_id) const
+	{
+		return !enabled ||
+			unrestricted_spawn2_ids.contains(spawn2_id) ||
+			npc_type_ids_by_spawn2_id.contains(spawn2_id);
+	}
+
+	const std::unordered_set<uint32_t>* AllowedNPCTypeIDs(uint32_t spawn2_id) const
+	{
+		if (!enabled || unrestricted_spawn2_ids.contains(spawn2_id)) {
+			return nullptr;
+		}
+
+		const auto allowed_it = npc_type_ids_by_spawn2_id.find(spawn2_id);
+		return allowed_it != npc_type_ids_by_spawn2_id.end() ? &allowed_it->second : nullptr;
+	}
 };
+
+inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_data)
+{
+	BossOnlySpawnFilter filter;
+	if (!template_data.boss_only_spawn) {
+		return filter;
+	}
+
+	for (const auto& request_npc : template_data.request_npcs) {
+		if (request_npc.enabled && request_npc.npc_type_id != 0 && request_npc.spawn2_id != 0) {
+			filter.unrestricted_spawn2_ids.insert(request_npc.spawn2_id);
+		}
+	}
+
+	for (const auto& event_data : template_data.events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (
+				Strings::EqualFold(event_npc.role, "boss") &&
+				event_npc.npc_type_id != 0 &&
+				event_npc.spawn2_id != 0
+			) {
+				filter.npc_type_ids_by_spawn2_id[event_npc.spawn2_id].insert(event_npc.npc_type_id);
+			}
+		}
+	}
+
+	filter.enabled = !filter.npc_type_ids_by_spawn2_id.empty();
+	return filter;
+}
 
 uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::string& name);
 uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::string& name);

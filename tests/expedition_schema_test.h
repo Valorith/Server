@@ -19,6 +19,7 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyMigrationUpdatesExistingTemplates);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyDefaultsAreOff);
+		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 	}
 
@@ -92,6 +93,58 @@ private:
 		ExpeditionDB::BossOnlySpawnFilter filter;
 		TEST_ASSERT(!filter.enabled);
 		TEST_ASSERT(filter.npc_type_ids_by_spawn2_id.empty());
+		TEST_ASSERT(filter.unrestricted_spawn2_ids.empty());
+		TEST_ASSERT(filter.AllowsSpawn2(1));
+		TEST_ASSERT(filter.AllowedNPCTypeIDs(1) == nullptr);
+	}
+
+	void BossOnlyFilterKeepsRequestersUnrestricted()
+	{
+		ExpeditionDB::Template template_data;
+		template_data.boss_only_spawn = true;
+
+		ExpeditionDB::RequestNpc request_npc;
+		request_npc.enabled = true;
+		request_npc.npc_type_id = 300;
+		request_npc.spawn2_id = 30;
+		template_data.request_npcs.push_back(request_npc);
+
+		ExpeditionDB::RequestNpc disabled_request_npc;
+		disabled_request_npc.enabled = false;
+		disabled_request_npc.npc_type_id = 400;
+		disabled_request_npc.spawn2_id = 40;
+		template_data.request_npcs.push_back(disabled_request_npc);
+
+		ExpeditionDB::Event event_data;
+		ExpeditionDB::EventNpc trash_npc;
+		trash_npc.role = "trash";
+		trash_npc.npc_type_id = 100;
+		trash_npc.spawn2_id = 10;
+		event_data.npcs.push_back(trash_npc);
+
+		ExpeditionDB::EventNpc boss_npc;
+		boss_npc.role = "boss";
+		boss_npc.npc_type_id = 200;
+		boss_npc.spawn2_id = 20;
+		event_data.npcs.push_back(boss_npc);
+		template_data.events.push_back(event_data);
+
+		const auto filter = ExpeditionDB::BuildBossOnlySpawnFilter(template_data);
+
+		TEST_ASSERT(filter.enabled);
+		TEST_ASSERT(filter.AllowsSpawn2(20));
+		TEST_ASSERT(filter.AllowsSpawn2(30));
+		TEST_ASSERT(!filter.AllowsSpawn2(10));
+		TEST_ASSERT(!filter.AllowsSpawn2(40));
+		TEST_ASSERT(!filter.AllowsSpawn2(50));
+		TEST_ASSERT(filter.unrestricted_spawn2_ids.contains(30));
+
+		const auto* boss_allowed_types = filter.AllowedNPCTypeIDs(20);
+		TEST_ASSERT(boss_allowed_types != nullptr);
+		TEST_ASSERT(boss_allowed_types->contains(200));
+		TEST_ASSERT(!boss_allowed_types->contains(100));
+
+		TEST_ASSERT(filter.AllowedNPCTypeIDs(30) == nullptr);
 	}
 
 	void SimpleBuilderDefaultsAreGroupReady()
