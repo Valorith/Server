@@ -115,6 +115,12 @@ private:
 		disabled_request_npc.spawn2_id = 40;
 		template_data.request_npcs.push_back(disabled_request_npc);
 
+		ExpeditionDB::RequestNpc boss_spawn_request_npc;
+		boss_spawn_request_npc.enabled = true;
+		boss_spawn_request_npc.npc_type_id = 500;
+		boss_spawn_request_npc.spawn2_id = 20;
+		template_data.request_npcs.push_back(boss_spawn_request_npc);
+
 		ExpeditionDB::Event event_data;
 		ExpeditionDB::EventNpc trash_npc;
 		trash_npc.role = "trash";
@@ -138,10 +144,12 @@ private:
 		TEST_ASSERT(!filter.AllowsSpawn2(40));
 		TEST_ASSERT(!filter.AllowsSpawn2(50));
 		TEST_ASSERT(filter.unrestricted_spawn2_ids.contains(30));
+		TEST_ASSERT(!filter.unrestricted_spawn2_ids.contains(20));
 
 		const auto* boss_allowed_types = filter.AllowedNPCTypeIDs(20);
 		TEST_ASSERT(boss_allowed_types != nullptr);
 		TEST_ASSERT(boss_allowed_types->contains(200));
+		TEST_ASSERT(boss_allowed_types->contains(500));
 		TEST_ASSERT(!boss_allowed_types->contains(100));
 
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(30) == nullptr);

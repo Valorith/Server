@@ -141,12 +141,6 @@ inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_dat
 		return filter;
 	}
 
-	for (const auto& request_npc : template_data.request_npcs) {
-		if (request_npc.enabled && request_npc.npc_type_id != 0 && request_npc.spawn2_id != 0) {
-			filter.unrestricted_spawn2_ids.insert(request_npc.spawn2_id);
-		}
-	}
-
 	for (const auto& event_data : template_data.events) {
 		for (const auto& event_npc : event_data.npcs) {
 			if (
@@ -156,6 +150,20 @@ inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_dat
 			) {
 				filter.npc_type_ids_by_spawn2_id[event_npc.spawn2_id].insert(event_npc.npc_type_id);
 			}
+		}
+	}
+
+	for (const auto& request_npc : template_data.request_npcs) {
+		if (!request_npc.enabled || request_npc.npc_type_id == 0 || request_npc.spawn2_id == 0) {
+			continue;
+		}
+
+		auto allowed_it = filter.npc_type_ids_by_spawn2_id.find(request_npc.spawn2_id);
+		if (allowed_it != filter.npc_type_ids_by_spawn2_id.end()) {
+			allowed_it->second.insert(request_npc.npc_type_id);
+		}
+		else {
+			filter.unrestricted_spawn2_ids.insert(request_npc.spawn2_id);
 		}
 	}
 
