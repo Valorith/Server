@@ -3120,6 +3120,17 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 	EQ::ItemInstance *BandolierItems[4] = { nullptr, nullptr, nullptr, nullptr }; // Temporary holding area for the weapons we pull out of their inventory
 	int16 BandolierSourceSlots[4] = { INVALID_INDEX, INVALID_INDEX, INVALID_INDEX, INVALID_INDEX };
 	bool bandolier_persistence_ok = true;
+	bool bandolier_primary_visual_touched = false;
+	bool bandolier_secondary_visual_touched = false;
+
+	auto mark_bandolier_weapon_visual_touched = [&](int16 slot_id) {
+		if (slot_id == EQ::invslot::slotPrimary) {
+			bandolier_primary_visual_touched = true;
+		}
+		else if (slot_id == EQ::invslot::slotSecondary) {
+			bandolier_secondary_visual_touched = true;
+		}
+	};
 
 	auto fail_bandolier_persistence = [&](const std::string &reason) {
 		if (bandolier_persistence_ok) {
@@ -3527,6 +3538,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 					LogInventory("Character does not have required bandolier item for slot [{}]", WeaponSlot);
 					EQ::ItemInstance *InvItem = m_inv.PopItem(WeaponSlot);
 					if(InvItem) {
+						mark_bandolier_weapon_visual_touched(WeaponSlot);
 						// If there was an item in that weapon slot, put it in the inventory
 						LogInventory("returning item [{}] in weapon slot [{}] to inventory",
 						InvItem->GetItem()->Name, WeaponSlot);
@@ -3749,6 +3761,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 				// Pull the item that we are going to replace
 				EQ::ItemInstance *InvItem = m_inv.PopItem(WeaponSlot);
 				add_bandolier_resync_slot(WeaponSlot);
+				mark_bandolier_weapon_visual_touched(WeaponSlot);
 				LogInventory(
 					"Bandolier set [{}] equipping bandolier slot [{}] item [{}] ([{}]) into weapon slot [{}], replacing [{}] ([{}])",
 					bss->Number,
@@ -3825,6 +3838,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			// put it in the player's inventory.
 			EQ::ItemInstance *InvItem = m_inv.PopItem(WeaponSlot);
 			add_bandolier_resync_slot(WeaponSlot);
+			mark_bandolier_weapon_visual_touched(WeaponSlot);
 			if(InvItem) {
 				LogInventory("Bandolier has no item for slot [{}], returning item [{}] to inventory", WeaponSlot, InvItem->GetItem()->Name);
 				// If there was an item in that weapon slot, put it in the inventory
@@ -3929,6 +3943,14 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		bss->Number,
 		bandolier_resync_slots.size()
 	);
+
+	if (bandolier_primary_visual_touched) {
+		SendWearChange(EQ::textures::weaponPrimary, nullptr, true);
+	}
+
+	if (bandolier_secondary_visual_touched) {
+		SendWearChange(EQ::textures::weaponSecondary, nullptr, true);
+	}
 
 	// finally, recalculate any stat bonuses from the item change
 	CalcBonuses();
