@@ -966,6 +966,7 @@ namespace {
 		SendSectionHeader(c, "Behavior");
 		SendHelpLink(c, "#expedition set requestmode db_only|script_can_opt_in|script_only", "choose DB/script request handling");
 		SendHelpLink(c, "#expedition set silent on|off", "toggle normal create/failure messages");
+		SendHelpLink(c, "#expedition set bossonly on|off", "toggle spawning only mapped boss NPCs in expedition instances");
 		SendHelpLink(c, "#expedition set switchid target|<id>", "set dynamic-zone switch entity id");
 
 		SendActionGroup(c, "Common Setup Actions", {
@@ -1190,6 +1191,7 @@ namespace {
 		SendInfoLine(c, "Duration", Duration(template_data.dz_template.duration_seconds));
 		SendInfoLine(c, "Replay", Duration(template_data.replay_lockout_seconds));
 		SendInfoLine(c, "Requests", template_data.request_mode);
+		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
 		c->Message(Chat::White, ChatSeparator());
 
 		c->Message(Chat::Yellow, "Bosses & Chests:");
@@ -1256,6 +1258,7 @@ namespace {
 			Duration(template_data.replay_lockout_seconds),
 			OnOff(template_data.silent)
 		).c_str());
+		c->Message(Chat::White, fmt::format("Boss-only spawns: {}", OnOff(template_data.boss_only_spawn)).c_str());
 		c->Message(Chat::White, fmt::format(
 			"Zone-in: {}",
 			Location(template_data.dz_template.zone_id, template_data.dz_template.zone_in_x, template_data.dz_template.zone_in_y, template_data.dz_template.zone_in_z, template_data.dz_template.zone_in_h)
@@ -1769,6 +1772,7 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 		SendInfoLine(c, "Players", fmt::format("{} - {}", dz.min_players, dz.max_players));
 		SendInfoLine(c, "Zone-in", dz.override_zone_in ? "set" : "NOT SET");
 		SendInfoLine(c, "Safe return", dz.return_zone_id ? "set" : "default");
+		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
 		c->Message(Chat::White, ChatSeparator());
 
 		c->Message(Chat::White, "  Duration (how long the instance stays open):");
@@ -1809,6 +1813,11 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 			{"#expedition config zonein", "Set Zone-in Here"},
 			{"#expedition config safereturn", "Set Safe Return Here"},
 			{"#expedition config compass", "Set Compass Here"}
+		});
+		c->Message(Chat::White, "  Spawn behavior:");
+		SendActionRow(c, {
+			{"#expedition config bossonly on", "Bosses Only"},
+			{"#expedition config bossonly off", "Normal Spawns"}
 		});
 		c->Message(Chat::White, ChatSeparator());
 		SendActionRow(c, {
@@ -1936,6 +1945,15 @@ void HandleConfig(Client* c, const Seperator* sep)
 		else if (action == "compass") {
 			ExpeditionDB::SetDzTemplateCompass(content_db, dz_template_id, zone->GetZoneID(), pos.x, pos.y, pos.z);
 			c->Message(Chat::Green, "Set the compass marker to your current location.");
+		}
+		else if (action == "bossonly" || action == "boss_only") {
+			bool enabled = false;
+			if (!ParseOnOffArg(sep->arg[3], enabled)) {
+				c->Message(Chat::Red, "Usage: #expedition config bossonly on|off");
+				return;
+			}
+			ExpeditionDB::SetTemplateBossOnlySpawn(content_db, template_id, enabled);
+			c->Message(Chat::Green, fmt::format("Set boss-only spawns to [{}].", OnOff(enabled)).c_str());
 		}
 		else {
 			ShowConfigScreen(c, *template_data);
@@ -3052,6 +3070,15 @@ void HandleSet(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetTemplateSilent(content_db, template_data->id, enabled);
 			c->Message(Chat::Green, fmt::format("Set silent to [{}].", OnOff(enabled)).c_str());
+		}
+		else if (field == "bossonly" || field == "boss_only") {
+			bool enabled = false;
+			if (!ParseOnOffArg(sep->arg[3], enabled)) {
+				c->Message(Chat::Red, "Usage: #expedition set bossonly on|off");
+				return;
+			}
+			ExpeditionDB::SetTemplateBossOnlySpawn(content_db, template_data->id, enabled);
+			c->Message(Chat::Green, fmt::format("Set boss-only spawns to [{}].", OnOff(enabled)).c_str());
 		}
 		else if (field == "requestmode") {
 			if (!IsRequestModeArg(sep->arg[3])) {

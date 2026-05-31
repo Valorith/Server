@@ -7418,6 +7418,7 @@ CREATE TABLE IF NOT EXISTS `expedition_templates` (
 	`replay_lockout_seconds` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`replay_on_join` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`silent` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`request_phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
 	`request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only',
 	`notes` TEXT NULL,
@@ -7480,6 +7481,18 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 	PRIMARY KEY (`id`),
 	KEY `idx_expedition_actions_event` (`event_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9345,
+		.description = "2026_05_31_expedition_boss_only_spawn.sql",
+		.check = "SHOW COLUMNS FROM `expedition_templates` LIKE 'boss_only_spawn'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_templates`
+ADD COLUMN `boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `silent`;
 )",
 		.content_schema_update = true
 	},

@@ -29,6 +29,7 @@
 #include "common/strings.h"
 #include "zone/client.h"
 #include "zone/entity.h"
+#include "zone/expedition_db.h"
 #include "zone/spawngroup.h"
 #include "zone/worldserver.h"
 #include "zone/zone.h"
@@ -202,11 +203,16 @@ bool Spawn2::Process() {
 
 		//have the spawn group pick an NPC for us
 		uint32 npcid = 0;
+		const auto* allowed_npc_type_ids = m_allowed_npc_type_ids.empty() ? nullptr : &m_allowed_npc_type_ids;
 		if (m_resumed_npc_id > 0) {
 			npcid = m_resumed_npc_id;
 			m_resumed_npc_id = 0;
+			if (allowed_npc_type_ids && !allowed_npc_type_ids->contains(npcid)) {
+				LogSpawns("Spawn2 [{}]: resumed NPC type [{}] is not allowed by the boss-only spawn filter", spawn2_id, npcid);
+				npcid = 0;
+			}
 		} else {
-			npcid = spawn_group->GetNPCType(condition_value);
+			npcid = spawn_group->GetNPCType(condition_value, allowed_npc_type_ids);
 		}
 
 		if (npcid == 0) {
@@ -537,6 +543,8 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 
 	NPC::SpawnZoneController();
 
+	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(zone ? zone->GetDynamicZone() : nullptr);
+
 	if (RuleB(Zone, StateSavingOnShutdown) && zone->LoadZoneState(spawn_times, disabled_spawns)) {
 		LogZoneState("Loaded zone state for zone [{}] instance_id [{}]", zone_name, zone->GetInstanceID());
 		return true;
@@ -559,6 +567,17 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 			}
 		}
 
+		const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
+		if (boss_only_filter.enabled) {
+			const auto allowed_it = boss_only_filter.npc_type_ids_by_spawn2_id.find(s.id);
+			if (allowed_it == boss_only_filter.npc_type_ids_by_spawn2_id.end()) {
+				spawn_enabled = false;
+			}
+			else {
+				allowed_npc_type_ids = &allowed_it->second;
+			}
+		}
+
 		auto new_spawn = new Spawn2(
 			s.id,
 			s.spawngroupID,
@@ -576,6 +595,10 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 			spawn_enabled,
 			(EmuAppearance) s.animation
 		);
+
+		if (allowed_npc_type_ids) {
+			new_spawn->SetAllowedNPCTypeIDs(*allowed_npc_type_ids);
+		}
 
 		spawn2_list.Insert(new_spawn);
 		new_spawn->Process();
@@ -1375,4 +1398,3 @@ bool SpawnConditionManager::Check(uint16 condition, int16 min_value) {
 
 	return(cond.value >= min_value);
 }
-

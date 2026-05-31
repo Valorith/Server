@@ -69,7 +69,7 @@ SpawnGroup::SpawnGroup(
 	wp_spawns = wp_spawns_in;
 }
 
-uint32 SpawnGroup::GetNPCType(uint16 in_filter)
+uint32 SpawnGroup::GetNPCType(uint16 in_filter, const std::unordered_set<uint32>* allowed_npc_type_ids)
 {
 	int npcType     = 0;
 	int totalchance = 0;
@@ -81,6 +81,10 @@ uint32 SpawnGroup::GetNPCType(uint16 in_filter)
 	std::list<SpawnEntry *> possible;
 	for (auto &it : list_) {
 		auto se = it.get();
+
+		if (allowed_npc_type_ids && !allowed_npc_type_ids->contains(se->NPCType)) {
+			continue;
+		}
 
 		if (!entity_list.LimitCheckType(se->NPCType, se->npc_spawn_limit)) {
 			continue;
