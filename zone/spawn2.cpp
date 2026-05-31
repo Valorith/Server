@@ -543,12 +543,12 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 
 	NPC::SpawnZoneController();
 
-	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(zone ? zone->GetDynamicZone() : nullptr);
-
 	if (RuleB(Zone, StateSavingOnShutdown) && zone->LoadZoneState(spawn_times, disabled_spawns)) {
 		LogZoneState("Loaded zone state for zone [{}] instance_id [{}]", zone_name, zone->GetInstanceID());
 		return true;
 	}
+
+	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(zone->GetDynamicZone());
 
 	// normal spawn2 loading
 	for (auto &s: spawns) {
