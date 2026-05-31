@@ -16,7 +16,9 @@ public:
 	{
 		TEST_ADD(ExpeditionSchemaTest::ContentSchemaIncludesExpeditionAuthoringTables);
 		TEST_ADD(ExpeditionSchemaTest::CreationMigrationHasFinalSchema);
+		TEST_ADD(ExpeditionSchemaTest::BossOnlyMigrationUpdatesExistingTemplates);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
+		TEST_ADD(ExpeditionSchemaTest::BossOnlyDefaultsAreOff);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 	}
 
@@ -37,9 +39,9 @@ private:
 
 	void CreationMigrationHasFinalSchema()
 	{
-		// The DB-driven expedition feature ships as a single creation migration that
-		// already contains the final schema (request_mode, versioned requests, and
-		// spawn-completion); there are no follow-up ALTER migrations to apply.
+		// The DB-driven expedition feature creation migration contains the full
+		// schema for a fresh database. Later ALTER migrations only update existing
+		// installs.
 		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
 			return e.version == 9344 && e.description == "2026_05_21_db_driven_expeditions.sql";
 		});
@@ -49,6 +51,7 @@ private:
 		TEST_ASSERT(entry->check == "SHOW TABLES LIKE 'expedition_templates'");
 		TEST_ASSERT(entry->condition == "empty");
 		TEST_ASSERT(entry->sql.find("request_mode") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("boss_only_spawn") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("db_only") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("zone_version") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("complete_on_spawn") != std::string::npos);
@@ -61,9 +64,34 @@ private:
 		TEST_ASSERT(followup == manifest_entries.end());
 	}
 
+	void BossOnlyMigrationUpdatesExistingTemplates()
+	{
+		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
+			return e.version == 9345 && e.description == "2026_05_31_expedition_boss_only_spawn.sql";
+		});
+
+		TEST_ASSERT(entry != manifest_entries.end());
+		TEST_ASSERT(entry->content_schema_update);
+		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_templates` LIKE 'boss_only_spawn'");
+		TEST_ASSERT(entry->condition == "empty");
+		TEST_ASSERT(entry->sql.find("ALTER TABLE `expedition_templates`") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("boss_only_spawn") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("DEFAULT '0'") != std::string::npos);
+	}
+
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()
 	{
-		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9344);
+		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9345);
+	}
+
+	void BossOnlyDefaultsAreOff()
+	{
+		ExpeditionDB::Template template_data;
+		TEST_ASSERT(!template_data.boss_only_spawn);
+
+		ExpeditionDB::BossOnlySpawnFilter filter;
+		TEST_ASSERT(!filter.enabled);
+		TEST_ASSERT(filter.npc_type_ids_by_spawn2_id.empty());
 	}
 
 	void SimpleBuilderDefaultsAreGroupReady()

@@ -21,6 +21,8 @@
 #include "common/timer.h"
 #include "zone/npc.h"
 
+#include <unordered_set>
+
 #define SC_AlwaysEnabled 0
 
 class SpawnCondition;
@@ -80,6 +82,7 @@ public:
 	inline void SetEntityVariables(std::map<std::string, std::string> vars) { m_entity_variables = vars; }
 	inline void SetResumedNPCID(uint32 npc_id) { m_resumed_npc_id = npc_id; }
 	inline void SetStoredLocation(const glm::vec4& loc) { m_stored_location = loc; }
+	inline void SetAllowedNPCTypeIDs(const std::unordered_set<uint32>& allowed_npc_type_ids) { m_allowed_npc_type_ids = allowed_npc_type_ids; }
 
 protected:
 	friend class Zone;
@@ -110,6 +113,7 @@ private:
 	uint32 m_resumed_npc_id = 0;
 	std::map<std::string, std::string> m_entity_variables = {};
 	glm::vec4 m_stored_location = {0, 0, -1000, 0}; // use -1000 to indicate unset/zero-state
+	std::unordered_set<uint32> m_allowed_npc_type_ids = {};
 };
 
 class SpawnCondition {

@@ -712,6 +712,7 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 		kSimpleSetupReplaySeconds,
 		true,
 		false,
+		false,
 		kSimpleRequestPhrase,
 		kSimpleRequestMode,
 		""
@@ -835,6 +836,13 @@ bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds)
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent)
 {
 	const bool ok = ExpeditionRepository::UpdateTemplateSilent(db, template_id, silent);
+	Reload(db);
+	return ok;
+}
+
+bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled)
+{
+	const bool ok = ExpeditionRepository::UpdateTemplateBossOnlySpawn(db, template_id, enabled);
 	Reload(db);
 	return ok;
 }
@@ -1251,6 +1259,21 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.warnings.push_back("Request mode is script_can_opt_in, so request NPC mappings are documentation only unless scripts call DB template APIs.");
 	}
 
+	if (template_data.boss_only_spawn) {
+		bool has_concrete_boss = false;
+		for (const auto& event_data : template_data.events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (Strings::EqualFold(event_npc.role, "boss") && event_npc.npc_type_id != 0 && event_npc.spawn2_id != 0) {
+					has_concrete_boss = true;
+				}
+			}
+		}
+
+		if (!has_concrete_boss) {
+			result.errors.push_back("Boss-only spawn mode requires at least one boss NPC mapping with a concrete spawn2_id.");
+		}
+	}
+
 	for (const auto& [other_id, other_template] : g_templates) {
 		if (
 			other_id != template_data.id &&
@@ -1550,6 +1573,34 @@ bool HandleNpcSpawn(NPC& npc)
 	}
 
 	return handled;
+}
+
+BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition)
+{
+	BossOnlySpawnFilter filter;
+	if (!expedition || !expedition->IsExpedition()) {
+		return filter;
+	}
+
+	const Template* template_data = FindTemplateByDz(*expedition);
+	if (!template_data || !template_data->boss_only_spawn) {
+		return filter;
+	}
+
+	for (const auto& event_data : template_data->events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (
+				Strings::EqualFold(event_npc.role, "boss") &&
+				event_npc.npc_type_id != 0 &&
+				event_npc.spawn2_id != 0
+			) {
+				filter.npc_type_ids_by_spawn2_id[event_npc.spawn2_id].insert(event_npc.npc_type_id);
+			}
+		}
+	}
+
+	filter.enabled = !filter.npc_type_ids_by_spawn2_id.empty();
+	return filter;
 }
 
 void ApplyRequesterLastName(NPC& npc)

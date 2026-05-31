@@ -59,7 +59,7 @@ std::vector<ExpeditionDB::Template> LoadAllTemplates(Database& db)
 {
 	std::vector<ExpeditionDB::Template> out;
 	auto results = db.QueryDatabase(
-		"SELECT id, dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes "
+		"SELECT id, dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, boss_only_spawn, request_phrase, request_mode, notes "
 		"FROM expedition_templates"
 	);
 
@@ -77,9 +77,10 @@ std::vector<ExpeditionDB::Template> LoadAllTemplates(Database& db)
 		e.replay_lockout_seconds = UInt(row[5]);
 		e.replay_on_join = Truthy(row[6]);
 		e.silent = Truthy(row[7]);
-		e.request_phrase = Text(row[8]);
-		e.request_mode = Text(row[9]);
-		e.notes = Text(row[10]);
+		e.boss_only_spawn = Truthy(row[8]);
+		e.request_phrase = Text(row[9]);
+		e.request_mode = Text(row[10]);
+		e.notes = Text(row[11]);
 		out.push_back(std::move(e));
 	}
 
@@ -210,14 +211,15 @@ uint32_t InsertTemplate(
 	uint32_t replay_lockout_seconds,
 	bool replay_on_join,
 	bool silent,
+	bool boss_only_spawn,
 	const std::string& request_phrase,
 	const std::string& request_mode,
 	const std::string& notes)
 {
 	return InsertID(db, fmt::format(
 		"INSERT INTO expedition_templates "
-		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes) "
-		"VALUES ({}, '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}')",
+		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, boss_only_spawn, request_phrase, request_mode, notes) "
+		"VALUES ({}, '{}', '{}', {}, {}, {}, {}, {}, '{}', '{}', '{}')",
 		dz_template_id,
 		Escape(name),
 		Escape(slug),
@@ -225,6 +227,7 @@ uint32_t InsertTemplate(
 		replay_lockout_seconds,
 		replay_on_join ? 1 : 0,
 		silent ? 1 : 0,
+		boss_only_spawn ? 1 : 0,
 		Escape(request_phrase),
 		Escape(request_mode),
 		Escape(notes)
@@ -240,8 +243,8 @@ uint32_t InsertTemplateFrom(
 {
 	return InsertID(db, fmt::format(
 		"INSERT INTO expedition_templates "
-		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes) "
-		"SELECT {}, '{}', '{}', 0, replay_lockout_seconds, replay_on_join, silent, request_phrase, request_mode, notes "
+		"(dz_template_id, name, slug, enabled, replay_lockout_seconds, replay_on_join, silent, boss_only_spawn, request_phrase, request_mode, notes) "
+		"SELECT {}, '{}', '{}', 0, replay_lockout_seconds, replay_on_join, silent, boss_only_spawn, request_phrase, request_mode, notes "
 		"FROM expedition_templates WHERE id = {}",
 		dz_template_id,
 		Escape(name),
@@ -273,6 +276,11 @@ bool UpdateTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds)
 bool UpdateTemplateSilent(Database& db, uint32_t template_id, bool silent)
 {
 	return QueryOK(db, fmt::format("UPDATE expedition_templates SET silent = {} WHERE id = {}", silent ? 1 : 0, template_id));
+}
+
+bool UpdateTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled)
+{
+	return QueryOK(db, fmt::format("UPDATE expedition_templates SET boss_only_spawn = {} WHERE id = {}", enabled ? 1 : 0, template_id));
 }
 
 bool UpdateTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode)

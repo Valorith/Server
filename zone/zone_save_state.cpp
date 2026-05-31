@@ -3,6 +3,7 @@
 #include "common/repositories/criteria/content_filter_criteria.h"
 #include "common/repositories/spawn2_repository.h"
 #include "zone/corpse.h"
+#include "zone/expedition_db.h"
 #include "zone/npc.h"
 #include "zone/zone.h"
 
@@ -430,6 +431,7 @@ bool Zone::LoadZoneState(
 	}
 
 	LogInfo("Loading zone state spawns for zone [{}] instance [{}] spawns [{}]", GetShortName(), zone->GetInstanceID(), spawn_states.size());
+	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(GetDynamicZone());
 
 	if (!IsZoneStateValid(spawn_states)) {
 		LogZoneState("Invalid zone state data for zone [{}]", GetShortName());
@@ -487,6 +489,17 @@ bool Zone::LoadZoneState(
 			}
 		}
 
+		const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
+		if (boss_only_filter.enabled) {
+			const auto allowed_it = boss_only_filter.npc_type_ids_by_spawn2_id.find(s.spawn2_id);
+			if (allowed_it == boss_only_filter.npc_type_ids_by_spawn2_id.end()) {
+				spawn_enabled = false;
+			}
+			else {
+				allowed_npc_type_ids = &allowed_it->second;
+			}
+		}
+
 		// find spawn 2 by id
 		Spawn2Repository::Spawn2 spawn2;
 		for (auto &sp: spawn2s) {
@@ -517,6 +530,10 @@ bool Zone::LoadZoneState(
 			(s.enabled && spawn_enabled),
 			(EmuAppearance) s.anim
 		);
+
+		if (allowed_npc_type_ids) {
+			new_spawn->SetAllowedNPCTypeIDs(*allowed_npc_type_ids);
+		}
 
 		new_spawn->SetStoredLocation(glm::vec4(s.x, s.y, s.z, s.heading));
 
@@ -566,6 +583,17 @@ bool Zone::LoadZoneState(
 				}
 			}
 
+			const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
+			if (boss_only_filter.enabled) {
+				const auto allowed_it = boss_only_filter.npc_type_ids_by_spawn2_id.find(s.id);
+				if (allowed_it == boss_only_filter.npc_type_ids_by_spawn2_id.end()) {
+					spawn_enabled = false;
+				}
+				else {
+					allowed_npc_type_ids = &allowed_it->second;
+				}
+			}
+
 			LogZoneState("Missing spawn2 [{}] in zone state, this NPC spawn was newly created", s.id);
 			uint32 spawn_time_left = 0;
 			if (spawn_times.count(s.id) != 0) {
@@ -590,6 +618,10 @@ bool Zone::LoadZoneState(
 				spawn_enabled,
 				(EmuAppearance) s.animation
 			);
+
+			if (allowed_npc_type_ids) {
+				new_spawn->SetAllowedNPCTypeIDs(*allowed_npc_type_ids);
+			}
 
 			new_spawn->SetStoredLocation(glm::vec4(s.x, s.y, s.z, s.heading));
 			spawn2_list.Insert(new_spawn);

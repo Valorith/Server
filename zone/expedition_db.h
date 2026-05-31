@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Client;
@@ -79,6 +80,7 @@ struct Template {
 	uint32_t replay_lockout_seconds = 0;
 	bool replay_on_join = true;
 	bool silent = false;
+	bool boss_only_spawn = false;
 	std::string request_phrase = "expedition";
 	std::string request_mode = "db_only";
 	std::string notes;
@@ -108,6 +110,11 @@ struct BuilderState {
 	bool edit_mode = false;
 };
 
+struct BossOnlySpawnFilter {
+	bool enabled = false;
+	std::unordered_map<uint32_t, std::unordered_set<uint32_t>> npc_type_ids_by_spawn2_id;
+};
+
 uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::string& name);
 uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::string& name);
 bool DeleteTemplate(Database& db, uint32_t template_id);
@@ -115,6 +122,7 @@ bool SetTemplateName(Database& db, uint32_t template_id, const std::string& name
 bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent);
+bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode);
 bool SetDzTemplateZone(Database& db, uint32_t dz_template_id, uint32_t zone_id, uint32_t version);
 bool SetDzTemplateDuration(Database& db, uint32_t dz_template_id, uint32_t seconds);
@@ -155,6 +163,7 @@ bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_da
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
 bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
+BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition);
 // Stamps the "Expeditions" surname on configured requester NPCs (and clears a stale one when an
 // NPC is no longer a requester). Safe to call for any NPC spawn in any zone.
 void ApplyRequesterLastName(NPC& npc);

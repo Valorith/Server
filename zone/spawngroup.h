@@ -23,6 +23,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <unordered_set>
 
 class SpawnEntry {
 public:
@@ -57,7 +58,7 @@ public:
 	);
 
 	~SpawnGroup();
-	uint32 GetNPCType(uint16 condition_value_filter=1);
+	uint32 GetNPCType(uint16 condition_value_filter=1, const std::unordered_set<uint32>* allowed_npc_type_ids = nullptr);
 	void AddSpawnEntry(std::unique_ptr<SpawnEntry> &newEntry);
 	uint32 id;
 	bool wp_spawns;			// if true, spawn NPCs at a random waypoint location (if spawnpoint has a grid) instead of the spawnpoint's loc
