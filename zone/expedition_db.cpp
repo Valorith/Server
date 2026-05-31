@@ -558,6 +558,27 @@ namespace {
 		}
 	}
 
+	void AddReplayLockoutIfLonger(DynamicZone& expedition, uint32_t seconds)
+	{
+		if (seconds == 0) {
+			return;
+		}
+
+		// The client has one replay-timer slot per expedition; event completions can extend it
+		// but should not shorten it.
+		const DzLockout proposed = DzLockout::Create(expedition.GetName(), DzLockout::ReplayTimer, seconds, expedition.GetUUID());
+		const auto& lockouts = expedition.GetLockouts();
+		const auto replay_timer = std::ranges::find_if(lockouts, [](const DzLockout& lockout) {
+			return lockout.IsReplay();
+		});
+
+		if (replay_timer != lockouts.end() && replay_timer->GetExpireTime() >= proposed.GetExpireTime()) {
+			return;
+		}
+
+		expedition.AddLockout(DzLockout::ReplayTimer, seconds);
+	}
+
 	void ExecuteActions(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name)
 	{
 		for (const auto& action : event_data.actions) {
@@ -575,9 +596,7 @@ namespace {
 			}
 			else if (Strings::EqualFold(action.action_type, "add_replay_lockout")) {
 				const uint32_t seconds = Strings::ToUnsignedInt(action.action_value);
-				if (seconds > 0) {
-					expedition.AddLockout(DzLockout::ReplayTimer, seconds);
-				}
+				AddReplayLockoutIfLonger(expedition, seconds);
 			}
 			else if (Strings::EqualFold(action.action_type, "depop_npc_type")) {
 				const uint32_t npc_type_id = Strings::ToUnsignedInt(action.action_value);
@@ -609,7 +628,7 @@ namespace {
 		}
 
 		if (event_data.replay_lockout_seconds > 0) {
-			expedition.AddLockout(DzLockout::ReplayTimer, event_data.replay_lockout_seconds);
+			AddReplayLockoutIfLonger(expedition, event_data.replay_lockout_seconds);
 		}
 
 		ExecuteActions(expedition, event_data, runtime_event_name);
