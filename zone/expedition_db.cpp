@@ -1251,7 +1251,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		}
 
 		if (!has_concrete_boss) {
-			result.errors.push_back("Boss-only spawn mode requires at least one boss NPC mapping with a spawn-specific id.");
+			result.errors.push_back("Boss-only spawn mode requires at least one boss NPC mapping with a concrete spawn2_id.");
 		}
 	}
 
@@ -1568,7 +1568,6 @@ BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition)
 		return filter;
 	}
 
-	filter.enabled = true;
 	for (const auto& event_data : template_data->events) {
 		for (const auto& event_npc : event_data.npcs) {
 			if (
@@ -1581,6 +1580,7 @@ BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition)
 		}
 	}
 
+	filter.enabled = !filter.npc_type_ids_by_spawn2_id.empty();
 	return filter;
 }
 
