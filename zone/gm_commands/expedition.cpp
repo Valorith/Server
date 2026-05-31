@@ -1951,8 +1951,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 		else if (action == "version") {
 			const auto& dz = template_data->dz_template;
 			if (dz.zone_id == 0 || !ZoneName(dz.zone_id)) {
-				c->Message(Chat::Red, "The selected expedition has no valid destination zone. Use #expedition set zone first.");
-				SendActionRow(c, {{"#expedition set zone", "Use Current Zone"}});
+				ShowVersionScreen(c, *template_data);
 				return;
 			}
 
