@@ -333,7 +333,7 @@ public:
 
 	virtual void SendArmorAppearance(Client *one_client = nullptr);
 	virtual void SendTextureWC(uint8 slot, uint32 texture, uint32 hero_forge_model = 0, uint32 elite_material = 0, uint32 unknown06 = 0, uint32 unknown18 = 0);
-	virtual void SendWearChange(uint8 material_slot, Client *one_client = nullptr);
+	virtual void SendWearChange(uint8 material_slot, Client *one_client = nullptr, bool force_send = false);
 	virtual void SetSlotTint(uint8 material_slot, uint8 red_tint, uint8 green_tint, uint8 blue_tint);
 	virtual void WearChange(uint8 material_slot, uint32 texture, uint32 color = 0, uint32 hero_forge_model = 0);
 

@@ -375,7 +375,7 @@ void Mob::SendArmorAppearance(Client *one_client)
 	}
 }
 
-void Mob::SendWearChange(uint8 material_slot, Client *one_client)
+void Mob::SendWearChange(uint8 material_slot, Client *one_client, bool force_send)
 {
 	auto packet = new EQApplicationPacket(OP_WearChange, sizeof(WearChange_Struct));
 	auto w      = (WearChange_Struct *) packet->pBuffer;
@@ -424,7 +424,7 @@ void Mob::SendWearChange(uint8 material_slot, Client *one_client)
 	auto dedupe_key = build_key(*w);
 	auto send_if_changed = [&](Client* client) {
 		auto& last_key = m_last_seen_wearchange[client->GetID()][material_slot];
-		if (last_key == dedupe_key) {
+		if (!force_send && last_key == dedupe_key) {
 			return;
 		}
 		last_key = dedupe_key;
