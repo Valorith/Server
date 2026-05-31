@@ -345,6 +345,37 @@ function Find-RuntimeDependency {
     return $null
 }
 
+function Copy-DynamicRuntimeDependencies {
+    $dynamicRuntimeDlls = @(
+        # libmariadb loads authentication and protocol plugins dynamically.
+        "caching_sha2_password.dll",
+        "client_ed25519.dll",
+        "dialog.dll",
+        "mysql_clear_password.dll",
+        "pvio_shmem.dll",
+        "sha256_password.dll",
+
+        # OpenSSL 3 may load this provider dynamically for legacy algorithms.
+        "legacy.dll",
+
+        # Included to keep the release bundle aligned with the known-good package shape.
+        "pkgconf-7.dll"
+    )
+
+    $searchDirectories = Get-RuntimeSearchDirectories
+
+    foreach ($dependency in $dynamicRuntimeDlls) {
+        $candidate = Find-RuntimeDependency -Name $dependency -SearchDirectories $searchDirectories
+        if ($candidate) {
+            Write-Host "Copying dynamic runtime dependency $dependency from $candidate"
+            Copy-UniqueFile -Path $candidate
+        }
+        else {
+            throw "Expected runtime dependency was not found: $dependency"
+        }
+    }
+}
+
 function Resolve-RuntimeDependencies {
     $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
     if (-not $dumpbin) {
@@ -429,6 +460,69 @@ function Test-RuntimeDependencies {
     }
 }
 
+function Test-PackageContents {
+    $expectedFiles = @(
+        "caching_sha2_password.dll",
+        "client_ed25519.dll",
+        "concrt140.dll",
+        "dialog.dll",
+        "eqlaunch.exe",
+        "export_client_files.exe",
+        "fmt.dll",
+        "import_client_files.exe",
+        "legacy.dll",
+        "libcrypto-3-x64.dll",
+        "libgcc_s_seh-1.dll",
+        "libmariadb.dll",
+        "libsodium.dll",
+        "libssl-3-x64.dll",
+        "libwinpthread-1.dll",
+        "loginserver.exe",
+        "lua51.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "msvcp140_atomic_wait.dll",
+        "msvcp140_codecvt_ids.dll",
+        "mysql_clear_password.dll",
+        "perl542.dll",
+        "pkgconf-7.dll",
+        "pvio_shmem.dll",
+        "queryserv.exe",
+        "release-manifest.json",
+        "sha256_password.dll",
+        "shared_memory.exe",
+        "ucs.exe",
+        "uv.dll",
+        "vccorlib140.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "vcruntime140_threads.dll",
+        "world.exe",
+        "zlib1.dll",
+        "zone.exe"
+    )
+
+    $presentFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    Get-ChildItem -Path $stageDir -File | ForEach-Object {
+        [void]$presentFiles.Add($_.Name)
+    }
+
+    $missingFiles = @($expectedFiles | Where-Object { -not $presentFiles.Contains($_) })
+    if ($missingFiles.Count -gt 0) {
+        throw "Release package is missing expected files:`n$($missingFiles -join "`n")"
+    }
+
+    $blockedFiles = @(Get-ChildItem -Path $stageDir -File | Where-Object {
+        $_.Extension -in @(".exp", ".ilk", ".lib", ".pdb")
+    })
+
+    if ($blockedFiles.Count -gt 0) {
+        $blockedNames = $blockedFiles | Sort-Object Name | ForEach-Object { $_.Name }
+        throw "Release package contains non-runtime files:`n$($blockedNames -join "`n")"
+    }
+}
+
 if (Test-Path $stageDir) {
     Remove-Item -LiteralPath $stageDir -Recurse -Force
 }
@@ -442,11 +536,8 @@ foreach ($binary in $requiredBinaries) {
     if (-not (Test-Path $path)) {
         throw "Required binary is missing: $path"
     }
+    Copy-UniqueFile -Path $path
 }
-
-Get-ChildItem -Path $binDir -File -Filter "*.exe" |
-    Where-Object { $_.Name -ne "tests.exe" } |
-    ForEach-Object { Copy-UniqueFile -Path $_.FullName }
 
 $libraryRoots = @(
     $binDir,
@@ -455,16 +546,7 @@ $libraryRoots = @(
     (Join-Path $rootDir "vcpkg_installed")
 )
 
-foreach ($libraryRoot in $libraryRoots) {
-    if (-not (Test-Path $libraryRoot)) {
-        continue
-    }
-
-    Get-ChildItem -Path $libraryRoot -Recurse -File -Filter "*.dll" |
-        Where-Object { $_.FullName -notmatch "\\debug\\" } |
-        ForEach-Object { Copy-UniqueFile -Path $_.FullName }
-}
-
+Copy-DynamicRuntimeDependencies
 Copy-VisualCppRuntime
 Resolve-RuntimeDependencies
 Test-RuntimeDependencies
@@ -488,6 +570,8 @@ $manifest = [PSCustomObject]@{
 
 $manifestPath = Join-Path $stageDir "release-manifest.json"
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+
+Test-PackageContents
 
 Compress-Archive -Path $stageDir -DestinationPath $zipPath -Force
 
