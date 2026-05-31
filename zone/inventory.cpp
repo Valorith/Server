@@ -3470,6 +3470,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 				BandolierItems[BandolierSlot] = m_inv.PopItem(slot);
 				BandolierSourceSlots[BandolierSlot] = slot;
 				if (BandolierItems[BandolierSlot]) {
+					mark_bandolier_weapon_visual_touched(slot);
 					LogInventory(
 						"Bandolier set [{}] pulled item [{}] ([{}]) for bandolier slot [{}] from source slot [{}]",
 						bss->Number,
