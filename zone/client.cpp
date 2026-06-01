@@ -10186,7 +10186,32 @@ void Client::SendDynamicZoneUpdates()
 	SendDzCompassUpdate();
 	SetDynamicZoneMemberStatus(DynamicZoneMemberStatus::Online);
 
+	const auto previous_lockouts = m_dz_lockouts;
 	m_dz_lockouts = CharacterExpeditionLockoutsRepository::GetLockouts(database, CharacterID());
+
+	for (const auto& previous : previous_lockouts)
+	{
+		if (previous.IsExpired())
+		{
+			continue;
+		}
+
+		const auto reloaded = std::ranges::find_if(m_dz_lockouts, [&](const DzLockout& lockout) {
+			return lockout.IsSame(previous);
+		});
+
+		if (reloaded == m_dz_lockouts.end())
+		{
+			LogDynamicZones(
+				"Character [{}] had an unexpired expedition lockout [{}] [{}] uuid [{}] with [{}] seconds remaining before DB refresh, but it was not reloaded",
+				CharacterID(),
+				previous.DzName(),
+				previous.Event(),
+				previous.UUID(),
+				previous.GetSecondsRemaining()
+			);
+		}
+	}
 
 	// expeditions are the only dz type that keep the window updated
 	if (DynamicZone* dz = GetExpedition())
@@ -10299,16 +10324,15 @@ uint32_t Client::GetExpeditionID() const
 void Client::AddDzLockout(const DzLockout& lockout, bool update_db)
 {
 	// todo: support for account based lockouts like live AoC expeditions
+	if (update_db && !CharacterExpeditionLockoutsRepository::InsertLockouts(database, CharacterID(), { lockout }))
+	{
+		return;
+	}
 
 	// if client already has this lockout, we're replacing it with the new one
 	std::erase_if(m_dz_lockouts, [&](const DzLockout& l) { return l.IsSame(lockout); });
 
 	m_dz_lockouts.push_back(lockout);
-
-	if (update_db) // for quest api
-	{
-		CharacterExpeditionLockoutsRepository::InsertLockouts(database, CharacterID(), { lockout });
-	}
 
 	SendDzLockoutTimers();
 }
@@ -10324,18 +10348,20 @@ void Client::AddDzLockoutDuration(const DzLockout& lockout, int seconds, const s
 	auto it = std::ranges::find_if(m_dz_lockouts, [&](const DzLockout& l) { return l.IsSame(lockout); });
 	if (it != m_dz_lockouts.end())
 	{
-		it->AddLockoutTime(seconds);
+		DzLockout updated_lockout = *it;
+		updated_lockout.AddLockoutTime(seconds);
 
 		if (!uuid.empty())
 		{
-			it->SetUUID(uuid);
+			updated_lockout.SetUUID(uuid);
 		}
 
-		if (update_db)
+		if (update_db && !CharacterExpeditionLockoutsRepository::InsertLockouts(database, CharacterID(), { updated_lockout }))
 		{
-			CharacterExpeditionLockoutsRepository::InsertLockouts(database, CharacterID(), { *it });
+			return;
 		}
 
+		*it = updated_lockout;
 		SendDzLockoutTimers();
 	}
 	else if (seconds > 0) // missing lockouts inserted for reductions would be instantly expired

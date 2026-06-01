@@ -715,7 +715,7 @@ std::vector<uint32_t> DynamicZoneBase::GetMemberIds()
 
 bool DynamicZoneBase::HasLockout(const std::string& event)
 {
-	return std::ranges::any_of(m_lockouts, [&](const auto& l) { return l.IsEvent(event); });
+	return std::ranges::any_of(m_lockouts, [&](const auto& l) { return l.IsEvent(event) && !l.IsExpired(); });
 }
 
 bool DynamicZoneBase::HasReplayLockout()
@@ -731,12 +731,15 @@ void DynamicZoneBase::AddLockout(const std::string& event, uint32_t seconds)
 
 void DynamicZoneBase::AddLockout(const DzLockout& lockout, bool members_only)
 {
+	if (!CharacterExpeditionLockoutsRepository::InsertLockout(GetDatabase(), GetMemberIds(), lockout))
+	{
+		return;
+	}
+
 	if (!members_only)
 	{
 		DynamicZoneLockoutsRepository::InsertLockouts(GetDatabase(), GetID(), { lockout });
 	}
-
-	CharacterExpeditionLockoutsRepository::InsertLockout(GetDatabase(), GetMemberIds(), lockout);
 
 	HandleLockoutUpdate(lockout, false, members_only);
 	SendServerPacket(CreateLockoutPacket(lockout, false, members_only).get());
@@ -748,7 +751,10 @@ void DynamicZoneBase::AddLockoutDuration(const std::string& event, int seconds, 
 
 	// lockout has unsigned duration, pass original seconds to support reducing existing timers
 	int secs = static_cast<int>(seconds * RuleR(Expedition, LockoutDurationMultiplier));
-	CharacterExpeditionLockoutsRepository::AddLockoutDuration(GetDatabase(), GetMemberIds(), lockout, secs);
+	if (!CharacterExpeditionLockoutsRepository::AddLockoutDuration(GetDatabase(), GetMemberIds(), lockout, secs))
+	{
+		return;
+	}
 
 	HandleLockoutDuration(lockout, seconds, members_only, true);
 	SendServerPacket(CreateLockoutDurationPacket(lockout, seconds, members_only).get());

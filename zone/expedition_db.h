@@ -72,6 +72,16 @@ struct Event {
 	std::vector<Action> actions;
 };
 
+inline bool IsBossEventNpc(const EventNpc& event_npc)
+{
+	return Strings::EqualFold(event_npc.role, "boss");
+}
+
+inline bool EventNpcRemovalDeletesEvent(const EventNpc& event_npc)
+{
+	return IsBossEventNpc(event_npc);
+}
+
 struct Template {
 	uint32_t id = 0;
 	uint32_t dz_template_id = 0;
@@ -89,6 +99,11 @@ struct Template {
 	std::vector<RequestNpc> request_npcs;
 	std::vector<Event> events;
 };
+
+inline bool SharesExpeditionLockoutNamespace(const Template& lhs, const Template& rhs)
+{
+	return Strings::EqualFold(lhs.dz_template.name, rhs.dz_template.name);
+}
 
 struct ValidationResult {
 	enum class Status {
@@ -144,7 +159,7 @@ inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_dat
 	for (const auto& event_data : template_data.events) {
 		for (const auto& event_npc : event_data.npcs) {
 			if (
-				Strings::EqualFold(event_npc.role, "boss") &&
+				IsBossEventNpc(event_npc) &&
 				event_npc.npc_type_id != 0 &&
 				event_npc.spawn2_id != 0
 			) {
