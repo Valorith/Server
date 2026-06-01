@@ -568,8 +568,8 @@ namespace {
 		// but should not shorten it.
 		const DzLockout proposed = DzLockout::Create(expedition.GetName(), DzLockout::ReplayTimer, seconds, expedition.GetUUID());
 		const auto& lockouts = expedition.GetLockouts();
-		const auto replay_timer = std::ranges::find_if(lockouts, [](const DzLockout& lockout) {
-			return lockout.IsReplay();
+		const auto replay_timer = std::ranges::find_if(lockouts, [&](const DzLockout& lockout) {
+			return lockout.IsReplay() && lockout.IsUUID(expedition.GetUUID());
 		});
 
 		if (replay_timer != lockouts.end() && replay_timer->GetExpireTime() >= proposed.GetExpireTime()) {
@@ -577,6 +577,14 @@ namespace {
 		}
 
 		expedition.AddLockout(DzLockout::ReplayTimer, seconds);
+	}
+
+	bool HasCurrentExpeditionLockout(DynamicZone& expedition, const std::string& event_name)
+	{
+		const auto& lockouts = expedition.GetLockouts();
+		return std::ranges::any_of(lockouts, [&](const DzLockout& lockout) {
+			return lockout.IsEvent(event_name) && lockout.IsUUID(expedition.GetUUID()) && !lockout.IsExpired();
+		});
 	}
 
 	void ExecuteActions(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name)
@@ -619,7 +627,7 @@ namespace {
 	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
 	{
 		const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
-		if (expedition.HasLockout(runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
+		if (HasCurrentExpeditionLockout(expedition, runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
 			return false;
 		}
 
@@ -1062,7 +1070,29 @@ bool SetEventNpcCompleteOnSpawn(Database& db, uint32_t event_id, uint32_t npc_ty
 
 bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id)
 {
-	const bool ok = ExpeditionRepository::DeleteEventNpc(db, event_id, npc_type_id, spawn2_id);
+	bool delete_event = false;
+	auto results = db.QueryDatabase(fmt::format(
+		"SELECT role FROM expedition_template_event_npcs WHERE event_id = {} AND npc_type_id = {} AND spawn2_id = {}",
+		event_id,
+		npc_type_id,
+		spawn2_id
+	));
+	if (!results.Success()) {
+		return false;
+	}
+
+	for (auto row = results.begin(); row != results.end(); ++row) {
+		EventNpc event_npc;
+		event_npc.role = row[0] ? row[0] : "";
+		if (EventNpcRemovalDeletesEvent(event_npc)) {
+			delete_event = true;
+			break;
+		}
+	}
+
+	const bool ok = delete_event ?
+		ExpeditionRepository::DeleteEvent(db, event_id) :
+		ExpeditionRepository::DeleteEventNpc(db, event_id, npc_type_id, spawn2_id);
 	Reload(db);
 	return ok;
 }
@@ -1278,23 +1308,45 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		if (
 			other_id != template_data.id &&
 			other_template.enabled &&
-			other_template.dz_template.zone_id == template_data.dz_template.zone_id &&
-			other_template.dz_template.zone_version == template_data.dz_template.zone_version &&
-			Strings::EqualFold(other_template.dz_template.name, template_data.dz_template.name)
+			SharesExpeditionLockoutNamespace(template_data, other_template)
 		) {
-			const auto message = fmt::format(
-				"Another enabled DB expedition template [{}] shares this dynamic-zone name and zone/version; runtime hooks may attach to the wrong template.",
-				other_template.name
-			);
-			if (template_data.enabled) {
-				result.errors.push_back(message);
+			if (
+				other_template.dz_template.zone_id == template_data.dz_template.zone_id &&
+				other_template.dz_template.zone_version == template_data.dz_template.zone_version
+			) {
+				result.errors.push_back(fmt::format(
+					"Another enabled DB expedition template [{}] shares this dynamic-zone name and zone/version; runtime hooks may attach to the wrong template and lockout timers can overwrite each other.",
+					other_template.name
+				));
 			}
 			else {
-				result.warnings.push_back(message);
+				result.errors.push_back(fmt::format(
+					"Another enabled DB expedition template [{}] shares dynamic-zone name [{}]; character expedition lockouts are keyed by expedition name and event name, so timers can overwrite each other.",
+					other_template.name,
+					template_data.dz_template.name
+				));
 			}
 		}
 	}
 
+	std::unordered_map<std::string, size_t> event_lockout_names;
+	std::unordered_set<std::string> duplicate_event_lockout_names;
+	auto remember_event_lockout_name = [&](size_t event_index, const std::string& event_name) {
+		if (event_name.empty()) {
+			return;
+		}
+
+		const std::string key = Strings::ToLower(event_name);
+		auto [it, inserted] = event_lockout_names.try_emplace(key, event_index);
+		if (!inserted && it->second != event_index && duplicate_event_lockout_names.insert(key).second) {
+			result.errors.push_back(fmt::format(
+				"Event lockout name [{}] is produced by multiple events; expedition timers are keyed by event name and would overwrite each other.",
+				event_name
+			));
+		}
+	};
+
+	size_t event_index = 0;
 	for (const auto& event_data : template_data.events) {
 		if (event_data.event_name.empty()) {
 			result.errors.push_back("Event is missing a name.");
@@ -1325,6 +1377,22 @@ ValidationResult ValidateTemplate(const Template& template_data)
 				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", NpcTypeLabel(event_npc.npc_type_id)));
 			}
 		}
+
+		std::unordered_set<std::string> runtime_names;
+		for (const auto& event_npc : event_data.npcs) {
+			if (event_npc.complete_on_death || event_npc.complete_on_spawn) {
+				runtime_names.insert(RuntimeEventName(event_data, event_npc));
+			}
+		}
+
+		if (runtime_names.empty()) {
+			runtime_names.insert(event_data.event_name);
+		}
+
+		for (const auto& runtime_name : runtime_names) {
+			remember_event_lockout_name(event_index, runtime_name);
+		}
+		++event_index;
 	}
 
 	for (const auto& event_data : template_data.events) {
@@ -1782,7 +1850,7 @@ void MaybeShowGmTargetMenu(Client& client, NPC& npc)
 				SendManageRow(client, {
 					{fmt::format("#expedition event loot {}", loot_protected ? "off" : "on"), loot_protected ? "Loot Protection: Off" : "Loot Protection: On"},
 					{"#expedition event lockout", "Set Lockout..."},
-					{"#expedition event npc remove confirm", "Remove from Expedition"}
+					{"#expedition event npc remove confirm", EventNpcRemovalDeletesEvent(event_npc) ? "Remove Boss/Event" : "Remove from Expedition"}
 				});
 				SendManageRow(client, {
 					{fmt::format("#expedition event completeondeath {}", event_npc.complete_on_death ? "off" : "on"), event_npc.complete_on_death ? "Death Trigger Off" : "Death Trigger On"},

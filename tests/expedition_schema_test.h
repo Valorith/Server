@@ -19,6 +19,8 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyMigrationUpdatesExistingTemplates);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyDefaultsAreOff);
+		TEST_ADD(ExpeditionSchemaTest::BossEventNpcRemovalDeletesEvent);
+		TEST_ADD(ExpeditionSchemaTest::LockoutNamespaceUsesDynamicZoneName);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 	}
@@ -96,6 +98,49 @@ private:
 		TEST_ASSERT(filter.unrestricted_spawn2_ids.empty());
 		TEST_ASSERT(filter.AllowsSpawn2(1));
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(1) == nullptr);
+	}
+
+	void BossEventNpcRemovalDeletesEvent()
+	{
+		ExpeditionDB::EventNpc boss_npc;
+		boss_npc.role = "boss";
+		TEST_ASSERT(ExpeditionDB::EventNpcRemovalDeletesEvent(boss_npc));
+
+		ExpeditionDB::EventNpc mixed_case_boss_npc;
+		mixed_case_boss_npc.role = "Boss";
+		TEST_ASSERT(ExpeditionDB::EventNpcRemovalDeletesEvent(mixed_case_boss_npc));
+
+		ExpeditionDB::EventNpc add_npc;
+		add_npc.role = "add";
+		TEST_ASSERT(!ExpeditionDB::EventNpcRemovalDeletesEvent(add_npc));
+
+		ExpeditionDB::EventNpc chest_npc;
+		chest_npc.role = "chest";
+		TEST_ASSERT(!ExpeditionDB::EventNpcRemovalDeletesEvent(chest_npc));
+	}
+
+	void LockoutNamespaceUsesDynamicZoneName()
+	{
+		ExpeditionDB::Template first_template;
+		first_template.name = "Catalog A";
+		first_template.dz_template.name = "Shared Expedition";
+		first_template.dz_template.zone_id = 1;
+		first_template.dz_template.zone_version = 0;
+
+		ExpeditionDB::Template second_template;
+		second_template.name = "Catalog B";
+		second_template.dz_template.name = "shared expedition";
+		second_template.dz_template.zone_id = 2;
+		second_template.dz_template.zone_version = 0;
+
+		ExpeditionDB::Template unique_template;
+		unique_template.name = "Catalog C";
+		unique_template.dz_template.name = "Different Expedition";
+		unique_template.dz_template.zone_id = first_template.dz_template.zone_id;
+		unique_template.dz_template.zone_version = first_template.dz_template.zone_version;
+
+		TEST_ASSERT(ExpeditionDB::SharesExpeditionLockoutNamespace(first_template, second_template));
+		TEST_ASSERT(!ExpeditionDB::SharesExpeditionLockoutNamespace(first_template, unique_template));
 	}
 
 	void BossOnlyFilterKeepsRequestersUnrestricted()

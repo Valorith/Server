@@ -1449,8 +1449,10 @@ void DynamicZone::AddCharacterLockout(
 	if (char_id)
 	{
 		auto lockout = DzLockout::Create(expedition, event, seconds, uuid);
-		CharacterExpeditionLockoutsRepository::InsertLockouts(database, char_id, { lockout });
-		SendWorldCharacterLockout(char_id, lockout, false);
+		if (CharacterExpeditionLockoutsRepository::InsertLockouts(database, char_id, { lockout }))
+		{
+			SendWorldCharacterLockout(char_id, lockout, false);
+		}
 	}
 }
 
@@ -1533,15 +1535,19 @@ std::vector<DzLockout> DynamicZone::GetCharacterLockouts(uint32_t char_id)
 void DynamicZone::AddClientsLockout(const DzLockout& lockout)
 {
 	std::vector<uint32_t> char_ids;
+	std::vector<Client*> clients;
 	for (const auto& it : entity_list.GetClientList())
 	{
 		char_ids.push_back(it.second->CharacterID());
-		it.second->AddDzLockout(lockout);
+		clients.push_back(it.second);
 	}
 
-	if (!char_ids.empty())
+	if (!char_ids.empty() && CharacterExpeditionLockoutsRepository::InsertLockout(database, char_ids, lockout))
 	{
-		CharacterExpeditionLockoutsRepository::InsertLockout(database, char_ids, lockout);
+		for (Client* client : clients)
+		{
+			client->AddDzLockout(lockout);
+		}
 	}
 }
 
@@ -1550,6 +1556,7 @@ void DynamicZone::HandleLockoutUpdate(const DzLockout& lockout, bool remove, boo
 	DynamicZoneBase::HandleLockoutUpdate(lockout, remove, members_only);
 
 	std::vector<uint32_t> char_ids;
+	std::vector<Client*> non_member_clients;
 	for (const auto& it : entity_list.GetClientList())
 	{
 		Client* client = it.second;
@@ -1569,13 +1576,16 @@ void DynamicZone::HandleLockoutUpdate(const DzLockout& lockout, bool remove, boo
 			// all clients inside the dz instance receive added lockouts to avoid exploits
 			// where members quit the expedition but haven't been kicked from zone yet
 			char_ids.push_back(client->CharacterID());
-			client->AddDzLockout(lockout);
+			non_member_clients.push_back(client);
 		}
 	}
 
-	if (!char_ids.empty())
+	if (!char_ids.empty() && CharacterExpeditionLockoutsRepository::InsertLockout(database, char_ids, lockout))
 	{
-		CharacterExpeditionLockoutsRepository::InsertLockout(database, char_ids, lockout);
+		for (Client* client : non_member_clients)
+		{
+			client->AddDzLockout(lockout);
+		}
 	}
 }
 
@@ -1584,6 +1594,7 @@ void DynamicZone::HandleLockoutDuration(const DzLockout& lockout, int seconds, b
 	DynamicZoneBase::HandleLockoutDuration(lockout, seconds, members_only, insert_db);
 
 	std::vector<uint32_t> char_ids;
+	std::vector<Client*> non_member_clients;
 	for (const auto& it : entity_list.GetClientList())
 	{
 		Client* client = it.second;
@@ -1594,14 +1605,20 @@ void DynamicZone::HandleLockoutDuration(const DzLockout& lockout, int seconds, b
 		else if (IsCurrentZoneDz()) // non-member client inside the dz
 		{
 			char_ids.push_back(client->CharacterID());
-			client->AddDzLockoutDuration(lockout, seconds, m_uuid);
+			non_member_clients.push_back(client);
 		}
 	}
 
 	if (!char_ids.empty()) // always update db for non-members in dz (call may be from another zone)
 	{
 		int secs = static_cast<int>(seconds * RuleR(Expedition, LockoutDurationMultiplier));
-		CharacterExpeditionLockoutsRepository::AddLockoutDuration(database, char_ids, lockout, secs);
+		if (CharacterExpeditionLockoutsRepository::AddLockoutDuration(database, char_ids, lockout, secs))
+		{
+			for (Client* client : non_member_clients)
+			{
+				client->AddDzLockoutDuration(lockout, seconds, m_uuid);
+			}
+		}
 	}
 }
 

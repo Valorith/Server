@@ -3424,11 +3424,21 @@ void HandleEvent(Client* c, const Seperator* sep)
 						c->Message(Chat::Yellow, "Target is not mapped to the selected event.");
 						return;
 					}
+					const bool removes_event = ExpeditionDB::EventNpcRemovalDeletesEvent(*mapped_npc);
 					if (!ExpeditionDB::DeleteEventNpc(content_db, selected_event_id, mapped_npc->npc_type_id, mapped_npc->spawn2_id)) {
 						c->Message(Chat::Red, fmt::format("Failed to remove target NPC mapping for event [{}].", selected_event_name).c_str());
 						return;
 					}
-					c->Message(Chat::Green, fmt::format("Saved: removed target NPC mapping from event [{}].", selected_event_name).c_str());
+					if (removes_event) {
+						if (const auto* refreshed_template = SelectedTemplate(c)) {
+							const uint32_t next_event_id = refreshed_template->events.empty() ? 0 : refreshed_template->events.front().id;
+							ExpeditionDB::SetSelectedEvent(c->CharacterID(), next_event_id);
+						}
+						c->Message(Chat::Green, fmt::format("Saved: removed boss [{}] and event [{}].", NpcLabel(*npc), selected_event_name).c_str());
+					}
+					else {
+						c->Message(Chat::Green, fmt::format("Saved: removed target NPC mapping from event [{}].", selected_event_name).c_str());
+					}
 					RefreshBuilderView(c);
 					return;
 				}

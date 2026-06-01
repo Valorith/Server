@@ -123,7 +123,7 @@ public:
 			fmt::join(names, "','"), Strings::Escape(expedition), Strings::Escape(event)));
 	}
 
-	static void InsertLockouts(Database& db, uint32_t char_id, const std::vector<DzLockout>& lockouts)
+	static bool InsertLockouts(Database& db, uint32_t char_id, const std::vector<DzLockout>& lockouts)
 	{
 		std::string insert_values;
 		for (const auto& lockout : lockouts)
@@ -153,11 +153,18 @@ public:
 					duration = VALUES(duration);
 			), insert_values);
 
-			db.QueryDatabase(query);
+			auto results = db.QueryDatabase(query);
+			if (!results.Success())
+			{
+				LogWarning("Failed to persist character expedition lockout(s): {}", results.ErrorMessage());
+				return false;
+			}
 		}
+
+		return true;
 	}
 
-	static void InsertLockout(Database& db, const std::vector<uint32_t>& char_ids, const DzLockout& lockout)
+	static bool InsertLockout(Database& db, const std::vector<uint32_t>& char_ids, const DzLockout& lockout)
 	{
 		std::string insert_values;
 		for (const auto& char_id : char_ids)
@@ -187,12 +194,19 @@ public:
 					duration = VALUES(duration);
 			), insert_values);
 
-			db.QueryDatabase(query);
+			auto results = db.QueryDatabase(query);
+			if (!results.Success())
+			{
+				LogWarning("Failed to persist character expedition lockout(s): {}", results.ErrorMessage());
+				return false;
+			}
 		}
+
+		return true;
 	}
 
 	// inserts a new lockout or updates existing lockout with seconds added to current time
-	static void AddLockoutDuration(Database& db, const std::vector<uint32_t>& char_ids, const DzLockout& lockout, int seconds)
+	static bool AddLockoutDuration(Database& db, const std::vector<uint32_t>& char_ids, const DzLockout& lockout, int seconds)
 	{
 		std::string insert_values;
 		for (const auto& char_id : char_ids)
@@ -222,8 +236,15 @@ public:
 					duration = GREATEST(0, CAST(duration AS SIGNED) + {1});
 			), insert_values, seconds);
 
-			db.QueryDatabase(query);
+			auto results = db.QueryDatabase(query);
+			if (!results.Success())
+			{
+				LogWarning("Failed to adjust character expedition lockout duration(s): {}", results.ErrorMessage());
+				return false;
+			}
 		}
+
+		return true;
 	}
 
 };

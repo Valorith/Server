@@ -715,7 +715,7 @@ std::vector<uint32_t> DynamicZoneBase::GetMemberIds()
 
 bool DynamicZoneBase::HasLockout(const std::string& event)
 {
-	return std::ranges::any_of(m_lockouts, [&](const auto& l) { return l.IsEvent(event); });
+	return std::ranges::any_of(m_lockouts, [&](const auto& l) { return l.IsEvent(event) && !l.IsExpired(); });
 }
 
 bool DynamicZoneBase::HasReplayLockout()
