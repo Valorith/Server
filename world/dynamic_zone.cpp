@@ -83,21 +83,28 @@ void DynamicZone::CheckLeader()
 DynamicZoneStatus DynamicZone::Process()
 {
 	DynamicZoneStatus status = DynamicZoneStatus::Normal;
+	bool has_members = HasMembers();
+	bool is_expired = IsExpired();
 
 	// force expire if no members
-	if (!HasMembers() || IsExpired())
+	if (!has_members || is_expired)
 	{
 		status = DynamicZoneStatus::Expired;
 
 		auto dz_zoneserver = ZSList::Instance()->FindByInstanceID(GetInstanceID());
 		if (!dz_zoneserver || dz_zoneserver->NumPlayers() == 0) // no clients inside dz
 		{
-			status = DynamicZoneStatus::ExpiredEmpty;
-
-			if (!HasMembers() && !m_is_pending_early_shutdown && RuleB(DynamicZone, EmptyShutdownEnabled))
+			if (!has_members && !is_expired && RuleB(DynamicZone, EmptyShutdownEnabled))
 			{
-				SetSecondsRemaining(RuleI(DynamicZone, EmptyShutdownDelaySeconds));
-				m_is_pending_early_shutdown = true;
+				if (!m_is_pending_early_shutdown)
+				{
+					SetSecondsRemaining(RuleI(DynamicZone, EmptyShutdownDelaySeconds));
+					m_is_pending_early_shutdown = true;
+				}
+			}
+			else
+			{
+				status = DynamicZoneStatus::ExpiredEmpty;
 			}
 		}
 	}

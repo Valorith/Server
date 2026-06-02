@@ -1,6 +1,7 @@
 #include "zone/expedition_repository.h"
 
 #include "common/database.h"
+#include "common/eqemu_logsys.h"
 #include "common/strings.h"
 
 #include <fmt/format.h>
@@ -55,7 +56,7 @@ namespace {
 // LOAD OPERATIONS
 // ============================================================================
 
-std::vector<ExpeditionDB::Template> LoadAllTemplates(Database& db)
+std::optional<std::vector<ExpeditionDB::Template>> LoadAllTemplates(Database& db)
 {
 	std::vector<ExpeditionDB::Template> out;
 	auto results = db.QueryDatabase(
@@ -64,7 +65,8 @@ std::vector<ExpeditionDB::Template> LoadAllTemplates(Database& db)
 	);
 
 	if (!results.Success()) {
-		return out;
+		LogWarning("Failed to load expedition_templates: {}", results.ErrorMessage());
+		return std::nullopt;
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
@@ -87,7 +89,7 @@ std::vector<ExpeditionDB::Template> LoadAllTemplates(Database& db)
 	return out;
 }
 
-std::vector<ExpeditionDB::RequestNpc> LoadAllRequestNpcs(Database& db)
+std::optional<std::vector<ExpeditionDB::RequestNpc>> LoadAllRequestNpcs(Database& db)
 {
 	std::vector<ExpeditionDB::RequestNpc> out;
 	auto results = db.QueryDatabase(
@@ -96,7 +98,8 @@ std::vector<ExpeditionDB::RequestNpc> LoadAllRequestNpcs(Database& db)
 	);
 
 	if (!results.Success()) {
-		return out;
+		LogWarning("Failed to load expedition_template_request_npcs: {}", results.ErrorMessage());
+		return std::nullopt;
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
@@ -115,7 +118,7 @@ std::vector<ExpeditionDB::RequestNpc> LoadAllRequestNpcs(Database& db)
 	return out;
 }
 
-std::vector<ExpeditionDB::Event> LoadAllEvents(Database& db)
+std::optional<std::vector<ExpeditionDB::Event>> LoadAllEvents(Database& db)
 {
 	std::vector<ExpeditionDB::Event> out;
 	auto results = db.QueryDatabase(
@@ -125,7 +128,8 @@ std::vector<ExpeditionDB::Event> LoadAllEvents(Database& db)
 	);
 
 	if (!results.Success()) {
-		return out;
+		LogWarning("Failed to load expedition_template_events: {}", results.ErrorMessage());
+		return std::nullopt;
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
@@ -145,7 +149,7 @@ std::vector<ExpeditionDB::Event> LoadAllEvents(Database& db)
 	return out;
 }
 
-std::vector<ExpeditionDB::EventNpc> LoadAllEventNpcs(Database& db)
+std::optional<std::vector<ExpeditionDB::EventNpc>> LoadAllEventNpcs(Database& db)
 {
 	std::vector<ExpeditionDB::EventNpc> out;
 	auto results = db.QueryDatabase(
@@ -154,7 +158,8 @@ std::vector<ExpeditionDB::EventNpc> LoadAllEventNpcs(Database& db)
 	);
 
 	if (!results.Success()) {
-		return out;
+		LogWarning("Failed to load expedition_template_event_npcs: {}", results.ErrorMessage());
+		return std::nullopt;
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
@@ -173,7 +178,7 @@ std::vector<ExpeditionDB::EventNpc> LoadAllEventNpcs(Database& db)
 	return out;
 }
 
-std::vector<ExpeditionDB::Action> LoadAllActions(Database& db)
+std::optional<std::vector<ExpeditionDB::Action>> LoadAllActions(Database& db)
 {
 	std::vector<ExpeditionDB::Action> out;
 	auto results = db.QueryDatabase(
@@ -182,7 +187,8 @@ std::vector<ExpeditionDB::Action> LoadAllActions(Database& db)
 	);
 
 	if (!results.Success()) {
-		return out;
+		LogWarning("Failed to load expedition_template_actions: {}", results.ErrorMessage());
+		return std::nullopt;
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {

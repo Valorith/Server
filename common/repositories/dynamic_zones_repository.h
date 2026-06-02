@@ -392,6 +392,13 @@ public:
 		std::vector<CharacterDz> entries;
 		entries.reserve(names.size());
 
+		std::vector<std::string> escaped_names;
+		escaped_names.reserve(names.size());
+		for (const auto& name : names)
+		{
+			escaped_names.emplace_back(Strings::Escape(name));
+		}
+
 		auto results = db.QueryDatabase(fmt::format(SQL(
 			SELECT
 				character_data.id,
@@ -408,7 +415,7 @@ public:
 			ORDER BY FIELD(character_data.name, '{1}')
 		),
 			type,
-			fmt::join(names, "','")
+			fmt::join(escaped_names, "','")
 		));
 
 		if (results.Success())

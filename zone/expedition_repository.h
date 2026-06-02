@@ -3,6 +3,7 @@
 #include "zone/expedition_db.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,11 +18,11 @@ namespace ExpeditionRepository {
 // responsible for any normalization (e.g. phrase / request_mode) after load.
 // ============================================================================
 
-std::vector<ExpeditionDB::Template>   LoadAllTemplates(Database& db);
-std::vector<ExpeditionDB::RequestNpc> LoadAllRequestNpcs(Database& db);
-std::vector<ExpeditionDB::Event>      LoadAllEvents(Database& db);
-std::vector<ExpeditionDB::EventNpc>   LoadAllEventNpcs(Database& db);
-std::vector<ExpeditionDB::Action>     LoadAllActions(Database& db);
+std::optional<std::vector<ExpeditionDB::Template>>   LoadAllTemplates(Database& db);
+std::optional<std::vector<ExpeditionDB::RequestNpc>> LoadAllRequestNpcs(Database& db);
+std::optional<std::vector<ExpeditionDB::Event>>      LoadAllEvents(Database& db);
+std::optional<std::vector<ExpeditionDB::EventNpc>>   LoadAllEventNpcs(Database& db);
+std::optional<std::vector<ExpeditionDB::Action>>     LoadAllActions(Database& db);
 
 // ============================================================================
 // expedition_templates

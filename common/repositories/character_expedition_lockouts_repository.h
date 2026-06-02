@@ -118,9 +118,16 @@ public:
 			return {};
 		}
 
+		std::vector<std::string> escaped_names;
+		escaped_names.reserve(names.size());
+		for (const auto& name : names)
+		{
+			escaped_names.emplace_back(Strings::Escape(name));
+		}
+
 		return GetWhere(db, fmt::format(
 			"character_id IN (select id from character_data where name IN ('{}')) AND expire_time > NOW() AND expedition_name = '{}' AND event_name = '{}' LIMIT 1",
-			fmt::join(names, "','"), Strings::Escape(expedition), Strings::Escape(event)));
+			fmt::join(escaped_names, "','"), Strings::Escape(expedition), Strings::Escape(event)));
 	}
 
 	static bool InsertLockouts(Database& db, uint32_t char_id, const std::vector<DzLockout>& lockouts)
