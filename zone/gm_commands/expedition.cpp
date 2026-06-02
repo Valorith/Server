@@ -489,16 +489,24 @@ namespace {
 	void ShowRenameHelp(Client* c)
 	{
 		SendSectionHeader(c, "Rename Commands");
-		c->Message(Chat::White, "#expedition rename \"New Name\" - Rename the selected expedition.");
+		c->Message(Chat::White, "#expedition rename New Name - Rename the actively edited expedition, or the selected expedition if not editing.");
 		c->Message(Chat::White, "#expedition rename <id|name> \"New Name\" - Rename a specific expedition.");
 		c->Message(Chat::White, "#expedition set name \"New Name\" - Alias for renaming the selected expedition.");
 
+		const auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
 		if (const auto* template_data = SelectedTemplate(c)) {
-			c->Message(Chat::Yellow, fmt::format("Selected expedition: [{}] id [{}].", template_data->name, template_data->id).c_str());
+			c->Message(
+				Chat::Yellow,
+				fmt::format("{} expedition: [{}] id [{}].",
+					builder_state.edit_mode ? "Actively editing" : "Selected",
+					template_data->name,
+					template_data->id
+				).c_str()
+			);
 		}
 
 		SendActionGroup(c, "Rename Examples", {
-			{"#expedition rename \"New Expedition Name\"", "Rename Selected Expedition"},
+			{"#expedition rename New Expedition Name", "Rename Active Expedition"},
 			{"#expedition set name \"New Expedition Name\"", "Rename Selected With Set"}
 		});
 	}
@@ -1699,7 +1707,7 @@ void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
 		});
 		// Rename uses a non-silent saylink: clicking pre-fills the command in your input box to edit the name.
 		c->Message(Chat::White, fmt::format("  Rename:  {}",
-			Saylink::Create(fmt::format("#expedition rename {} \"New Name\"", template_data.id), false, "[ Rename ]")).c_str());
+			Saylink::Create("#expedition rename ", false, "[ Rename ]")).c_str());
 		SendCardBottom(c);
 }
 
@@ -2989,9 +2997,13 @@ void HandleSet(Client* c, const Seperator* sep)
 				return;
 			}
 
-			const bool has_target = sep->arg[3][0] != '\0';
-			const auto* rename_template = has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c);
-			const std::string new_name = has_target ? CommandTail(sep, 3) : CommandTail(sep, 2);
+			const auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+			const bool rename_active_edit = builder_state.edit_mode && builder_state.selected_template_id != 0;
+			const bool has_target = !rename_active_edit && sep->arg[3][0] != '\0';
+			const auto* rename_template = rename_active_edit ?
+				SelectedTemplate(c) :
+				(has_target ? ResolveTemplate(c, sep->arg[2]) : SelectedTemplate(c));
+			const std::string new_name = rename_active_edit || !has_target ? CommandTail(sep, 2) : CommandTail(sep, 3);
 			if (!rename_template || new_name.empty()) {
 				c->Message(Chat::Red, "Usage: #expedition rename \"New Name\" OR #expedition rename <id|name> \"New Name\"");
 				if (!rename_template) {

@@ -23,6 +23,8 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::LockoutNamespaceUsesDynamicZoneName);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
+		TEST_ADD(ExpeditionSchemaTest::SharedRequesterMenuSortsExpeditions);
+		TEST_ADD(ExpeditionSchemaTest::RequesterLockoutReasonsAreStatusAware);
 	}
 
 private:
@@ -211,5 +213,57 @@ private:
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestPhrase) == "expedition");
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestMode) == "db_only");
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleBossEventName) == "Boss Defeated");
+	}
+
+	void SharedRequesterMenuSortsExpeditions()
+	{
+		ExpeditionDB::Template first;
+		first.id = 20;
+		first.name = "Zlandicar's Labyrinth";
+
+		ExpeditionDB::RequestNpc first_requester;
+		first_requester.id = 2;
+		first_requester.npc_type_id = 100;
+		first_requester.spawn2_id = 10;
+
+		ExpeditionDB::Template second;
+		second.id = 10;
+		second.name = "Aaryonar's Lair";
+
+		ExpeditionDB::RequestNpc second_requester;
+		second_requester.id = 1;
+		second_requester.npc_type_id = first_requester.npc_type_id;
+		second_requester.spawn2_id = first_requester.spawn2_id;
+
+		ExpeditionDB::Template fallback;
+		fallback.id = 30;
+		fallback.dz_template.name = "Cekenar's Hall";
+
+		ExpeditionDB::RequestNpc fallback_requester;
+		fallback_requester.id = 3;
+		fallback_requester.npc_type_id = first_requester.npc_type_id;
+		fallback_requester.spawn2_id = first_requester.spawn2_id;
+
+		ExpeditionDB::RequesterMatches matches = {
+			{ &first, &first_requester, 0 },
+			{ &fallback, &fallback_requester, 0 },
+			{ &second, &second_requester, 0 }
+		};
+
+		ExpeditionDB::SortRequesterMatches(matches);
+
+		TEST_ASSERT(matches.size() == 3);
+		TEST_ASSERT(matches[0].template_data == &second);
+		TEST_ASSERT(matches[1].template_data == &fallback);
+		TEST_ASSERT(matches[2].template_data == &first);
+		TEST_ASSERT(ExpeditionDB::RequesterMenuLabel(fallback) == "Cekenar's Hall");
+	}
+
+	void RequesterLockoutReasonsAreStatusAware()
+	{
+		TEST_ASSERT(ExpeditionDB::IsRequesterLockoutReason("replay_lockout"));
+		TEST_ASSERT(ExpeditionDB::IsRequesterLockoutReason("event_lockout_conflict"));
+		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("player_count"));
+		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("member_already_in_expedition"));
 	}
 };

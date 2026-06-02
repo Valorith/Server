@@ -4,6 +4,7 @@
 
 #include "common/zone_store.h"
 #include "zone/dynamic_zone.h"
+#include "zone/lua_client.h"
 
 #include "lua.hpp"
 #include "luabind/iterator_policy.hpp"
@@ -23,6 +24,16 @@ void Lua_Expedition::AddLockoutDuration(std::string event_name, int seconds) {
 void Lua_Expedition::AddLockoutDuration(std::string event_name, int seconds, bool members_only) {
 	Lua_Safe_Call_Void();
 	self->AddLockoutDuration(event_name, seconds, members_only);
+}
+
+void Lua_Expedition::AddPlayer(Lua_Client client, std::string add_name) {
+	Lua_Safe_Call_Void();
+	self->DzAddPlayer(client, add_name);
+}
+
+void Lua_Expedition::AddPlayer(Lua_Client client, std::string add_name, std::string swap_name) {
+	Lua_Safe_Call_Void();
+	self->DzAddPlayer(client, add_name, swap_name);
 }
 
 void Lua_Expedition::AddReplayLockout(uint32_t seconds) {
@@ -144,6 +155,16 @@ bool Lua_Expedition::IsLocked() {
 	return self->IsLocked();
 }
 
+void Lua_Expedition::MakeLeader(Lua_Client client, std::string leader_name) {
+	Lua_Safe_Call_Void();
+	self->DzMakeLeader(client, leader_name);
+}
+
+void Lua_Expedition::PlayerList(Lua_Client client) {
+	Lua_Safe_Call_Void();
+	self->DzPlayerList(client);
+}
+
 void Lua_Expedition::RemoveCompass() {
 	Lua_Safe_Call_Void();
 	self->SetCompass(0, 0, 0, 0, true);
@@ -152,6 +173,11 @@ void Lua_Expedition::RemoveCompass() {
 void Lua_Expedition::RemoveLockout(std::string event_name) {
 	Lua_Safe_Call_Void();
 	self->RemoveLockout(event_name);
+}
+
+void Lua_Expedition::RemovePlayer(Lua_Client client, std::string name) {
+	Lua_Safe_Call_Void();
+	self->DzRemovePlayer(client, name);
 }
 
 void Lua_Expedition::SetCompass(uint32_t zone_id, float x, float y, float z) {
@@ -268,6 +294,11 @@ void Lua_Expedition::SetZoneInLocation(float x, float y, float z, float heading)
 	self->SetZoneInLocation(x, y, z, heading, true);
 }
 
+void Lua_Expedition::SwapPlayer(Lua_Client client, std::string remove_name, std::string add_name) {
+	Lua_Safe_Call_Void();
+	self->DzSwapPlayer(client, remove_name, add_name);
+}
+
 void Lua_Expedition::UpdateLockoutDuration(std::string event_name, uint32_t duration) {
 	Lua_Safe_Call_Void();
 	self->UpdateLockoutDuration(event_name, duration);
@@ -286,6 +317,8 @@ luabind::scope lua_register_expedition() {
 	.def("AddLockout", (void(Lua_Expedition::*)(std::string, uint32_t))&Lua_Expedition::AddLockout)
 	.def("AddLockoutDuration", (void(Lua_Expedition::*)(std::string, int))&Lua_Expedition::AddLockoutDuration)
 	.def("AddLockoutDuration", (void(Lua_Expedition::*)(std::string, int, bool))&Lua_Expedition::AddLockoutDuration)
+	.def("AddPlayer", (void(Lua_Expedition::*)(Lua_Client, std::string))&Lua_Expedition::AddPlayer)
+	.def("AddPlayer", (void(Lua_Expedition::*)(Lua_Client, std::string, std::string))&Lua_Expedition::AddPlayer)
 	.def("AddReplayLockout", (void(Lua_Expedition::*)(uint32_t))&Lua_Expedition::AddReplayLockout)
 	.def("AddReplayLockoutDuration", (void(Lua_Expedition::*)(int))&Lua_Expedition::AddReplayLockoutDuration)
 	.def("AddReplayLockoutDuration", (void(Lua_Expedition::*)(int, bool))&Lua_Expedition::AddReplayLockoutDuration)
@@ -307,8 +340,11 @@ luabind::scope lua_register_expedition() {
 	.def("HasLockout", (bool(Lua_Expedition::*)(std::string))&Lua_Expedition::HasLockout)
 	.def("HasReplayLockout", (bool(Lua_Expedition::*)(void))&Lua_Expedition::HasReplayLockout)
 	.def("IsLocked", &Lua_Expedition::IsLocked)
+	.def("MakeLeader", (void(Lua_Expedition::*)(Lua_Client, std::string))&Lua_Expedition::MakeLeader)
+	.def("PlayerList", (void(Lua_Expedition::*)(Lua_Client))&Lua_Expedition::PlayerList)
 	.def("RemoveCompass", (void(Lua_Expedition::*)(void))&Lua_Expedition::RemoveCompass)
 	.def("RemoveLockout", (void(Lua_Expedition::*)(std::string))&Lua_Expedition::RemoveLockout)
+	.def("RemovePlayer", (void(Lua_Expedition::*)(Lua_Client, std::string))&Lua_Expedition::RemovePlayer)
 	.def("SetCompass", (void(Lua_Expedition::*)(uint32_t, float, float, float))&Lua_Expedition::SetCompass)
 	.def("SetCompass", (void(Lua_Expedition::*)(std::string, float, float, float))&Lua_Expedition::SetCompass)
 	.def("SetLocked", (void(Lua_Expedition::*)(bool))&Lua_Expedition::SetLocked)
@@ -323,6 +359,7 @@ luabind::scope lua_register_expedition() {
 	.def("SetSecondsRemaining", &Lua_Expedition::SetSecondsRemaining)
 	.def("SetSwitchID", &Lua_Expedition::SetSwitchID)
 	.def("SetZoneInLocation", (void(Lua_Expedition::*)(float, float, float, float))&Lua_Expedition::SetZoneInLocation)
+	.def("SwapPlayer", (void(Lua_Expedition::*)(Lua_Client, std::string, std::string))&Lua_Expedition::SwapPlayer)
 	.def("UpdateLockoutDuration", (void(Lua_Expedition::*)(std::string, uint32_t))&Lua_Expedition::UpdateLockoutDuration)
 	.def("UpdateLockoutDuration", (void(Lua_Expedition::*)(std::string, uint32_t, bool))&Lua_Expedition::UpdateLockoutDuration);
 }

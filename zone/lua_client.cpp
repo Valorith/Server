@@ -2108,6 +2108,16 @@ Lua_Expedition Lua_Client::CreateExpeditionFromExpeditionTemplate(std::string te
 	return self->CreateExpeditionFromExpeditionTemplate(template_name);
 }
 
+Lua_Expedition Lua_Client::AssignExpedition(uint32_t expedition_template_id) {
+	Lua_Safe_Call_Class(Lua_Expedition);
+	return self->CreateExpeditionFromExpeditionTemplate(expedition_template_id);
+}
+
+Lua_Expedition Lua_Client::AssignExpedition(std::string template_name) {
+	Lua_Safe_Call_Class(Lua_Expedition);
+	return self->CreateExpeditionFromExpeditionTemplate(template_name);
+}
+
 bool Lua_Client::CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id) {
 	Lua_Safe_Call_Bool();
 	return self->CanCreateExpeditionFromExpeditionTemplate(expedition_template_id);
@@ -2116,6 +2126,43 @@ bool Lua_Client::CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_t
 bool Lua_Client::CanCreateExpeditionFromExpeditionTemplate(std::string template_name) {
 	Lua_Safe_Call_Bool();
 	return self->CanCreateExpeditionFromExpeditionTemplate(template_name);
+}
+
+static luabind::object Lua_Client_ExpeditionCheckResult(lua_State* L, const ExpeditionCheckResult& check)
+{
+	auto result = luabind::newtable(L);
+	result["success"] = check.success;
+	result["member_count"] = check.member_count;
+	result["min_players"] = check.min_players;
+	result["max_players"] = check.max_players;
+	result["is_raid"] = check.is_raid;
+	result["reason"] = check.reason;
+	return result;
+}
+
+luabind::object Lua_Client::CheckExpedition(lua_State* L, uint32_t expedition_template_id) {
+	if (!d_) {
+		ExpeditionCheckResult check;
+		check.reason = "invalid_client";
+		return Lua_Client_ExpeditionCheckResult(L, check);
+	}
+
+	auto self = reinterpret_cast<NativeType*>(d_);
+	return Lua_Client_ExpeditionCheckResult(
+		L,
+		ExpeditionDB::CheckExpeditionFromTemplate(*self, std::to_string(expedition_template_id))
+	);
+}
+
+luabind::object Lua_Client::CheckExpedition(lua_State* L, std::string template_name) {
+	if (!d_) {
+		ExpeditionCheckResult check;
+		check.reason = "invalid_client";
+		return Lua_Client_ExpeditionCheckResult(L, check);
+	}
+
+	auto self = reinterpret_cast<NativeType*>(d_);
+	return Lua_Client_ExpeditionCheckResult(L, ExpeditionDB::CheckExpeditionFromTemplate(*self, template_name));
 }
 
 luabind::object Lua_Client::GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id) {
@@ -3963,8 +4010,12 @@ luabind::scope lua_register_client() {
 	.def("CreateExpeditionFromTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromTemplate)
 	.def("CreateExpeditionFromExpeditionTemplate", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::CreateExpeditionFromExpeditionTemplate)
 	.def("CreateExpeditionFromExpeditionTemplate", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::CreateExpeditionFromExpeditionTemplate)
+	.def("AssignExpedition", (Lua_Expedition(Lua_Client::*)(uint32_t))&Lua_Client::AssignExpedition)
+	.def("AssignExpedition", (Lua_Expedition(Lua_Client::*)(std::string))&Lua_Client::AssignExpedition)
 	.def("CanCreateExpeditionFromExpeditionTemplate", (bool(Lua_Client::*)(uint32_t))&Lua_Client::CanCreateExpeditionFromExpeditionTemplate)
 	.def("CanCreateExpeditionFromExpeditionTemplate", (bool(Lua_Client::*)(std::string))&Lua_Client::CanCreateExpeditionFromExpeditionTemplate)
+	.def("CheckExpedition", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::CheckExpedition)
+	.def("CheckExpedition", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::CheckExpedition)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::GetExpeditionTemplate)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::GetExpeditionTemplate)
 	.def("CreateTaskDynamicZone", &Lua_Client::CreateTaskDynamicZone)

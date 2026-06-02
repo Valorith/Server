@@ -57,6 +57,8 @@ public:
 	void            AddLockout(std::string event_name, uint32_t seconds);
 	void            AddLockoutDuration(std::string event_name, int seconds);
 	void            AddLockoutDuration(std::string event_name, int seconds, bool members_only);
+	void            AddPlayer(Lua_Client client, std::string add_name);
+	void            AddPlayer(Lua_Client client, std::string add_name, std::string swap_name);
 	void            AddReplayLockout(uint32_t seconds);
 	void            AddReplayLockoutDuration(int seconds);
 	void            AddReplayLockoutDuration(int seconds, bool members_only);
@@ -77,8 +79,11 @@ public:
 	bool            HasLockout(std::string event_name);
 	bool            HasReplayLockout();
 	bool            IsLocked();
+	void            MakeLeader(Lua_Client client, std::string leader_name);
+	void            PlayerList(Lua_Client client);
 	void            RemoveCompass();
 	void            RemoveLockout(std::string event_name);
+	void            RemovePlayer(Lua_Client client, std::string name);
 	void            SetCompass(uint32_t zone_id, float x, float y, float z);
 	void            SetCompass(std::string zone_name, float x, float y, float z);
 	void            SetLocked(bool lock_expedition);
@@ -93,6 +98,7 @@ public:
 	void            SetSecondsRemaining(uint32_t seconds_remaining);
 	void            SetSwitchID(int dz_switch_id);
 	void            SetZoneInLocation(float x, float y, float z, float heading);
+	void            SwapPlayer(Lua_Client client, std::string remove_name, std::string add_name);
 	void            UpdateLockoutDuration(std::string event_name, uint32_t duration);
 	void            UpdateLockoutDuration(std::string event_name, uint32_t duration, bool members_only);
 };

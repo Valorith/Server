@@ -3,6 +3,7 @@
 #include "common/repositories/dynamic_zone_templates_repository.h"
 #include "common/strings.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -14,6 +15,7 @@ class Client;
 class Database;
 class DynamicZone;
 class NPC;
+struct ExpeditionCheckResult;
 
 namespace ExpeditionDB {
 
@@ -99,6 +101,63 @@ struct Template {
 	std::vector<RequestNpc> request_npcs;
 	std::vector<Event> events;
 };
+
+struct RequesterMatch {
+	const Template* template_data = nullptr;
+	const RequestNpc* request_npc = nullptr;
+	int specificity = 0;
+};
+
+using RequesterMatches = std::vector<RequesterMatch>;
+
+inline std::string RequesterMenuLabel(const Template& template_data)
+{
+	if (!template_data.name.empty()) {
+		return template_data.name;
+	}
+
+	if (!template_data.dz_template.name.empty()) {
+		return template_data.dz_template.name;
+	}
+
+	return "Template " + std::to_string(template_data.id);
+}
+
+inline void SortRequesterMatches(RequesterMatches& matches)
+{
+	std::ranges::sort(matches, [](const RequesterMatch& lhs, const RequesterMatch& rhs) {
+		if (!lhs.template_data || !lhs.request_npc) {
+			return false;
+		}
+
+		if (!rhs.template_data || !rhs.request_npc) {
+			return true;
+		}
+
+		const std::string lhs_label = Strings::ToLower(RequesterMenuLabel(*lhs.template_data));
+		const std::string rhs_label = Strings::ToLower(RequesterMenuLabel(*rhs.template_data));
+		if (lhs_label != rhs_label) {
+			return lhs_label < rhs_label;
+		}
+
+		const std::string lhs_dz_name = Strings::ToLower(lhs.template_data->dz_template.name);
+		const std::string rhs_dz_name = Strings::ToLower(rhs.template_data->dz_template.name);
+		if (lhs_dz_name != rhs_dz_name) {
+			return lhs_dz_name < rhs_dz_name;
+		}
+
+		if (lhs.template_data->id != rhs.template_data->id) {
+			return lhs.template_data->id < rhs.template_data->id;
+		}
+
+		return lhs.request_npc->id < rhs.request_npc->id;
+	});
+}
+
+inline bool IsRequesterLockoutReason(const std::string& reason)
+{
+	return reason == "replay_lockout" || reason == "event_lockout_conflict";
+}
 
 inline bool SharesExpeditionLockoutNamespace(const Template& lhs, const Template& rhs)
 {
@@ -231,6 +290,9 @@ DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& templa
 DynamicZone* CreateExpeditionFromTemplate(Client& client, const std::string& id_or_name);
 bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data);
 bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled);
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template& template_data);
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled);
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::string& id_or_name);
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
 bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
