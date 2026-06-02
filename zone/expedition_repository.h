@@ -14,7 +14,8 @@ namespace ExpeditionRepository {
 // ============================================================================
 // LOAD OPERATIONS (fetch from DB, parse rows, return typed vectors)
 //
-// Loaders return rows verbatim (no business-rule normalization). Callers are
+// Loaders return rows verbatim (no business-rule normalization), or std::nullopt
+// on query failure so callers can preserve existing cache state. Callers are
 // responsible for any normalization (e.g. phrase / request_mode) after load.
 // ============================================================================
 

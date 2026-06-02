@@ -6,6 +6,8 @@
 
 #include <fmt/format.h>
 
+#include <utility>
+
 namespace ExpeditionRepository {
 
 namespace {
@@ -86,7 +88,7 @@ std::optional<std::vector<ExpeditionDB::Template>> LoadAllTemplates(Database& db
 		out.push_back(std::move(e));
 	}
 
-	return out;
+	return std::move(out);
 }
 
 std::optional<std::vector<ExpeditionDB::RequestNpc>> LoadAllRequestNpcs(Database& db)
@@ -115,7 +117,7 @@ std::optional<std::vector<ExpeditionDB::RequestNpc>> LoadAllRequestNpcs(Database
 		out.push_back(std::move(e));
 	}
 
-	return out;
+	return std::move(out);
 }
 
 std::optional<std::vector<ExpeditionDB::Event>> LoadAllEvents(Database& db)
@@ -146,7 +148,7 @@ std::optional<std::vector<ExpeditionDB::Event>> LoadAllEvents(Database& db)
 		out.push_back(std::move(e));
 	}
 
-	return out;
+	return std::move(out);
 }
 
 std::optional<std::vector<ExpeditionDB::EventNpc>> LoadAllEventNpcs(Database& db)
@@ -175,7 +177,7 @@ std::optional<std::vector<ExpeditionDB::EventNpc>> LoadAllEventNpcs(Database& db
 		out.push_back(std::move(e));
 	}
 
-	return out;
+	return std::move(out);
 }
 
 std::optional<std::vector<ExpeditionDB::Action>> LoadAllActions(Database& db)
@@ -201,7 +203,7 @@ std::optional<std::vector<ExpeditionDB::Action>> LoadAllActions(Database& db)
 		out.push_back(std::move(e));
 	}
 
-	return out;
+	return std::move(out);
 }
 
 // ============================================================================
