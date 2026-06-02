@@ -10678,12 +10678,15 @@ void Client::SetDynamicZoneMemberStatus(DynamicZoneMemberStatus status)
 	// inside a dz, only that dz has the "In Dynamic Zone" status set
 	for (auto& dz : GetDynamicZones())
 	{
+		auto dz_status = status;
+
 		// the rule to disable this status is handled internally by the dz
-		if (status == DynamicZoneMemberStatus::Online && dz->IsCurrentZoneDz())
+		if (dz_status == DynamicZoneMemberStatus::Online && dz->IsCurrentZoneDz())
 		{
-			status = DynamicZoneMemberStatus::InDynamicZone;
+			dz_status = DynamicZoneMemberStatus::InDynamicZone;
 		}
-		dz->SetMemberStatus(CharacterID(), status);
+
+		dz->SetMemberStatus(CharacterID(), dz_status);
 	}
 }
 

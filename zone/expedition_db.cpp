@@ -1113,8 +1113,33 @@ bool ClearActions(Database& db, uint32_t event_id)
 
 void Reload(Database& db)
 {
+	auto template_rows = ExpeditionRepository::LoadAllTemplates(db);
+	if (!template_rows) {
+		return;
+	}
+
+	auto request_npc_rows = ExpeditionRepository::LoadAllRequestNpcs(db);
+	if (!request_npc_rows) {
+		return;
+	}
+
+	auto event_rows = ExpeditionRepository::LoadAllEvents(db);
+	if (!event_rows) {
+		return;
+	}
+
+	auto event_npc_rows = ExpeditionRepository::LoadAllEventNpcs(db);
+	if (!event_npc_rows) {
+		return;
+	}
+
+	auto action_rows = ExpeditionRepository::LoadAllActions(db);
+	if (!action_rows) {
+		return;
+	}
+
 	std::unordered_map<uint32_t, Template> templates;
-	for (auto& template_data : ExpeditionRepository::LoadAllTemplates(db)) {
+	for (auto& template_data : *template_rows) {
 		template_data.request_phrase = NormalizePhrase(template_data.request_phrase);
 		template_data.request_mode = IsKnownRequestMode(template_data.request_mode) ?
 			NormalizeRequestMode(template_data.request_mode) : template_data.request_mode;
@@ -1123,7 +1148,7 @@ void Reload(Database& db)
 		templates[id] = std::move(template_data);
 	}
 
-	for (auto& request_npc : ExpeditionRepository::LoadAllRequestNpcs(db)) {
+	for (auto& request_npc : *request_npc_rows) {
 		request_npc.phrase = NormalizePhrase(request_npc.phrase);
 		auto it = templates.find(request_npc.expedition_template_id);
 		if (it != templates.end()) {
@@ -1131,14 +1156,14 @@ void Reload(Database& db)
 		}
 	}
 
-	for (auto event_data : ExpeditionRepository::LoadAllEvents(db)) {
+	for (auto event_data : *event_rows) {
 		auto it = templates.find(event_data.expedition_template_id);
 		if (it != templates.end()) {
 			it->second.events.push_back(event_data);
 		}
 	}
 
-	for (const auto& event_npc : ExpeditionRepository::LoadAllEventNpcs(db)) {
+	for (const auto& event_npc : *event_npc_rows) {
 		for (auto& [id, template_data] : templates) {
 			auto event_it = std::ranges::find_if(template_data.events, [&](const Event& event_data) {
 				return event_data.id == event_npc.event_id;
@@ -1151,7 +1176,7 @@ void Reload(Database& db)
 		}
 	}
 
-	for (const auto& action : ExpeditionRepository::LoadAllActions(db)) {
+	for (const auto& action : *action_rows) {
 		for (auto& [id, template_data] : templates) {
 			auto event_it = std::ranges::find_if(template_data.events, [&](const Event& event_data) {
 				return event_data.id == action.event_id;

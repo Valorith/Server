@@ -93,7 +93,7 @@ void command_dz(Client *c, const Seperator *sep)
 		if (auto dz = DynamicZone::FindDynamicZoneByID(dz_id)) {
 			std::string name = FormatName(sep->arg[3]);
 			c->Message(Chat::White, fmt::format("Setting expedition [{}] leader to [{}]", dz_id, name).c_str());
-			dz->SendWorldMakeLeaderRequest(c->CharacterID(), name);
+			dz->SendWorldMakeLeaderRequest(dz->GetLeaderID(), name);
 		}
 		else {
 			c->Message(Chat::Red, fmt::format("Failed to find expedition [{}]", dz_id).c_str());
