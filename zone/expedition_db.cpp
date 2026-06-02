@@ -350,7 +350,24 @@ namespace {
 			return "member lookup failed";
 		}
 
+		if (check.reason == "template_disabled") {
+			return "expedition disabled";
+		}
+
+		if (check.reason == "template_not_found") {
+			return "expedition not found";
+		}
+
 		return "request unavailable";
+	}
+
+	std::string RequestStatusLabel(const ExpeditionCheckResult& check)
+	{
+		if (check.success) {
+			return "Available";
+		}
+
+		return IsRequesterLockoutReason(check.reason) ? "Locked" : "Unavailable";
 	}
 
 	bool TryCreateTemplateRequest(Client& client, const Template& template_data)
@@ -429,7 +446,7 @@ namespace {
 		return true;
 	}
 
-	void OfferRequestMenu(Client& client, NPC& npc, const std::vector<std::pair<const Template*, const RequestNpc*>>& matches)
+	void OfferRequestMenu(Client& client, const RequesterMatches& matches)
 	{
 		if (matches.empty()) {
 			return;
@@ -443,35 +460,50 @@ namespace {
 			std::string name;
 			std::string phrase;
 			std::string button;
+			std::string status;
 			std::string note;
 		};
 		std::vector<MenuEntry> entries;
 		entries.reserve(matches.size());
-		for (const auto& [template_data, request_npc] : matches) {
+		for (const auto& match : matches) {
+			const Template* template_data = match.template_data;
+			const RequestNpc* request_npc = match.request_npc;
 			if (!template_data || !request_npc) {
 				continue;
 			}
 
 			MenuEntry entry;
-			entry.name = template_data->name;
+			entry.name = RequesterMenuLabel(*template_data);
 			if (active_expedition) {
 				if (IsMatchingExpedition(*active_expedition, *template_data)) {
+					entry.status = "Current";
 					if (active_expedition->IsCurrentZoneDz()) {
 						entry.phrase = LeaveMenuPhrase(template_data->id);
 						entry.button = "Leave Instance";
+						entry.note = "inside now";
 					}
 					else {
 						entry.phrase = EnterMenuPhrase(template_data->id);
 						entry.button = "Enter Expedition";
+						entry.note = "ready to enter";
 					}
 				}
 				else {
-					entry.note = "You are already in another expedition.";
+					entry.status = "Unavailable";
+					entry.note = "already in another expedition";
 				}
 			}
 			else {
-				entry.phrase = RequestMenuPhrase(template_data->id);
-				entry.button = "Form Expedition";
+				DynamicZone dz = BuildDynamicZone(*template_data);
+				const auto check = CheckExpeditionRequest(client, dz, true);
+				entry.status = RequestStatusLabel(check);
+				if (check.success) {
+					entry.phrase = RequestMenuPhrase(template_data->id);
+					entry.button = "Form Expedition";
+				}
+				else {
+					entry.note = RequestFailureLabel(check);
+				}
 			}
 			entries.push_back(std::move(entry));
 		}
@@ -480,19 +512,26 @@ namespace {
 			return;
 		}
 
-		const std::string title = multi ? "   Expeditions Available Here" : fmt::format("   Expedition: {}", entries.front().name);
+		const std::string title = multi ? "   Expeditions Offered Here" : fmt::format("   Expedition: {}", entries.front().name);
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 		client.Message(Chat::NPCQuestSay, "%s", title.c_str());
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 		for (const auto& entry : entries) {
-			if (!entry.note.empty()) {
-				const std::string note = multi ? fmt::format("   {} - {}", entry.name, entry.note) : fmt::format("   {}", entry.note);
-				client.Message(Chat::Yellow, "%s", note.c_str());
+			const std::string status = entry.note.empty() ? entry.status : fmt::format("{} ({})", entry.status, entry.note);
+			if (!entry.phrase.empty()) {
+				const std::string action = Saylink::Silent(entry.phrase, fmt::format("[ {} ]", entry.button));
+				const std::string line = multi ?
+					fmt::format("   {} - {} {}", entry.name, status, action) :
+					fmt::format("   {} {}", status, action);
+				client.Message(Chat::NPCQuestSay, "%s", line.c_str());
 				continue;
 			}
-			const std::string label = multi ? fmt::format("{} ({})", entry.button, entry.name) : entry.button;
-			const std::string line = fmt::format("   {}", Saylink::Silent(entry.phrase, fmt::format("[ {} ]", label)));
-			client.Message(Chat::NPCQuestSay, "%s", line.c_str());
+
+			const std::string line = multi ?
+				fmt::format("   {} - {}", entry.name, status) :
+				fmt::format("   {}", status);
+			const uint16_t chat_type = entry.status == "Locked" ? Chat::Red : Chat::Yellow;
+			client.Message(chat_type, "%s", line.c_str());
 		}
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 	}
@@ -1498,17 +1537,41 @@ DynamicZone* CreateExpeditionFromTemplate(Client& client, const std::string& id_
 
 bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled)
 {
-	if (!allow_disabled && !template_data.enabled) {
-		return false;
-	}
-
-	DynamicZone dz = BuildDynamicZone(template_data);
-	return CheckExpeditionRequest(client, dz, true).success;
+	return CheckExpeditionFromTemplate(client, template_data, allow_disabled).success;
 }
 
 bool CanCreateExpeditionFromTemplate(Client& client, const Template& template_data)
 {
 	return CanCreateExpeditionFromTemplate(client, template_data, false);
+}
+
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled)
+{
+	ExpeditionCheckResult result;
+	if (!allow_disabled && !template_data.enabled) {
+		result.reason = "template_disabled";
+		return result;
+	}
+
+	DynamicZone dz = BuildDynamicZone(template_data);
+	return CheckExpeditionRequest(client, dz, true);
+}
+
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template& template_data)
+{
+	return CheckExpeditionFromTemplate(client, template_data, false);
+}
+
+ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::string& id_or_name)
+{
+	const Template* template_data = FindTemplate(id_or_name);
+	if (template_data) {
+		return CheckExpeditionFromTemplate(client, *template_data);
+	}
+
+	ExpeditionCheckResult result;
+	result.reason = "template_not_found";
+	return result;
 }
 
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
@@ -1522,8 +1585,7 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 	const uint32_t menu_template_id = RequestMenuTemplateId(phrase);
 	const uint32_t enter_template_id = EnterMenuTemplateId(phrase);
 	const uint32_t leave_template_id = LeaveMenuTemplateId(phrase);
-	std::vector<std::pair<const Template*, const RequestNpc*>> matches;
-	std::vector<int> match_scores;
+	RequesterMatches matches;
 
 	for (const auto& [template_id, template_data] : g_templates) {
 		if (!template_data.enabled) {
@@ -1541,25 +1603,26 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 				continue;
 			}
 
-			auto existing = std::ranges::find_if(matches, [&](const auto& match) {
-				return match.first && match.first->id == current_template_id;
+			auto existing = std::ranges::find_if(matches, [&](const RequesterMatch& match) {
+				return match.template_data && match.template_data->id == current_template_id;
 			});
 			if (existing == matches.end()) {
-				matches.push_back({ &template_data, &request_npc });
-				match_scores.push_back(specificity);
+				matches.push_back({ &template_data, &request_npc, specificity });
 			}
 			else {
-				const auto index = static_cast<size_t>(std::distance(matches.begin(), existing));
-				if (specificity > match_scores[index]) {
-					matches[index] = { &template_data, &request_npc };
-					match_scores[index] = specificity;
+				if (specificity > existing->specificity) {
+					*existing = { &template_data, &request_npc, specificity };
 				}
 			}
 		}
 	}
 
+	SortRequesterMatches(matches);
+
 	if (!is_hail) {
-		for (const auto& [template_data, request_npc] : matches) {
+		for (const auto& match : matches) {
+			const Template* template_data = match.template_data;
+			const RequestNpc* request_npc = match.request_npc;
 			if (!template_data || !request_npc) {
 				continue;
 			}
@@ -1588,17 +1651,35 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 				continue;
 			}
+		}
+
+		RequesterMatches phrase_matches;
+		for (const auto& match : matches) {
+			const Template* template_data = match.template_data;
+			const RequestNpc* request_npc = match.request_npc;
+			if (!template_data || !request_npc) {
+				continue;
+			}
 
 			const std::string request_phrase = RequestPhrase(*template_data, *request_npc);
 			if (phrase == request_phrase || phrase == fmt::format("start {}", request_phrase)) {
-				TryCreateTemplateRequest(client, *template_data);
-				return false;
+				phrase_matches.push_back(match);
 			}
+		}
+
+		if (phrase_matches.size() > 1) {
+			OfferRequestMenu(client, phrase_matches);
+			return false;
+		}
+
+		if (phrase_matches.size() == 1 && phrase_matches.front().template_data) {
+			TryCreateTemplateRequest(client, *phrase_matches.front().template_data);
+			return false;
 		}
 	}
 
 	if (is_hail) {
-		OfferRequestMenu(client, npc, matches);
+		OfferRequestMenu(client, matches);
 		return false;
 	}
 

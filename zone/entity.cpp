@@ -2331,7 +2331,7 @@ void EntityList::QueueClientsGuild(const EQApplicationPacket *app, uint32 guild_
 
 void EntityList::QueueClientsGuildBankItemUpdate(GuildBankItemUpdate_Struct *gbius, uint32 guild_id)
 {
-	auto outapp = std::make_unique<EQApplicationPacket>(OP_GuildBank, sizeof(GuildBankItemUpdate_Struct));
+	auto outapp = std::make_unique<EQApplicationPacket>(OP_GuildBank, static_cast<uint32>(sizeof(GuildBankItemUpdate_Struct)));
 	auto data = reinterpret_cast<GuildBankItemUpdate_Struct *>(outapp->pBuffer);
 
 	memcpy(data, gbius, sizeof(GuildBankItemUpdate_Struct));

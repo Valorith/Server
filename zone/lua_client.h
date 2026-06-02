@@ -625,8 +625,12 @@ public:
 	Lua_Expedition  CreateExpeditionFromTemplate(std::string template_name);
 	Lua_Expedition  CreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
 	Lua_Expedition  CreateExpeditionFromExpeditionTemplate(std::string template_name);
+	Lua_Expedition  AssignExpedition(uint32_t expedition_template_id);
+	Lua_Expedition  AssignExpedition(std::string template_name);
 	bool            CanCreateExpeditionFromExpeditionTemplate(uint32_t expedition_template_id);
 	bool            CanCreateExpeditionFromExpeditionTemplate(std::string template_name);
+	luabind::object CheckExpedition(lua_State* L, uint32_t expedition_template_id);
+	luabind::object CheckExpedition(lua_State* L, std::string template_name);
 	luabind::object GetExpeditionTemplate(lua_State* L, uint32_t expedition_template_id);
 	luabind::object GetExpeditionTemplate(lua_State* L, std::string template_name);
 	luabind::object CanCreateExpedition(lua_State* L, luabind::object expedition_info);

@@ -21,6 +21,16 @@ void Perl_Expedition_AddLockoutDuration(DynamicZone* self, std::string event_nam
 	self->AddLockoutDuration(event_name, seconds, members_only);
 }
 
+void Perl_Expedition_AddPlayer(DynamicZone* self, Client* client, std::string add_name)
+{
+	self->DzAddPlayer(client, add_name);
+}
+
+void Perl_Expedition_AddPlayer(DynamicZone* self, Client* client, std::string add_name, std::string swap_name)
+{
+	self->DzAddPlayer(client, add_name, swap_name);
+}
+
 void Perl_Expedition_AddReplayLockout(DynamicZone* self, uint32_t seconds)
 {
 	self->AddLockout(DzLockout::ReplayTimer, seconds);
@@ -132,6 +142,16 @@ bool Perl_Expedition_IsLocked(DynamicZone* self)
 	return self->IsLocked();
 }
 
+void Perl_Expedition_MakeLeader(DynamicZone* self, Client* client, std::string leader_name)
+{
+	self->DzMakeLeader(client, leader_name);
+}
+
+void Perl_Expedition_PlayerList(DynamicZone* self, Client* client)
+{
+	self->DzPlayerList(client);
+}
+
 void Perl_Expedition_RemoveCompass(DynamicZone* self)
 {
 	self->SetCompass(0, 0, 0, 0, true);
@@ -140,6 +160,11 @@ void Perl_Expedition_RemoveCompass(DynamicZone* self)
 void Perl_Expedition_RemoveLockout(DynamicZone* self, std::string event_name)
 {
 	self->RemoveLockout(event_name);
+}
+
+void Perl_Expedition_RemovePlayer(DynamicZone* self, Client* client, std::string name)
+{
+	self->DzRemovePlayer(client, name);
 }
 
 void Perl_Expedition_SetCompass(DynamicZone* self, perl::scalar zone, float x, float y, float z)
@@ -233,6 +258,11 @@ void Perl_Expedition_SetZoneInLocation(DynamicZone* self, float x, float y, floa
 	self->SetZoneInLocation(x, y, z, heading, true);
 }
 
+void Perl_Expedition_SwapPlayer(DynamicZone* self, Client* client, std::string remove_name, std::string add_name)
+{
+	self->DzSwapPlayer(client, remove_name, add_name);
+}
+
 void Perl_Expedition_UpdateLockoutDuration(DynamicZone* self, std::string event_name, uint32_t seconds)
 {
 	self->UpdateLockoutDuration(event_name, seconds);
@@ -251,6 +281,8 @@ void perl_register_expedition()
 	package.add("AddLockout", &Perl_Expedition_AddLockout);
 	package.add("AddLockoutDuration", (void(*)(DynamicZone*, std::string, int))&Perl_Expedition_AddLockoutDuration);
 	package.add("AddLockoutDuration", (void(*)(DynamicZone*, std::string, int, bool))&Perl_Expedition_AddLockoutDuration);
+	package.add("AddPlayer", (void(*)(DynamicZone*, Client*, std::string))&Perl_Expedition_AddPlayer);
+	package.add("AddPlayer", (void(*)(DynamicZone*, Client*, std::string, std::string))&Perl_Expedition_AddPlayer);
 	package.add("AddReplayLockout", &Perl_Expedition_AddReplayLockout);
 	package.add("AddReplayLockoutDuration", (void(*)(DynamicZone*, int))&Perl_Expedition_AddReplayLockoutDuration);
 	package.add("AddReplayLockoutDuration", (void(*)(DynamicZone*, int, bool))&Perl_Expedition_AddReplayLockoutDuration);
@@ -272,8 +304,11 @@ void perl_register_expedition()
 	package.add("HasLockout", &Perl_Expedition_HasLockout);
 	package.add("HasReplayLockout", &Perl_Expedition_HasReplayLockout);
 	package.add("IsLocked", &Perl_Expedition_IsLocked);
+	package.add("MakeLeader", &Perl_Expedition_MakeLeader);
+	package.add("PlayerList", &Perl_Expedition_PlayerList);
 	package.add("RemoveCompass", &Perl_Expedition_RemoveCompass);
 	package.add("RemoveLockout", &Perl_Expedition_RemoveLockout);
+	package.add("RemovePlayer", &Perl_Expedition_RemovePlayer);
 	package.add("SetCompass", &Perl_Expedition_SetCompass);
 	package.add("SetLocked", (void(*)(DynamicZone*, bool))&Perl_Expedition_SetLocked);
 	package.add("SetLocked", (void(*)(DynamicZone*, bool, int))&Perl_Expedition_SetLocked);
@@ -286,6 +321,7 @@ void perl_register_expedition()
 	package.add("SetSecondsRemaining", &Perl_Expedition_SetSecondsRemaining);
 	package.add("SetSwitchID", &Perl_Expedition_SetSwitchID);
 	package.add("SetZoneInLocation", &Perl_Expedition_SetZoneInLocation);
+	package.add("SwapPlayer", &Perl_Expedition_SwapPlayer);
 	package.add("UpdateLockoutDuration", (void(*)(DynamicZone*, std::string, uint32_t))&Perl_Expedition_UpdateLockoutDuration);
 	package.add("UpdateLockoutDuration", (void(*)(DynamicZone*, std::string, uint32_t, bool))&Perl_Expedition_UpdateLockoutDuration);
 }
