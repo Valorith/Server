@@ -1669,7 +1669,7 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 		if (phrase_matches.size() > 1) {
 			OfferRequestMenu(client, phrase_matches);
-			return true;
+			return false;
 		}
 
 		if (phrase_matches.size() == 1 && phrase_matches.front().template_data) {
