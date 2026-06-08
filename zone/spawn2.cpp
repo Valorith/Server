@@ -222,6 +222,17 @@ bool Spawn2::Process() {
 			return (true);
 		}
 
+		if (ExpeditionDB::IsBossSpawnBlockedByActiveLockout(npcid, spawn2_id)) {
+			LogSpawns(
+				"Spawn2 [{}]: NPC type [{}] blocked by active expedition boss lockout, retrying in [{}] ms",
+				spawn2_id,
+				npcid,
+				ExpeditionDB::kBossLockoutSpawnRetryMilliseconds
+			);
+			timer.Start(ExpeditionDB::kBossLockoutSpawnRetryMilliseconds);
+			return true;
+		}
+
 		//try to find our NPC type.
 		const NPCType *tmp = content_db.LoadNPCTypesData(npcid);
 		if (tmp == nullptr) {

@@ -324,8 +324,62 @@ namespace {
 			expedition.GetZoneVersion() == dz.GetZoneVersion();
 	}
 
+	DynamicZone* CurrentInstanceExpedition()
+	{
+		DynamicZone* expedition = zone ? zone->GetDynamicZone() : nullptr;
+		if (!expedition || !expedition->IsExpedition() || !expedition->IsCurrentZoneDz()) {
+			return nullptr;
+		}
+
+		return expedition;
+	}
+
+	DynamicZone* RequesterContextExpedition(Client& client)
+	{
+		if (DynamicZone* expedition = CurrentInstanceExpedition()) {
+			return expedition;
+		}
+
+		return client.GetExpedition();
+	}
+
+	bool IsCurrentBaseZoneForTemplate(const Template& template_data)
+	{
+		if (!zone || zone->GetInstanceID() != 0) {
+			return false;
+		}
+
+		return template_data.dz_template.zone_id > 0 &&
+			zone->GetZoneID() == static_cast<uint32_t>(template_data.dz_template.zone_id);
+	}
+
+	bool HasActiveBaseZoneBoss(const Template& template_data)
+	{
+		if (!IsCurrentBaseZoneForTemplate(template_data)) {
+			return false;
+		}
+
+		for (const auto& event_data : template_data.events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (!IsBaseZoneAvailabilityBoss(event_npc)) {
+					continue;
+				}
+
+				if (entity_list.IsActiveNPCSpawnedByNpcTypeID(event_npc.npc_type_id, event_npc.spawn2_id)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
 	std::string RequestFailureLabel(const ExpeditionCheckResult& check)
 	{
+		if (IsBaseZoneBossSpawnedReason(check.reason)) {
+			return kBaseZoneBossUnavailableFailure;
+		}
+
 		if (check.reason == "member_already_in_expedition") {
 			return "already in an expedition";
 		}
@@ -361,6 +415,15 @@ namespace {
 		return "request unavailable";
 	}
 
+	std::string RequestMenuNoteLabel(const ExpeditionCheckResult& check)
+	{
+		if (IsBaseZoneBossSpawnedReason(check.reason)) {
+			return kBaseZoneBossUnavailableNote;
+		}
+
+		return RequestFailureLabel(check);
+	}
+
 	std::string RequestStatusLabel(const ExpeditionCheckResult& check)
 	{
 		if (check.success) {
@@ -372,8 +435,7 @@ namespace {
 
 	bool TryCreateTemplateRequest(Client& client, const Template& template_data)
 	{
-		DynamicZone dz = BuildDynamicZone(template_data);
-		const auto check = CheckExpeditionRequest(client, dz, true);
+		const auto check = CheckExpeditionFromTemplate(client, template_data);
 		if (!check.success) {
 			if (!template_data.silent) {
 				client.Message(Chat::Red, fmt::format("Cannot create expedition: {}.", RequestFailureLabel(check)).c_str());
@@ -419,7 +481,7 @@ namespace {
 
 	bool TryLeaveTemplateRequest(Client& client, const Template& template_data)
 	{
-		DynamicZone* expedition = client.GetExpedition();
+		DynamicZone* expedition = RequesterContextExpedition(client);
 		if (!expedition) {
 			client.Message(Chat::Red, "No active expedition.");
 			return true;
@@ -453,7 +515,7 @@ namespace {
 		}
 
 		const bool multi = matches.size() > 1;
-		DynamicZone* active_expedition = client.GetExpedition();
+		DynamicZone* active_expedition = RequesterContextExpedition(client);
 
 		// Each menu entry is either a clickable action (phrase + button label) or an info note.
 		struct MenuEntry {
@@ -462,6 +524,7 @@ namespace {
 			std::string button;
 			std::string status;
 			std::string note;
+			bool status_block = false;
 		};
 		std::vector<MenuEntry> entries;
 		entries.reserve(matches.size());
@@ -494,15 +557,15 @@ namespace {
 				}
 			}
 			else {
-				DynamicZone dz = BuildDynamicZone(*template_data);
-				const auto check = CheckExpeditionRequest(client, dz, true);
+				const auto check = CheckExpeditionFromTemplate(client, *template_data);
 				entry.status = RequestStatusLabel(check);
 				if (check.success) {
 					entry.phrase = RequestMenuPhrase(template_data->id);
 					entry.button = "Form Expedition";
 				}
 				else {
-					entry.note = RequestFailureLabel(check);
+					entry.note = RequestMenuNoteLabel(check);
+					entry.status_block = IsRequesterStatusBlockReason(check.reason);
 				}
 			}
 			entries.push_back(std::move(entry));
@@ -517,7 +580,7 @@ namespace {
 		client.Message(Chat::NPCQuestSay, "%s", title.c_str());
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 		for (const auto& entry : entries) {
-			const std::string status = entry.note.empty() ? entry.status : fmt::format("{} ({})", entry.status, entry.note);
+			const std::string status = (entry.note.empty() || entry.status_block) ? entry.status : fmt::format("{} ({})", entry.status, entry.note);
 			if (!entry.phrase.empty()) {
 				const std::string action = Saylink::Silent(entry.phrase, fmt::format("[ {} ]", entry.button));
 				const std::string line = multi ?
@@ -532,6 +595,9 @@ namespace {
 				fmt::format("   {}", status);
 			const uint16_t chat_type = entry.status == "Locked" ? Chat::Red : Chat::Yellow;
 			client.Message(chat_type, "%s", line.c_str());
+			if (entry.status_block && !entry.note.empty()) {
+				client.Message(chat_type, "      %s", entry.note.c_str());
+			}
 		}
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 	}
@@ -686,6 +752,37 @@ namespace {
 
 		return true;
 	}
+}
+
+bool IsBossSpawnBlockedByActiveLockout(uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	if (!zone || npc_type_id == 0) {
+		return false;
+	}
+
+	DynamicZone* expedition = zone->GetDynamicZone();
+	if (!expedition || !expedition->IsExpedition() || !expedition->IsCurrentZoneDz()) {
+		return false;
+	}
+
+	const Template* template_data = FindTemplateByDz(*expedition);
+	if (!template_data) {
+		return false;
+	}
+
+	for (const auto& event_data : template_data->events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (!BossEventNpcMatchesSpawn(event_npc, npc_type_id, spawn2_id)) {
+				continue;
+			}
+
+			if (HasCurrentExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))) {
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 std::string ValidationResult::StatusName() const
@@ -1504,6 +1601,10 @@ DynamicZone* CreateExpeditionFromTemplate(Client& client, const Template& templa
 		return nullptr;
 	}
 
+	if (HasActiveBaseZoneBoss(template_data)) {
+		return nullptr;
+	}
+
 	DynamicZone dz = BuildDynamicZone(template_data);
 	ExpeditionCreationOptions options;
 	options.silent = template_data.silent;
@@ -1550,6 +1651,11 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template
 	ExpeditionCheckResult result;
 	if (!allow_disabled && !template_data.enabled) {
 		result.reason = "template_disabled";
+		return result;
+	}
+
+	if (HasActiveBaseZoneBoss(template_data)) {
+		result.reason = kBaseZoneBossSpawnedReason;
 		return result;
 	}
 

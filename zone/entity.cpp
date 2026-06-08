@@ -1212,6 +1212,30 @@ bool EntityList::IsMobSpawnedByNpcTypeID(uint32 get_id)
 	return false;
 }
 
+bool EntityList::IsActiveNPCSpawnedByNpcTypeID(uint32 npc_type_id, uint32 spawn_point_id)
+{
+	if (npc_type_id == 0 || npc_list.empty()) {
+		return false;
+	}
+
+	for (const auto& npc_entry : npc_list) {
+		NPC* npc = npc_entry.second;
+		if (!npc || npc->GetNPCTypeID() != npc_type_id) {
+			continue;
+		}
+
+		if (spawn_point_id != 0 && npc->GetSpawnPointID() != spawn_point_id) {
+			continue;
+		}
+
+		if (npc->GetID() != 0 && !npc->GetDepop()) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool EntityList::IsNPCSpawned(std::vector<uint32> npc_ids)
 {
 	return CountSpawnedNPCs(npc_ids) != 0;

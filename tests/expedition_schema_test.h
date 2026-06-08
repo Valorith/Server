@@ -25,6 +25,9 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 		TEST_ADD(ExpeditionSchemaTest::SharedRequesterMenuSortsExpeditions);
 		TEST_ADD(ExpeditionSchemaTest::RequesterLockoutReasonsAreStatusAware);
+		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossSpawnedReasonUsesFormattedUnavailableMessage);
+		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossAvailabilityIsTemplateSpecific);
+		TEST_ADD(ExpeditionSchemaTest::BossLockoutSpawnGateUsesConfiguredBossMappings);
 	}
 
 private:
@@ -265,5 +268,94 @@ private:
 		TEST_ASSERT(ExpeditionDB::IsRequesterLockoutReason("event_lockout_conflict"));
 		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("player_count"));
 		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("member_already_in_expedition"));
+	}
+
+	void BaseZoneBossSpawnedReasonUsesFormattedUnavailableMessage()
+	{
+		TEST_ASSERT(ExpeditionDB::IsBaseZoneBossSpawnedReason(ExpeditionDB::kBaseZoneBossSpawnedReason));
+		TEST_ASSERT(ExpeditionDB::IsRequesterStatusBlockReason(ExpeditionDB::kBaseZoneBossSpawnedReason));
+		TEST_ASSERT(!ExpeditionDB::IsRequesterStatusBlockReason("replay_lockout"));
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableStatus) == "Unavailable");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableNote) == "while associated bosses are spawned in the base zone.");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableMessage) == "Unavailable while associated bosses are spawned in the base zone.");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableFailure) == "unavailable while associated bosses are spawned in the base zone");
+	}
+
+	void BaseZoneBossAvailabilityIsTemplateSpecific()
+	{
+		ExpeditionDB::Template first_template;
+		ExpeditionDB::Event first_event;
+		ExpeditionDB::EventNpc first_boss;
+		first_boss.role = "boss";
+		first_boss.npc_type_id = 100;
+		first_boss.spawn2_id = 10;
+		first_event.npcs.push_back(first_boss);
+		first_template.events.push_back(first_event);
+
+		ExpeditionDB::Template second_template;
+		ExpeditionDB::Event second_event;
+		ExpeditionDB::EventNpc second_boss;
+		second_boss.role = "boss";
+		second_boss.npc_type_id = 200;
+		second_boss.spawn2_id = 20;
+		second_event.npcs.push_back(second_boss);
+		second_template.events.push_back(second_event);
+
+		ExpeditionDB::Template non_boss_template;
+		ExpeditionDB::Event non_boss_event;
+		ExpeditionDB::EventNpc add_npc;
+		add_npc.role = "add";
+		add_npc.npc_type_id = first_boss.npc_type_id;
+		add_npc.spawn2_id = first_boss.spawn2_id;
+		non_boss_event.npcs.push_back(add_npc);
+		non_boss_template.events.push_back(non_boss_event);
+
+		ExpeditionDB::Template wildcard_template;
+		ExpeditionDB::Event wildcard_event;
+		ExpeditionDB::EventNpc wildcard_boss;
+		wildcard_boss.role = "boss";
+		wildcard_boss.npc_type_id = 300;
+		wildcard_boss.spawn2_id = 0;
+		wildcard_event.npcs.push_back(wildcard_boss);
+		wildcard_template.events.push_back(wildcard_event);
+
+		TEST_ASSERT(ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(first_template, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(first_template, 100, 11));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(second_template, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(non_boss_template, 100, 10));
+		TEST_ASSERT(ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(wildcard_template, 300, 99));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(wildcard_template, 301, 99));
+	}
+
+	void BossLockoutSpawnGateUsesConfiguredBossMappings()
+	{
+		TEST_ASSERT(ExpeditionDB::kBossLockoutSpawnRetryMilliseconds == 60000);
+
+		ExpeditionDB::EventNpc boss_npc;
+		boss_npc.role = "boss";
+		boss_npc.npc_type_id = 100;
+		boss_npc.spawn2_id = 10;
+
+		ExpeditionDB::EventNpc wildcard_boss_npc;
+		wildcard_boss_npc.role = "boss";
+		wildcard_boss_npc.npc_type_id = 200;
+		wildcard_boss_npc.spawn2_id = 0;
+
+		ExpeditionDB::EventNpc non_boss_npc;
+		non_boss_npc.role = "add";
+		non_boss_npc.npc_type_id = boss_npc.npc_type_id;
+		non_boss_npc.spawn2_id = boss_npc.spawn2_id;
+
+		ExpeditionDB::EventNpc unset_boss_npc;
+		unset_boss_npc.role = "boss";
+		unset_boss_npc.npc_type_id = 0;
+		unset_boss_npc.spawn2_id = boss_npc.spawn2_id;
+
+		TEST_ASSERT(ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 100, 11));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 101, 10));
+		TEST_ASSERT(ExpeditionDB::BossEventNpcMatchesSpawn(wildcard_boss_npc, 200, 99));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(non_boss_npc, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(unset_boss_npc, 0, 10));
 	}
 };

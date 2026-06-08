@@ -166,6 +166,7 @@ public:
 	}
 	NPC *GetNPCByNPCTypeID(uint32 npc_id);
 	NPC *GetNPCBySpawnID(uint32 spawn_id);
+	bool IsActiveNPCSpawnedByNpcTypeID(uint32 npc_type_id, uint32 spawn_point_id = 0);
 	inline Merc *GetMercByID(uint16 id)
 	{
 		auto it = merc_list.find(id);

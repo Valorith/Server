@@ -605,15 +605,52 @@ namespace {
 		return zone_id ? fmt::format("{} ({})", ZoneLongName(zone_id), ZoneName(zone_id, true)) : "unset";
 	}
 
-	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) v0".
+	std::string ExpeditionVersionOptionLabel(uint32_t zone_version)
+	{
+		switch (zone_version) {
+		case 0:
+			return "0 base zone";
+		case 1:
+			return "1 Normal Raids";
+		case 2:
+			return "2 Ancient Raids";
+		case 3:
+			return "3 Hard Mode Raids";
+		case 4:
+			return "4 Challenge Normal";
+		case 5:
+			return "5 Challenge Hard";
+		default:
+			return fmt::format("v{}", zone_version);
+		}
+	}
+
+	std::string ExpeditionVersionDisplay(int32_t zone_version)
+	{
+		if (zone_version == -1) {
+			return "v*";
+		}
+
+		if (zone_version < 0) {
+			return fmt::format("v{}", zone_version);
+		}
+
+		return ExpeditionVersionOptionLabel(static_cast<uint32_t>(zone_version));
+	}
+
+	bool IsExpeditionVersionOption(uint32_t zone_version)
+	{
+		return zone_version <= 5;
+	}
+
+	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) 0 base zone".
 	std::string ZoneVersionLabel(uint32_t zone_id, int32_t zone_version)
 	{
 		if (!zone_id) {
 			return "unset";
 		}
-		return zone_version == -1 ?
-			fmt::format("{} v*", ZoneLabel(zone_id)) :
-			fmt::format("{} v{}", ZoneLabel(zone_id), zone_version);
+
+		return fmt::format("{} {}", ZoneLabel(zone_id), ExpeditionVersionDisplay(zone_version));
 	}
 
 	std::string NpcMappingLabel(uint32_t npc_type_id, uint32_t spawn2_id)
@@ -1781,8 +1818,12 @@ std::vector<uint32_t> ExistingZoneVersions(uint32_t zone_id)
 	return versions;
 }
 
-bool ZoneVersionExists(uint32_t zone_id, uint32_t zone_version)
+bool IsSelectableZoneVersion(uint32_t zone_id, uint32_t zone_version)
 {
+	if (IsExpeditionVersionOption(zone_version)) {
+		return true;
+	}
+
 	const auto versions = ExistingZoneVersions(zone_id);
 	return std::ranges::find(versions, zone_version) != versions.end();
 }
@@ -1806,33 +1847,18 @@ void ShowVersionScreen(Client* c, const ExpeditionDB::Template& template_data)
 		return;
 	}
 
-	c->Message(Chat::White, fmt::format("  Current Version: {}", dz.zone_version).c_str());
-
-	const auto versions = ExistingZoneVersions(dz.zone_id);
-	if (versions.empty()) {
-		c->Message(Chat::Yellow, fmt::format(
-			"  No loaded zone versions were found for {}. Use #expedition set zone <zone|id> [version].",
-			ZoneLabel(dz.zone_id)
-		).c_str());
-	}
-	else {
-		std::string line = "  Zone Versions: ";
-		for (size_t i = 0; i < versions.size(); ++i) {
-			if (i != 0) {
-				line += " ";
-			}
-
-			const auto version = versions[i];
-			const bool is_current = static_cast<int32_t>(version) == dz.zone_version;
-			const std::string label = is_current ?
-				fmt::format("[{}]", version) :
-				fmt::format("{}", version);
-
-			line += Saylink::Silent(fmt::format("#expedition config version {}", version), label);
-		}
-
-		c->Message(Chat::White, line.c_str());
-	}
+	c->Message(Chat::White, fmt::format("  Current Version: {}", ExpeditionVersionDisplay(dz.zone_version)).c_str());
+	c->Message(Chat::White, "  Zone Versions:");
+	SendActionRow(c, {
+		{"#expedition config version 0", ExpeditionVersionOptionLabel(0)},
+		{"#expedition config version 1", ExpeditionVersionOptionLabel(1)},
+		{"#expedition config version 2", ExpeditionVersionOptionLabel(2)}
+	});
+	SendActionRow(c, {
+		{"#expedition config version 3", ExpeditionVersionOptionLabel(3)},
+		{"#expedition config version 4", ExpeditionVersionOptionLabel(4)},
+		{"#expedition config version 5", ExpeditionVersionOptionLabel(5)}
+	});
 
 	SendActionRow(c, {{"#expedition config", "Back to Config"}});
 	SendCardBottom(c);
@@ -1974,10 +2000,10 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 
 			const uint32_t version = Strings::ToUnsignedInt(sep->arg[3]);
-			if (!ZoneVersionExists(dz.zone_id, version)) {
+			if (!IsSelectableZoneVersion(dz.zone_id, version)) {
 				c->Message(Chat::Red, fmt::format(
-					"Zone version [{}] does not exist for {}.",
-					version,
+					"Zone version [{}] is not available for {}.",
+					ExpeditionVersionOptionLabel(version),
 					ZoneLabel(dz.zone_id)
 				).c_str());
 				ShowVersionScreen(c, *template_data);
@@ -1985,7 +2011,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 
 			ExpeditionDB::SetDzTemplateZone(content_db, dz_template_id, dz.zone_id, version);
-			c->Message(Chat::Green, fmt::format("Set zone version to [{}].", version).c_str());
+			c->Message(Chat::Green, fmt::format("Set zone version to [{}].", ExpeditionVersionOptionLabel(version)).c_str());
 			if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
 				ShowVersionScreen(c, *refreshed);
 			}

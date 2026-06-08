@@ -29,6 +29,12 @@ inline constexpr const char* kSimpleRequestPhrase = "expedition";
 inline constexpr const char* kRequesterLastName = "Expeditions";
 inline constexpr const char* kSimpleRequestMode = "db_only";
 inline constexpr const char* kSimpleBossEventName = "Boss Defeated";
+inline constexpr const char* kBaseZoneBossSpawnedReason = "base_zone_boss_spawned";
+inline constexpr const char* kBaseZoneBossUnavailableStatus = "Unavailable";
+inline constexpr const char* kBaseZoneBossUnavailableNote = "while associated bosses are spawned in the base zone.";
+inline constexpr const char* kBaseZoneBossUnavailableMessage = "Unavailable while associated bosses are spawned in the base zone.";
+inline constexpr const char* kBaseZoneBossUnavailableFailure = "unavailable while associated bosses are spawned in the base zone";
+inline constexpr uint32_t kBossLockoutSpawnRetryMilliseconds = 60000;
 
 struct RequestNpc {
 	uint32_t id = 0;
@@ -77,6 +83,25 @@ struct Event {
 inline bool IsBossEventNpc(const EventNpc& event_npc)
 {
 	return Strings::EqualFold(event_npc.role, "boss");
+}
+
+inline bool IsBaseZoneAvailabilityBoss(const EventNpc& event_npc)
+{
+	return IsBossEventNpc(event_npc) && event_npc.npc_type_id != 0;
+}
+
+inline bool BossEventNpcMatchesSpawn(const EventNpc& event_npc, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	if (!IsBaseZoneAvailabilityBoss(event_npc) || event_npc.npc_type_id != npc_type_id) {
+		return false;
+	}
+
+	return event_npc.spawn2_id == 0 || event_npc.spawn2_id == spawn2_id;
+}
+
+inline bool BaseZoneAvailabilityBossMatchesSpawn(const EventNpc& event_npc, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	return BossEventNpcMatchesSpawn(event_npc, npc_type_id, spawn2_id);
 }
 
 inline bool EventNpcRemovalDeletesEvent(const EventNpc& event_npc)
@@ -159,9 +184,32 @@ inline bool IsRequesterLockoutReason(const std::string& reason)
 	return reason == "replay_lockout" || reason == "event_lockout_conflict";
 }
 
+inline bool IsBaseZoneBossSpawnedReason(const std::string& reason)
+{
+	return reason == kBaseZoneBossSpawnedReason;
+}
+
+inline bool IsRequesterStatusBlockReason(const std::string& reason)
+{
+	return IsBaseZoneBossSpawnedReason(reason);
+}
+
 inline bool SharesExpeditionLockoutNamespace(const Template& lhs, const Template& rhs)
 {
 	return Strings::EqualFold(lhs.dz_template.name, rhs.dz_template.name);
+}
+
+inline bool TemplateHasBaseZoneAvailabilityBossForSpawn(const Template& template_data, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	for (const auto& event_data : template_data.events) {
+		for (const auto& event_npc : event_data.npcs) {
+			if (BaseZoneAvailabilityBossMatchesSpawn(event_npc, npc_type_id, spawn2_id)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 struct ValidationResult {
@@ -296,6 +344,7 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::str
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
 bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
+bool IsBossSpawnBlockedByActiveLockout(uint32_t npc_type_id, uint32_t spawn2_id);
 BossOnlySpawnFilter GetBossOnlySpawnFilter(DynamicZone* expedition);
 // Stamps the "Expeditions" surname on configured requester NPCs (and clears a stale one when an
 // NPC is no longer a requester). Safe to call for any NPC spawn in any zone.
