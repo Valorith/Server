@@ -55,6 +55,7 @@ namespace {
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
 	std::unordered_map<uint32_t, uint16_t> g_last_gm_target_menu_entity;
 	std::unordered_map<uint32_t, std::unordered_set<std::string>> g_completed_runtime_events;
+	std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::unordered_set<uint32_t>>> g_grouped_boss_progress;
 
 	uint32_t UInt(const char* value)
 	{
@@ -610,6 +611,10 @@ namespace {
 
 	std::string RuntimeEventName(const Event& event_data, const EventNpc& event_npc)
 	{
+		if (IsGroupedBossCompletionMode(event_data)) {
+			return event_data.event_name;
+		}
+
 		if (Strings::EqualFold(event_data.event_name, kSimpleBossEventName)) {
 			return BossEventName(event_npc);
 		}
@@ -642,6 +647,17 @@ namespace {
 	bool TryMarkRuntimeEventComplete(DynamicZone& expedition, const std::string& runtime_event_name)
 	{
 		return g_completed_runtime_events[expedition.GetID()].insert(runtime_event_name).second;
+	}
+
+	bool TryMarkGroupedBossRequirementComplete(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc)
+	{
+		if (!IsGroupedBossRequirement(event_npc) || event_npc.id == 0) {
+			return false;
+		}
+
+		auto& completed_event_npc_ids = g_grouped_boss_progress[expedition.GetID()][event_data.id];
+		completed_event_npc_ids.insert(event_npc.id);
+		return GroupedBossRequirementsComplete(event_data, completed_event_npc_ids);
 	}
 
 	std::pair<std::string, uint32_t> ParseLockoutActionValue(const std::string& value, const std::string& default_event_name)
@@ -729,9 +745,8 @@ namespace {
 		}
 	}
 
-	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
+	bool CompleteRuntimeEvent(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name, Client* notifier)
 	{
-		const std::string runtime_event_name = RuntimeEventName(event_data, event_npc);
 		if (HasCurrentExpeditionLockout(expedition, runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
 			return false;
 		}
@@ -751,6 +766,24 @@ namespace {
 		}
 
 		return true;
+	}
+
+	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
+	{
+		if (IsGroupedBossCompletionMode(event_data)) {
+			if (!IsGroupedBossRequirement(event_npc)) {
+				return false;
+			}
+
+			if (
+				Strings::EqualFold(event_data.completion_mode, kCompletionModeAllBosses) &&
+				!TryMarkGroupedBossRequirementComplete(expedition, event_data, event_npc)
+			) {
+				return false;
+			}
+		}
+
+		return CompleteRuntimeEvent(expedition, event_data, RuntimeEventName(event_data, event_npc), notifier);
 	}
 }
 
@@ -916,7 +949,8 @@ uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::str
 			event_data.lock_on_success,
 			event_data.lock_on_failure,
 			event_data.loot_protected,
-			event_data.sort_order
+			event_data.sort_order,
+			event_data.completion_mode
 		);
 
 		if (!event_id) {
@@ -1107,9 +1141,9 @@ bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int3
 	return ok;
 }
 
-uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name)
+uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name, const std::string& completion_mode)
 {
-	const uint32_t id = ExpeditionRepository::InsertEvent(db, template_id, event_name, 0, 0, true, false, false, 0);
+	const uint32_t id = ExpeditionRepository::InsertEvent(db, template_id, event_name, 0, 0, true, false, false, 0, completion_mode);
 	Reload(db);
 	return id;
 }
@@ -1128,6 +1162,17 @@ bool SetEventName(Database& db, uint32_t event_id, const std::string& event_name
 	}
 
 	const bool ok = ExpeditionRepository::UpdateEventName(db, event_id, event_name);
+	Reload(db);
+	return ok;
+}
+
+bool SetEventCompletionMode(Database& db, uint32_t event_id, const std::string& completion_mode)
+{
+	if (!IsKnownCompletionMode(completion_mode) && !Strings::EqualFold(completion_mode, "all") && !Strings::EqualFold(completion_mode, "any")) {
+		return false;
+	}
+
+	const bool ok = ExpeditionRepository::UpdateEventCompletionMode(db, event_id, completion_mode);
 	Reload(db);
 	return ok;
 }
@@ -1208,7 +1253,10 @@ bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint3
 {
 	bool delete_event = false;
 	auto results = db.QueryDatabase(fmt::format(
-		"SELECT role FROM expedition_template_event_npcs WHERE event_id = {} AND npc_type_id = {} AND spawn2_id = {}",
+		"SELECT n.role, e.completion_mode "
+		"FROM expedition_template_event_npcs n "
+		"INNER JOIN expedition_template_events e ON e.id = n.event_id "
+		"WHERE n.event_id = {} AND n.npc_type_id = {} AND n.spawn2_id = {}",
 		event_id,
 		npc_type_id,
 		spawn2_id
@@ -1220,7 +1268,8 @@ bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint3
 	for (auto row = results.begin(); row != results.end(); ++row) {
 		EventNpc event_npc;
 		event_npc.role = row[0] ? row[0] : "";
-		if (EventNpcRemovalDeletesEvent(event_npc)) {
+		const std::string completion_mode = row[1] ? row[1] : "";
+		if (EventNpcRemovalDeletesEvent(event_npc) && !IsGroupedBossCompletionMode(completion_mode)) {
 			delete_event = true;
 			break;
 		}
@@ -1229,6 +1278,13 @@ bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint3
 	const bool ok = delete_event ?
 		ExpeditionRepository::DeleteEvent(db, event_id) :
 		ExpeditionRepository::DeleteEventNpc(db, event_id, npc_type_id, spawn2_id);
+	Reload(db);
+	return ok;
+}
+
+bool DeleteEventNpcMapping(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	const bool ok = ExpeditionRepository::DeleteEventNpc(db, event_id, npc_type_id, spawn2_id);
 	Reload(db);
 	return ok;
 }
@@ -1293,6 +1349,7 @@ void Reload(Database& db)
 	}
 
 	for (auto event_data : *event_rows) {
+		event_data.completion_mode = NormalizeCompletionMode(event_data.completion_mode);
 		auto it = templates.find(event_data.expedition_template_id);
 		if (it != templates.end()) {
 			it->second.events.push_back(event_data);
@@ -1509,8 +1566,23 @@ ValidationResult ValidateTemplate(const Template& template_data)
 
 	size_t event_index = 0;
 	for (const auto& event_data : template_data.events) {
+		if (!IsKnownCompletionMode(event_data.completion_mode)) {
+			result.errors.push_back(fmt::format("Event [{}] has an unknown completion mode [{}].", event_data.event_name, event_data.completion_mode));
+		}
+
 		if (event_data.event_name.empty()) {
 			result.errors.push_back("Event is missing a name.");
+		}
+
+		const bool grouped_boss_event = IsGroupedBossCompletionMode(event_data);
+		if (grouped_boss_event) {
+			if (Strings::EqualFold(event_data.event_name, kSimpleBossEventName)) {
+				result.errors.push_back("Grouped boss events require a custom event name.");
+			}
+
+			if (GroupedBossRequirementCount(event_data) < 2) {
+				result.errors.push_back(fmt::format("Grouped boss event [{}] requires at least two boss targets.", event_data.event_name));
+			}
 		}
 
 		if (event_data.lockout_seconds == 0 && event_data.lock_on_success) {
@@ -1527,7 +1599,15 @@ ValidationResult ValidateTemplate(const Template& template_data)
 				result.errors.push_back(fmt::format("Event [{}] has an NPC mapping without an NPC type.", event_data.event_name));
 			}
 
-			if (event_npc.spawn2_id == 0 && !event_npc.complete_on_spawn) {
+			if (grouped_boss_event && !IsGroupedBossRequirement(event_npc)) {
+				result.errors.push_back(fmt::format("Grouped boss event [{}] has a non-boss or non-death NPC mapping [{}].", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
+			}
+
+			if (grouped_boss_event && event_npc.complete_on_spawn) {
+				result.errors.push_back(fmt::format("Grouped boss event [{}] cannot use spawn-completion NPC mappings.", event_data.event_name));
+			}
+
+			if (event_npc.spawn2_id == 0 && !event_npc.complete_on_spawn && !grouped_boss_event) {
 				result.warnings.push_back(fmt::format("Event [{}] maps NPC [{}] without a spawn-specific id.", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
 			}
 
@@ -1537,6 +1617,13 @@ ValidationResult ValidateTemplate(const Template& template_data)
 			) {
 				result.warnings.push_back(fmt::format("Event NPC [{}] already has a death quest script; verify DB event actions do not duplicate scripted behavior.", NpcTypeLabel(event_npc.npc_type_id)));
 			}
+		}
+
+		if (grouped_boss_event && GroupedBossHasAmbiguousDynamicRequirement(event_data)) {
+			result.errors.push_back(fmt::format(
+				"Grouped boss event [{}] has an ambiguous dynamic boss NPC; a no-spawn-point boss cannot share its NPC type with another grouped boss in the same event.",
+				event_data.event_name
+			));
 		}
 
 		std::unordered_set<std::string> runtime_names;
@@ -1845,6 +1932,16 @@ bool HandleNpcSpawn(NPC& npc)
 				continue;
 			}
 
+			if (
+				IsGroupedBossCompletionMode(event_data) &&
+				BossEventNpcMatchesSpawn(event_npc, npc.GetNPCTypeID(), npc.GetSpawnPointID()) &&
+				HasCurrentExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))
+			) {
+				npc.Depop(false);
+				handled = true;
+				continue;
+			}
+
 			ApplyLootEventForNpc(*expedition, event_data, event_npc, npc);
 			if (event_npc.complete_on_spawn) {
 				handled = CompleteEventForNpc(*expedition, event_data, event_npc, nullptr) || handled;
@@ -2062,7 +2159,7 @@ void MaybeShowGmTargetMenu(Client& client, NPC& npc)
 				SendManageRow(client, {
 					{fmt::format("#expedition event loot {}", loot_protected ? "off" : "on"), loot_protected ? "Loot Protection: Off" : "Loot Protection: On"},
 					{"#expedition event lockout", "Set Lockout..."},
-					{"#expedition event npc remove confirm", EventNpcRemovalDeletesEvent(event_npc) ? "Remove Boss/Event" : "Remove from Expedition"}
+					{"#expedition event npc remove confirm", EventNpcRemovalDeletesEvent(event_data, event_npc) ? "Remove Boss/Event" : "Remove from Expedition"}
 				});
 				SendManageRow(client, {
 					{fmt::format("#expedition event completeondeath {}", event_npc.complete_on_death ? "off" : "on"), event_npc.complete_on_death ? "Death Trigger Off" : "Death Trigger On"},
@@ -2120,6 +2217,7 @@ void ClearRuntimeEventState(uint32_t dz_id)
 {
 	if (dz_id != 0) {
 		g_completed_runtime_events.erase(dz_id);
+		g_grouped_boss_progress.erase(dz_id);
 	}
 }
 

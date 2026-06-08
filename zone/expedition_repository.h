@@ -91,10 +91,12 @@ uint32_t InsertEvent(
 	bool lock_on_success,
 	bool lock_on_failure,
 	bool loot_protected,
-	int32_t sort_order
+	int32_t sort_order,
+	const std::string& completion_mode = ExpeditionDB::kCompletionModeFirst
 );
 
 bool UpdateEventName(Database& db, uint32_t event_id, const std::string& event_name);
+bool UpdateEventCompletionMode(Database& db, uint32_t event_id, const std::string& completion_mode);
 bool UpdateEventLockout(Database& db, uint32_t event_id, uint32_t seconds);
 bool UpdateEventReplay(Database& db, uint32_t event_id, uint32_t seconds);
 bool DeleteEvent(Database& db, uint32_t event_id);

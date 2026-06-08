@@ -29,6 +29,9 @@ inline constexpr const char* kSimpleRequestPhrase = "expedition";
 inline constexpr const char* kRequesterLastName = "Expeditions";
 inline constexpr const char* kSimpleRequestMode = "db_only";
 inline constexpr const char* kSimpleBossEventName = "Boss Defeated";
+inline constexpr const char* kCompletionModeFirst = "first_completion";
+inline constexpr const char* kCompletionModeAllBosses = "all_bosses";
+inline constexpr const char* kCompletionModeAnyBoss = "any_boss";
 inline constexpr const char* kBaseZoneBossSpawnedReason = "base_zone_boss_spawned";
 inline constexpr const char* kBaseZoneBossUnavailableStatus = "Unavailable";
 inline constexpr const char* kBaseZoneBossUnavailableNote = "while associated bosses are spawned in the base zone.";
@@ -70,6 +73,7 @@ struct Event {
 	uint32_t id = 0;
 	uint32_t expedition_template_id = 0;
 	std::string event_name;
+	std::string completion_mode = kCompletionModeFirst;
 	uint32_t lockout_seconds = 0;
 	uint32_t replay_lockout_seconds = 0;
 	bool lock_on_success = true;
@@ -83,6 +87,87 @@ struct Event {
 inline bool IsBossEventNpc(const EventNpc& event_npc)
 {
 	return Strings::EqualFold(event_npc.role, "boss");
+}
+
+inline bool IsKnownCompletionMode(const std::string& completion_mode)
+{
+	return Strings::EqualFold(completion_mode, kCompletionModeFirst) ||
+		Strings::EqualFold(completion_mode, kCompletionModeAllBosses) ||
+		Strings::EqualFold(completion_mode, kCompletionModeAnyBoss);
+}
+
+inline std::string NormalizeCompletionMode(const std::string& completion_mode)
+{
+	if (Strings::EqualFold(completion_mode, kCompletionModeAllBosses) || Strings::EqualFold(completion_mode, "all")) {
+		return kCompletionModeAllBosses;
+	}
+
+	if (Strings::EqualFold(completion_mode, kCompletionModeAnyBoss) || Strings::EqualFold(completion_mode, "any")) {
+		return kCompletionModeAnyBoss;
+	}
+
+	return kCompletionModeFirst;
+}
+
+inline bool IsGroupedBossCompletionMode(const std::string& completion_mode)
+{
+	return Strings::EqualFold(completion_mode, kCompletionModeAllBosses) ||
+		Strings::EqualFold(completion_mode, kCompletionModeAnyBoss);
+}
+
+inline bool IsGroupedBossCompletionMode(const Event& event_data)
+{
+	return IsGroupedBossCompletionMode(event_data.completion_mode);
+}
+
+inline bool IsGroupedBossRequirement(const EventNpc& event_npc)
+{
+	return IsBossEventNpc(event_npc) && event_npc.npc_type_id != 0 && event_npc.complete_on_death;
+}
+
+inline bool GroupedBossRequirementMatchesSpawn(const EventNpc& event_npc, uint32_t npc_type_id, uint32_t spawn2_id)
+{
+	if (!IsGroupedBossRequirement(event_npc) || event_npc.npc_type_id != npc_type_id) {
+		return false;
+	}
+
+	return event_npc.spawn2_id == 0 || event_npc.spawn2_id == spawn2_id;
+}
+
+inline uint32_t GroupedBossRequirementCount(const Event& event_data)
+{
+	return static_cast<uint32_t>(std::ranges::count_if(event_data.npcs, IsGroupedBossRequirement));
+}
+
+inline bool GroupedBossRequirementsComplete(const Event& event_data, const std::unordered_set<uint32_t>& completed_event_npc_ids)
+{
+	for (const auto& event_npc : event_data.npcs) {
+		if (IsGroupedBossRequirement(event_npc) && !completed_event_npc_ids.contains(event_npc.id)) {
+			return false;
+		}
+	}
+
+	return GroupedBossRequirementCount(event_data) > 0;
+}
+
+inline bool GroupedBossHasAmbiguousDynamicRequirement(const Event& event_data)
+{
+	std::unordered_map<uint32_t, uint32_t> requirement_count_by_npc_type;
+	std::unordered_set<uint32_t> dynamic_requirement_npc_types;
+	for (const auto& event_npc : event_data.npcs) {
+		if (!IsGroupedBossRequirement(event_npc)) {
+			continue;
+		}
+
+		requirement_count_by_npc_type[event_npc.npc_type_id]++;
+		if (event_npc.spawn2_id == 0) {
+			dynamic_requirement_npc_types.insert(event_npc.npc_type_id);
+		}
+	}
+
+	return std::ranges::any_of(dynamic_requirement_npc_types, [&](uint32_t npc_type_id) {
+		return requirement_count_by_npc_type[npc_type_id] > 1;
+	});
 }
 
 inline bool IsBaseZoneAvailabilityBoss(const EventNpc& event_npc)
@@ -107,6 +192,11 @@ inline bool BaseZoneAvailabilityBossMatchesSpawn(const EventNpc& event_npc, uint
 inline bool EventNpcRemovalDeletesEvent(const EventNpc& event_npc)
 {
 	return IsBossEventNpc(event_npc);
+}
+
+inline bool EventNpcRemovalDeletesEvent(const Event& event_data, const EventNpc& event_npc)
+{
+	return EventNpcRemovalDeletesEvent(event_npc) && !IsGroupedBossCompletionMode(event_data);
 }
 
 struct Template {
@@ -311,9 +401,10 @@ bool SetDzTemplateCompass(Database& db, uint32_t dz_template_id, uint32_t zone_i
 bool SetDzTemplateSwitchID(Database& db, uint32_t dz_template_id, uint32_t switch_id);
 uint32_t UpsertRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& phrase, int32_t zone_version = -1);
 bool DeleteRequestNpc(Database& db, uint32_t template_id, uint32_t zone_id, int32_t zone_version, uint32_t npc_type_id, uint32_t spawn2_id);
-uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name);
+uint32_t AddEvent(Database& db, uint32_t template_id, const std::string& event_name, const std::string& completion_mode = kCompletionModeFirst);
 bool DeleteEvent(Database& db, uint32_t event_id);
 bool SetEventName(Database& db, uint32_t event_id, const std::string& event_name);
+bool SetEventCompletionMode(Database& db, uint32_t event_id, const std::string& completion_mode);
 bool SetEventLockout(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventReplay(Database& db, uint32_t event_id, uint32_t seconds);
 bool SetEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, const std::string& role);
@@ -321,6 +412,7 @@ bool SetEventNpcLoot(Database& db, uint32_t event_id, uint32_t npc_type_id, uint
 bool SetEventNpcCompleteOnDeath(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
 bool SetEventNpcCompleteOnSpawn(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id, bool enabled);
 bool DeleteEventNpc(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id);
+bool DeleteEventNpcMapping(Database& db, uint32_t event_id, uint32_t npc_type_id, uint32_t spawn2_id);
 uint32_t AddAction(Database& db, uint32_t event_id, const std::string& action_type, const std::string& action_value);
 bool ClearActions(Database& db, uint32_t event_id);
 
