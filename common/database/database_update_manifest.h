@@ -7454,6 +7454,7 @@ CREATE TABLE IF NOT EXISTS `expedition_template_events` (
 	`lock_on_failure` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`loot_protected` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`sort_order` INT(11) NOT NULL DEFAULT '0',
+	`completion_mode` VARCHAR(32) NOT NULL DEFAULT 'first_completion',
 	PRIMARY KEY (`id`),
 	KEY `idx_expedition_events_template` (`expedition_template_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -7493,6 +7494,18 @@ CREATE TABLE IF NOT EXISTS `expedition_template_actions` (
 		.sql = R"(
 ALTER TABLE `expedition_templates`
 ADD COLUMN `boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `silent`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9346,
+		.description = "2026_06_08_expedition_event_completion_mode.sql",
+		.check = "SHOW COLUMNS FROM `expedition_template_events` LIKE 'completion_mode'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_template_events`
+ADD COLUMN `completion_mode` VARCHAR(32) NOT NULL DEFAULT 'first_completion' AFTER `sort_order`;
 )",
 		.content_schema_update = true
 	},

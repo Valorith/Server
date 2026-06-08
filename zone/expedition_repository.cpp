@@ -125,7 +125,7 @@ std::optional<std::vector<ExpeditionDB::Event>> LoadAllEvents(Database& db)
 	std::vector<ExpeditionDB::Event> out;
 	auto results = db.QueryDatabase(
 		"SELECT id, expedition_template_id, event_name, lockout_seconds, replay_lockout_seconds, "
-		"lock_on_success, lock_on_failure, loot_protected, sort_order "
+		"lock_on_success, lock_on_failure, loot_protected, sort_order, completion_mode "
 		"FROM expedition_template_events ORDER BY expedition_template_id, sort_order, id"
 	);
 
@@ -145,6 +145,7 @@ std::optional<std::vector<ExpeditionDB::Event>> LoadAllEvents(Database& db)
 		e.lock_on_failure = Truthy(row[6]);
 		e.loot_protected = Truthy(row[7]);
 		e.sort_order = Int(row[8]);
+		e.completion_mode = ExpeditionDB::NormalizeCompletionMode(Text(row[9]));
 		out.push_back(std::move(e));
 	}
 
@@ -405,12 +406,13 @@ uint32_t InsertEvent(
 	bool lock_on_success,
 	bool lock_on_failure,
 	bool loot_protected,
-	int32_t sort_order)
+	int32_t sort_order,
+	const std::string& completion_mode)
 {
 	return InsertID(db, fmt::format(
 		"INSERT INTO expedition_template_events "
-		"(expedition_template_id, event_name, lockout_seconds, replay_lockout_seconds, lock_on_success, lock_on_failure, loot_protected, sort_order) "
-		"VALUES ({}, '{}', {}, {}, {}, {}, {}, {})",
+		"(expedition_template_id, event_name, lockout_seconds, replay_lockout_seconds, lock_on_success, lock_on_failure, loot_protected, sort_order, completion_mode) "
+		"VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, '{}')",
 		template_id,
 		Escape(event_name),
 		lockout_seconds,
@@ -418,7 +420,8 @@ uint32_t InsertEvent(
 		lock_on_success ? 1 : 0,
 		lock_on_failure ? 1 : 0,
 		loot_protected ? 1 : 0,
-		sort_order
+		sort_order,
+		Escape(ExpeditionDB::NormalizeCompletionMode(completion_mode))
 	));
 }
 
@@ -427,6 +430,15 @@ bool UpdateEventName(Database& db, uint32_t event_id, const std::string& event_n
 	return QueryOK(db, fmt::format(
 		"UPDATE expedition_template_events SET event_name = '{}' WHERE id = {}",
 		Escape(event_name),
+		event_id
+	));
+}
+
+bool UpdateEventCompletionMode(Database& db, uint32_t event_id, const std::string& completion_mode)
+{
+	return QueryOK(db, fmt::format(
+		"UPDATE expedition_template_events SET completion_mode = '{}' WHERE id = {}",
+		Escape(ExpeditionDB::NormalizeCompletionMode(completion_mode)),
 		event_id
 	));
 }

@@ -299,6 +299,32 @@ namespace {
 		return "DB automatic request handling";
 	}
 
+	std::string CompletionModeLabel(const std::string& completion_mode)
+	{
+		if (Strings::EqualFold(completion_mode, ExpeditionDB::kCompletionModeAllBosses)) {
+			return "All grouped bosses";
+		}
+
+		if (Strings::EqualFold(completion_mode, ExpeditionDB::kCompletionModeAnyBoss)) {
+			return "Any grouped boss";
+		}
+
+		return "First completion";
+	}
+
+	std::string GroupCompletionModeFromArg(const char* value)
+	{
+		if (Strings::EqualFold(value, "all") || Strings::EqualFold(value, ExpeditionDB::kCompletionModeAllBosses)) {
+			return ExpeditionDB::kCompletionModeAllBosses;
+		}
+
+		if (Strings::EqualFold(value, "any") || Strings::EqualFold(value, ExpeditionDB::kCompletionModeAnyBoss)) {
+			return ExpeditionDB::kCompletionModeAnyBoss;
+		}
+
+		return {};
+	}
+
 	std::string StatusLabel(const ExpeditionDB::ValidationResult& validation)
 	{
 		if (!validation.errors.empty()) {
@@ -605,15 +631,52 @@ namespace {
 		return zone_id ? fmt::format("{} ({})", ZoneLongName(zone_id), ZoneName(zone_id, true)) : "unset";
 	}
 
-	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) v0".
+	std::string ExpeditionVersionOptionLabel(uint32_t zone_version)
+	{
+		switch (zone_version) {
+		case 0:
+			return "0 base zone";
+		case 1:
+			return "1 Normal Raids";
+		case 2:
+			return "2 Ancient Raids";
+		case 3:
+			return "3 Hard Mode Raids";
+		case 4:
+			return "4 Challenge Normal";
+		case 5:
+			return "5 Challenge Hard";
+		default:
+			return fmt::format("v{}", zone_version);
+		}
+	}
+
+	std::string ExpeditionVersionDisplay(int32_t zone_version)
+	{
+		if (zone_version == -1) {
+			return "v*";
+		}
+
+		if (zone_version < 0) {
+			return fmt::format("v{}", zone_version);
+		}
+
+		return ExpeditionVersionOptionLabel(static_cast<uint32_t>(zone_version));
+	}
+
+	bool IsExpeditionVersionOption(uint32_t zone_version)
+	{
+		return zone_version <= 5;
+	}
+
+	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) 0 base zone".
 	std::string ZoneVersionLabel(uint32_t zone_id, int32_t zone_version)
 	{
 		if (!zone_id) {
 			return "unset";
 		}
-		return zone_version == -1 ?
-			fmt::format("{} v*", ZoneLabel(zone_id)) :
-			fmt::format("{} v{}", ZoneLabel(zone_id), zone_version);
+
+		return fmt::format("{} {}", ZoneLabel(zone_id), ExpeditionVersionDisplay(zone_version));
 	}
 
 	std::string NpcMappingLabel(uint32_t npc_type_id, uint32_t spawn2_id)
@@ -659,6 +722,11 @@ namespace {
 	{
 		std::vector<std::string> names;
 		for (const auto& event_data : template_data.events) {
+			if (ExpeditionDB::IsGroupedBossCompletionMode(event_data)) {
+				names.push_back(fmt::format("{} ({}, {} bosses)", event_data.event_name, CompletionModeLabel(event_data.completion_mode), ExpeditionDB::GroupedBossRequirementCount(event_data)));
+				continue;
+			}
+
 			if (IsBossCompletionEvent(event_data)) {
 				for (const auto& event_npc : event_data.npcs) {
 					if (event_npc.npc_type_id != 0 && event_npc.complete_on_death) {
@@ -816,6 +884,7 @@ namespace {
 				{
 					{"#expedition boss 6h", "Use Target Boss"},
 					{"#expedition boss 6h loot", "Use Target Boss With Loot"},
+					{"#expedition event group", "New Boss Group"},
 					{"#expedition event list", "List Events"}
 				}
 			};
@@ -1021,6 +1090,7 @@ namespace {
 
 		SendSectionHeader(c, "Event Basics");
 		SendHelpLink(c, "#expedition event add \"Event Name\"", "add and select a DB event");
+		SendHelpLink(c, "#expedition event group", "create or manage a grouped boss event");
 		SendHelpLink(c, "#expedition event select <id|name>", "select event for short follow-up commands");
 		SendHelpLink(c, "#expedition event list", "list events on selected expedition");
 		SendHelpLink(c, "#expedition event rename", "show event rename commands");
@@ -1044,6 +1114,7 @@ namespace {
 
 		SendActionGroup(c, "Event Actions", {
 			{"#expedition event add \"Boss Defeated\"", "Add Boss Event"},
+			{"#expedition event group", "New Boss Group"},
 			{"#expedition event list", "List Events"},
 			{"#expedition event npc", "Add Target as Event NPC"},
 			{"#expedition event lockout 6h", "6h Lockout"},
@@ -1052,6 +1123,66 @@ namespace {
 		if (const auto* template_data = SelectedTemplate(c)) {
 			RefreshBuilderView(c);
 		}
+	}
+
+	void ShowGroupedBossEventCard(Client* c, const ExpeditionDB::Event* event_data)
+	{
+		SendCardTop(c, event_data ? fmt::format("Boss Group: {} [{}]", event_data->event_name, event_data->id) : "New Boss Group");
+		if (!event_data) {
+			c->Message(Chat::White, "  Create a shared boss event with a custom lockout name.");
+			c->Message(Chat::White, "  Click a policy, finish the command with an event name, then target bosses and add them to the group.");
+			c->Message(Chat::White, fmt::format("  {}   {}",
+				Saylink::Create("#expedition event group new all ", false, "[ Require All Bosses ]"),
+				Saylink::Create("#expedition event group new any ", false, "[ Any Boss Completes ]")).c_str());
+			SendActionRow(c, {{"#expedition event list", "Back to Events"}});
+			SendCardBottom(c);
+			return;
+		}
+
+		SendInfoLine(c, "Policy", CompletionModeLabel(event_data->completion_mode));
+		SendInfoLine(c, "Lockout", Duration(event_data->lockout_seconds));
+		SendInfoLine(c, "Replay", Duration(event_data->replay_lockout_seconds));
+		SendInfoLine(c, "Bosses", fmt::format("{} target(s)", ExpeditionDB::GroupedBossRequirementCount(*event_data)));
+		c->Message(Chat::White, ChatSeparator());
+
+		uint32_t boss_index = 0;
+		for (const auto& event_npc : event_data->npcs) {
+			if (!ExpeditionDB::IsGroupedBossRequirement(event_npc)) {
+				continue;
+			}
+
+			const std::string mapping_type = event_npc.spawn2_id == 0 ? "dynamic npc-type" : "spawn-specific";
+			c->Message(Chat::White, fmt::format(
+				"   {:>2}. {}   ({})",
+				++boss_index,
+				NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
+				mapping_type
+			).c_str());
+		}
+
+		if (boss_index == 0) {
+			c->Message(Chat::Gray, "   (target a boss and click Add Target Boss)");
+		}
+
+		c->Message(Chat::White, ChatSeparator());
+		c->Message(Chat::White, "  Boss Targets:");
+		SendActionRow(c, {
+			{"#expedition event group add", "Add Target Boss"},
+			{"#expedition event group remove", "Remove Target Boss"}
+		});
+		c->Message(Chat::White, "  Completion Policy:");
+		SendActionRow(c, {
+			{"#expedition event group mode all", "Require All Bosses"},
+			{"#expedition event group mode any", "Any Boss Completes"}
+		});
+		c->Message(Chat::White, "  Event Settings:");
+		SendActionRow(c, {
+			{fmt::format("#expedition event rename {} \"{}\"", event_data->id, event_data->event_name), "Rename"},
+			{"#expedition event lockout", "Lockout..."},
+			{"#expedition event replay 2h", "Replay 2h"},
+			{fmt::format("#expedition event remove {}", event_data->id), "Delete Event"}
+		});
+		SendCardBottom(c);
 	}
 
 	void ShowTestHelp(Client* c)
@@ -1208,8 +1339,8 @@ namespace {
 		}
 		uint32_t roster_index = 0;
 		for (const auto& event_data : template_data.events) {
-			c->Message(Chat::LightBlue, fmt::format("  Event: {}   -   lockout {}",
-				event_data.event_name, Duration(event_data.lockout_seconds)).c_str());
+			c->Message(Chat::LightBlue, fmt::format("  Event: {}   -   {}   -   lockout {}",
+				event_data.event_name, CompletionModeLabel(event_data.completion_mode), Duration(event_data.lockout_seconds)).c_str());
 			bool any_npc = false;
 			for (const auto& event_npc : event_data.npcs) {
 				if (Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn) {
@@ -1294,8 +1425,9 @@ namespace {
 
 		for (const auto& event_data : template_data.events) {
 			c->Message(Chat::White, fmt::format(
-				"Event [{}] lockout [{}] replay [{}] npcs [{}] actions [{}]",
+				"Event [{}] mode [{}] lockout [{}] replay [{}] npcs [{}] actions [{}]",
 				event_data.event_name,
+				CompletionModeLabel(event_data.completion_mode),
 				Duration(event_data.lockout_seconds),
 				Duration(event_data.replay_lockout_seconds),
 				event_data.npcs.size(),
@@ -1700,6 +1832,12 @@ void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
 				? std::pair<std::string, std::string>{"#expedition disable", "Unpublish"}
 				: std::pair<std::string, std::string>{"#expedition publish", "Publish"}
 		});
+		c->Message(Chat::White, "  Encounters:");
+		SendActionRow(c, {
+			{"#expedition boss 6h loot", "Target Boss"},
+			{"#expedition event group", "New Boss Group"},
+			{"#expedition event list", "Event List"}
+		});
 		c->Message(Chat::White, "  Navigate:");
 		SendActionRow(c, {
 			{"#expedition edit off", "Stop Editing"},
@@ -1781,8 +1919,12 @@ std::vector<uint32_t> ExistingZoneVersions(uint32_t zone_id)
 	return versions;
 }
 
-bool ZoneVersionExists(uint32_t zone_id, uint32_t zone_version)
+bool IsSelectableZoneVersion(uint32_t zone_id, uint32_t zone_version)
 {
+	if (IsExpeditionVersionOption(zone_version)) {
+		return true;
+	}
+
 	const auto versions = ExistingZoneVersions(zone_id);
 	return std::ranges::find(versions, zone_version) != versions.end();
 }
@@ -1806,33 +1948,18 @@ void ShowVersionScreen(Client* c, const ExpeditionDB::Template& template_data)
 		return;
 	}
 
-	c->Message(Chat::White, fmt::format("  Current Version: {}", dz.zone_version).c_str());
-
-	const auto versions = ExistingZoneVersions(dz.zone_id);
-	if (versions.empty()) {
-		c->Message(Chat::Yellow, fmt::format(
-			"  No loaded zone versions were found for {}. Use #expedition set zone <zone|id> [version].",
-			ZoneLabel(dz.zone_id)
-		).c_str());
-	}
-	else {
-		std::string line = "  Zone Versions: ";
-		for (size_t i = 0; i < versions.size(); ++i) {
-			if (i != 0) {
-				line += " ";
-			}
-
-			const auto version = versions[i];
-			const bool is_current = static_cast<int32_t>(version) == dz.zone_version;
-			const std::string label = is_current ?
-				fmt::format("[{}]", version) :
-				fmt::format("{}", version);
-
-			line += Saylink::Silent(fmt::format("#expedition config version {}", version), label);
-		}
-
-		c->Message(Chat::White, line.c_str());
-	}
+	c->Message(Chat::White, fmt::format("  Current Version: {}", ExpeditionVersionDisplay(dz.zone_version)).c_str());
+	c->Message(Chat::White, "  Zone Versions:");
+	SendActionRow(c, {
+		{"#expedition config version 0", ExpeditionVersionOptionLabel(0)},
+		{"#expedition config version 1", ExpeditionVersionOptionLabel(1)},
+		{"#expedition config version 2", ExpeditionVersionOptionLabel(2)}
+	});
+	SendActionRow(c, {
+		{"#expedition config version 3", ExpeditionVersionOptionLabel(3)},
+		{"#expedition config version 4", ExpeditionVersionOptionLabel(4)},
+		{"#expedition config version 5", ExpeditionVersionOptionLabel(5)}
+	});
 
 	SendActionRow(c, {{"#expedition config", "Back to Config"}});
 	SendCardBottom(c);
@@ -1974,10 +2101,10 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 
 			const uint32_t version = Strings::ToUnsignedInt(sep->arg[3]);
-			if (!ZoneVersionExists(dz.zone_id, version)) {
+			if (!IsSelectableZoneVersion(dz.zone_id, version)) {
 				c->Message(Chat::Red, fmt::format(
-					"Zone version [{}] does not exist for {}.",
-					version,
+					"Zone version [{}] is not available for {}.",
+					ExpeditionVersionOptionLabel(version),
 					ZoneLabel(dz.zone_id)
 				).c_str());
 				ShowVersionScreen(c, *template_data);
@@ -1985,7 +2112,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 
 			ExpeditionDB::SetDzTemplateZone(content_db, dz_template_id, dz.zone_id, version);
-			c->Message(Chat::Green, fmt::format("Set zone version to [{}].", version).c_str());
+			c->Message(Chat::Green, fmt::format("Set zone version to [{}].", ExpeditionVersionOptionLabel(version)).c_str());
 			if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
 				ShowVersionScreen(c, *refreshed);
 			}
@@ -3219,6 +3346,167 @@ void HandleSet(Client* c, const Seperator* sep)
 		RefreshBuilderView(c);
 }
 
+void HandleEventGroup(Client* c, const Seperator* sep, const ExpeditionDB::Template& template_data)
+{
+		const std::string sub_action = Strings::ToLower(sep->arg[3]);
+		if (sub_action.empty() || sub_action == "help") {
+			const auto* selected_event = SelectedEvent(c, template_data);
+			ShowGroupedBossEventCard(c, selected_event && ExpeditionDB::IsGroupedBossCompletionMode(*selected_event) ? selected_event : nullptr);
+			return;
+		}
+
+		if (sub_action == "new") {
+			const std::string completion_mode = GroupCompletionModeFromArg(sep->arg[4]);
+			const std::string event_name = CommandTail(sep, 5);
+			if (completion_mode.empty() || event_name.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition event group new all|any \"Custom Event Name\"");
+				ShowGroupedBossEventCard(c, nullptr);
+				return;
+			}
+
+			if (Strings::EqualFold(event_name, ExpeditionDB::kSimpleBossEventName)) {
+				c->Message(Chat::Red, "Grouped boss events require a custom event name.");
+				ShowGroupedBossEventCard(c, nullptr);
+				return;
+			}
+
+			const uint32_t event_id = ExpeditionDB::AddEvent(content_db, template_data.id, event_name, completion_mode);
+			if (!event_id) {
+				c->Message(Chat::Red, "Failed to create grouped boss event.");
+				return;
+			}
+
+			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+			if (
+				!ExpeditionDB::SetEventLockout(content_db, event_id, ExpeditionDB::kSimpleBossLockoutSeconds) ||
+				!ExpeditionDB::SetEventReplay(content_db, event_id, ExpeditionDB::kSimpleBossReplaySeconds)
+			) {
+				c->Message(Chat::Red, fmt::format("Created event [{}], but failed to apply default timing.", event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format(
+				"Saved: grouped boss event [{}] uses policy [{}]. Target bosses and click Add Target Boss.",
+				event_name,
+				CompletionModeLabel(completion_mode)
+			).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
+		const auto* event_data = RequireSelectedEvent(c, template_data);
+		if (!event_data) {
+			return;
+		}
+
+		if (!ExpeditionDB::IsGroupedBossCompletionMode(*event_data)) {
+			c->Message(Chat::Red, "Select or create a grouped boss event first.");
+			ShowGroupedBossEventCard(c, nullptr);
+			return;
+		}
+
+		const uint32_t selected_event_id = event_data->id;
+		const std::string selected_event_name = event_data->event_name;
+
+		if (sub_action == "mode") {
+			const std::string completion_mode = GroupCompletionModeFromArg(sep->arg[4]);
+			if (completion_mode.empty()) {
+				c->Message(Chat::Red, "Usage: #expedition event group mode all|any");
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			if (!ExpeditionDB::SetEventCompletionMode(content_db, selected_event_id, completion_mode)) {
+				c->Message(Chat::Red, fmt::format("Failed to set grouped boss policy for event [{}].", selected_event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format("Saved: grouped boss event [{}] policy is now [{}].", selected_event_name, CompletionModeLabel(completion_mode)).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(selected_event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
+		if (sub_action == "add") {
+			NPC* npc = RequireTargetNpc(c, "Target a boss NPC, then click Add Target Boss again.");
+			if (!npc) {
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			const uint32_t npc_type_id = npc->GetNPCTypeID();
+			const uint32_t spawn2_id = npc->GetSpawnPointID();
+			const auto* mapped_npc = FindEventNpc(*event_data, *npc);
+			if (mapped_npc && ExpeditionDB::IsGroupedBossRequirement(*mapped_npc)) {
+				c->Message(Chat::Yellow, fmt::format("Target [{}] is already part of grouped event [{}].", NpcLabel(*npc), selected_event_name).c_str());
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			const bool ambiguous_dynamic = std::ranges::any_of(event_data->npcs, [&](const ExpeditionDB::EventNpc& event_npc) {
+				return ExpeditionDB::IsGroupedBossRequirement(event_npc) &&
+					event_npc.npc_type_id == npc_type_id &&
+					(event_npc.spawn2_id == 0 || spawn2_id == 0);
+			});
+			if (ambiguous_dynamic) {
+				c->Message(Chat::Red, "A dynamic grouped boss without a spawn point cannot share its NPC type with another boss in the same group.");
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			if (!ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc_type_id, spawn2_id, "boss")) {
+				c->Message(Chat::Red, fmt::format("Failed to add target boss to grouped event [{}].", selected_event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format(
+				"Saved: added boss [{}] to grouped event [{}].",
+				NpcLabel(*npc),
+				selected_event_name
+			).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(selected_event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
+		if (sub_action == "remove") {
+			NPC* npc = RequireTargetNpc(c, "Target a grouped boss, then click Remove Target Boss again.");
+			if (!npc) {
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			const auto* mapped_npc = FindEventNpc(*event_data, *npc);
+			if (!mapped_npc || !ExpeditionDB::IsGroupedBossRequirement(*mapped_npc)) {
+				c->Message(Chat::Yellow, "Target is not part of the selected grouped boss event.");
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			if (!ExpeditionDB::DeleteEventNpcMapping(content_db, selected_event_id, mapped_npc->npc_type_id, mapped_npc->spawn2_id)) {
+				c->Message(Chat::Red, fmt::format("Failed to remove target boss from grouped event [{}].", selected_event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format(
+				"Saved: removed boss [{}] from grouped event [{}].",
+				NpcLabel(*npc),
+				selected_event_name
+			).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(selected_event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
+		c->Message(Chat::Red, "Usage: #expedition event group new|mode|add|remove");
+		ShowGroupedBossEventCard(c, event_data);
+}
+
 void HandleEvent(Client* c, const Seperator* sep)
 {
 		const std::string action = Strings::ToLower(sep->arg[2]);
@@ -3233,6 +3521,10 @@ void HandleEvent(Client* c, const Seperator* sep)
 		const auto* template_data = SelectedTemplate(c);
 		if (!template_data) {
 			NeedSelection(c);
+			return;
+		}
+		if (action == "group") {
+			HandleEventGroup(c, sep, *template_data);
 			return;
 		}
 		if (action == "add") {
@@ -3274,9 +3566,13 @@ void HandleEvent(Client* c, const Seperator* sep)
 			for (const auto& event_data : template_data->events) {
 				c->Message(Chat::White, ChatSeparator());
 				SendInfoLine(c, "Event", fmt::format("{} [{}]", event_data.event_name, event_data.id));
+				SendInfoLine(c, "Mode", CompletionModeLabel(event_data.completion_mode));
 				SendInfoLine(c, "Timing", fmt::format("lockout {} | replay {}", Duration(event_data.lockout_seconds), Duration(event_data.replay_lockout_seconds)));
 				SendInfoLine(c, "Mappings", fmt::format("NPCs {} | actions {}", event_data.npcs.size(), event_data.actions.size()));
 				SendHelpLink(c, fmt::format("#expedition event select {}", event_data.id), "select event");
+				if (ExpeditionDB::IsGroupedBossCompletionMode(event_data)) {
+					SendHelpLink(c, "#expedition event group", "manage boss group");
+				}
 				SendHelpLink(c, "#expedition event rename", "show rename commands");
 				SendHelpLink(c, fmt::format("#expedition event remove {}", event_data.id), "review delete");
 			}
@@ -3436,7 +3732,7 @@ void HandleEvent(Client* c, const Seperator* sep)
 						c->Message(Chat::Yellow, "Target is not mapped to the selected event.");
 						return;
 					}
-					const bool removes_event = ExpeditionDB::EventNpcRemovalDeletesEvent(*mapped_npc);
+					const bool removes_event = ExpeditionDB::EventNpcRemovalDeletesEvent(*event_data, *mapped_npc);
 					if (!ExpeditionDB::DeleteEventNpc(content_db, selected_event_id, mapped_npc->npc_type_id, mapped_npc->spawn2_id)) {
 						c->Message(Chat::Red, fmt::format("Failed to remove target NPC mapping for event [{}].", selected_event_name).c_str());
 						return;

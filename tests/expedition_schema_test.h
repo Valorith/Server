@@ -7,6 +7,7 @@
 #include "zone/expedition_db.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 extern std::vector<ManifestEntry> manifest_entries;
 
@@ -17,14 +18,22 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::ContentSchemaIncludesExpeditionAuthoringTables);
 		TEST_ADD(ExpeditionSchemaTest::CreationMigrationHasFinalSchema);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyMigrationUpdatesExistingTemplates);
+		TEST_ADD(ExpeditionSchemaTest::EventCompletionModeMigrationUpdatesExistingEvents);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyDefaultsAreOff);
+		TEST_ADD(ExpeditionSchemaTest::EventCompletionModeDefaultsToFirstCompletion);
 		TEST_ADD(ExpeditionSchemaTest::BossEventNpcRemovalDeletesEvent);
 		TEST_ADD(ExpeditionSchemaTest::LockoutNamespaceUsesDynamicZoneName);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
 		TEST_ADD(ExpeditionSchemaTest::SharedRequesterMenuSortsExpeditions);
 		TEST_ADD(ExpeditionSchemaTest::RequesterLockoutReasonsAreStatusAware);
+		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossSpawnedReasonUsesFormattedUnavailableMessage);
+		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossAvailabilityIsTemplateSpecific);
+		TEST_ADD(ExpeditionSchemaTest::BossLockoutSpawnGateUsesConfiguredBossMappings);
+		TEST_ADD(ExpeditionSchemaTest::GroupedBossRequirementMatchingSupportsDynamicBosses);
+		TEST_ADD(ExpeditionSchemaTest::GroupedBossAllCompletionRequiresEveryRequirement);
+		TEST_ADD(ExpeditionSchemaTest::GroupedBossValidationHelpersRequireUnambiguousBossGroup);
 	}
 
 private:
@@ -60,6 +69,8 @@ private:
 		TEST_ASSERT(entry->sql.find("db_only") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("zone_version") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("complete_on_spawn") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("completion_mode") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("first_completion") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("idx_expedition_request_lookup") != std::string::npos);
 
 		// The redundant follow-up migrations were consolidated away.
@@ -84,9 +95,24 @@ private:
 		TEST_ASSERT(entry->sql.find("DEFAULT '0'") != std::string::npos);
 	}
 
+	void EventCompletionModeMigrationUpdatesExistingEvents()
+	{
+		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
+			return e.version == 9346 && e.description == "2026_06_08_expedition_event_completion_mode.sql";
+		});
+
+		TEST_ASSERT(entry != manifest_entries.end());
+		TEST_ASSERT(entry->content_schema_update);
+		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_template_events` LIKE 'completion_mode'");
+		TEST_ASSERT(entry->condition == "empty");
+		TEST_ASSERT(entry->sql.find("ALTER TABLE `expedition_template_events`") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("completion_mode") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("DEFAULT 'first_completion'") != std::string::npos);
+	}
+
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()
 	{
-		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9345);
+		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9346);
 	}
 
 	void BossOnlyDefaultsAreOff()
@@ -100,6 +126,16 @@ private:
 		TEST_ASSERT(filter.unrestricted_spawn2_ids.empty());
 		TEST_ASSERT(filter.AllowsSpawn2(1));
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(1) == nullptr);
+	}
+
+	void EventCompletionModeDefaultsToFirstCompletion()
+	{
+		ExpeditionDB::Event event_data;
+		TEST_ASSERT(event_data.completion_mode == ExpeditionDB::kCompletionModeFirst);
+		TEST_ASSERT(!ExpeditionDB::IsGroupedBossCompletionMode(event_data));
+		TEST_ASSERT(ExpeditionDB::NormalizeCompletionMode("all") == ExpeditionDB::kCompletionModeAllBosses);
+		TEST_ASSERT(ExpeditionDB::NormalizeCompletionMode("any") == ExpeditionDB::kCompletionModeAnyBoss);
+		TEST_ASSERT(ExpeditionDB::NormalizeCompletionMode("unexpected") == ExpeditionDB::kCompletionModeFirst);
 	}
 
 	void BossEventNpcRemovalDeletesEvent()
@@ -119,6 +155,13 @@ private:
 		ExpeditionDB::EventNpc chest_npc;
 		chest_npc.role = "chest";
 		TEST_ASSERT(!ExpeditionDB::EventNpcRemovalDeletesEvent(chest_npc));
+
+		ExpeditionDB::Event single_boss_event;
+		TEST_ASSERT(ExpeditionDB::EventNpcRemovalDeletesEvent(single_boss_event, boss_npc));
+
+		ExpeditionDB::Event grouped_boss_event;
+		grouped_boss_event.completion_mode = ExpeditionDB::kCompletionModeAllBosses;
+		TEST_ASSERT(!ExpeditionDB::EventNpcRemovalDeletesEvent(grouped_boss_event, boss_npc));
 	}
 
 	void LockoutNamespaceUsesDynamicZoneName()
@@ -265,5 +308,187 @@ private:
 		TEST_ASSERT(ExpeditionDB::IsRequesterLockoutReason("event_lockout_conflict"));
 		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("player_count"));
 		TEST_ASSERT(!ExpeditionDB::IsRequesterLockoutReason("member_already_in_expedition"));
+	}
+
+	void BaseZoneBossSpawnedReasonUsesFormattedUnavailableMessage()
+	{
+		TEST_ASSERT(ExpeditionDB::IsBaseZoneBossSpawnedReason(ExpeditionDB::kBaseZoneBossSpawnedReason));
+		TEST_ASSERT(ExpeditionDB::IsRequesterStatusBlockReason(ExpeditionDB::kBaseZoneBossSpawnedReason));
+		TEST_ASSERT(!ExpeditionDB::IsRequesterStatusBlockReason("replay_lockout"));
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableStatus) == "Unavailable");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableNote) == "while associated bosses are spawned in the base zone.");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableMessage) == "Unavailable while associated bosses are spawned in the base zone.");
+		TEST_ASSERT(std::string(ExpeditionDB::kBaseZoneBossUnavailableFailure) == "unavailable while associated bosses are spawned in the base zone");
+	}
+
+	void BaseZoneBossAvailabilityIsTemplateSpecific()
+	{
+		ExpeditionDB::Template first_template;
+		ExpeditionDB::Event first_event;
+		ExpeditionDB::EventNpc first_boss;
+		first_boss.role = "boss";
+		first_boss.npc_type_id = 100;
+		first_boss.spawn2_id = 10;
+		first_event.npcs.push_back(first_boss);
+		first_template.events.push_back(first_event);
+
+		ExpeditionDB::Template second_template;
+		ExpeditionDB::Event second_event;
+		ExpeditionDB::EventNpc second_boss;
+		second_boss.role = "boss";
+		second_boss.npc_type_id = 200;
+		second_boss.spawn2_id = 20;
+		second_event.npcs.push_back(second_boss);
+		second_template.events.push_back(second_event);
+
+		ExpeditionDB::Template non_boss_template;
+		ExpeditionDB::Event non_boss_event;
+		ExpeditionDB::EventNpc add_npc;
+		add_npc.role = "add";
+		add_npc.npc_type_id = first_boss.npc_type_id;
+		add_npc.spawn2_id = first_boss.spawn2_id;
+		non_boss_event.npcs.push_back(add_npc);
+		non_boss_template.events.push_back(non_boss_event);
+
+		ExpeditionDB::Template wildcard_template;
+		ExpeditionDB::Event wildcard_event;
+		ExpeditionDB::EventNpc wildcard_boss;
+		wildcard_boss.role = "boss";
+		wildcard_boss.npc_type_id = 300;
+		wildcard_boss.spawn2_id = 0;
+		wildcard_event.npcs.push_back(wildcard_boss);
+		wildcard_template.events.push_back(wildcard_event);
+
+		TEST_ASSERT(ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(first_template, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(first_template, 100, 11));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(second_template, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(non_boss_template, 100, 10));
+		TEST_ASSERT(ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(wildcard_template, 300, 99));
+		TEST_ASSERT(!ExpeditionDB::TemplateHasBaseZoneAvailabilityBossForSpawn(wildcard_template, 301, 99));
+	}
+
+	void BossLockoutSpawnGateUsesConfiguredBossMappings()
+	{
+		TEST_ASSERT(ExpeditionDB::kBossLockoutSpawnRetryMilliseconds == 60000);
+
+		ExpeditionDB::EventNpc boss_npc;
+		boss_npc.role = "boss";
+		boss_npc.npc_type_id = 100;
+		boss_npc.spawn2_id = 10;
+
+		ExpeditionDB::EventNpc wildcard_boss_npc;
+		wildcard_boss_npc.role = "boss";
+		wildcard_boss_npc.npc_type_id = 200;
+		wildcard_boss_npc.spawn2_id = 0;
+
+		ExpeditionDB::EventNpc non_boss_npc;
+		non_boss_npc.role = "add";
+		non_boss_npc.npc_type_id = boss_npc.npc_type_id;
+		non_boss_npc.spawn2_id = boss_npc.spawn2_id;
+
+		ExpeditionDB::EventNpc unset_boss_npc;
+		unset_boss_npc.role = "boss";
+		unset_boss_npc.npc_type_id = 0;
+		unset_boss_npc.spawn2_id = boss_npc.spawn2_id;
+
+		TEST_ASSERT(ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 100, 11));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(boss_npc, 101, 10));
+		TEST_ASSERT(ExpeditionDB::BossEventNpcMatchesSpawn(wildcard_boss_npc, 200, 99));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(non_boss_npc, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::BossEventNpcMatchesSpawn(unset_boss_npc, 0, 10));
+	}
+
+	void GroupedBossRequirementMatchingSupportsDynamicBosses()
+	{
+		ExpeditionDB::Event grouped_event;
+		grouped_event.completion_mode = ExpeditionDB::kCompletionModeAllBosses;
+
+		ExpeditionDB::EventNpc spawn_boss;
+		spawn_boss.id = 1;
+		spawn_boss.role = "boss";
+		spawn_boss.npc_type_id = 100;
+		spawn_boss.spawn2_id = 10;
+		spawn_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc dynamic_boss;
+		dynamic_boss.id = 2;
+		dynamic_boss.role = "boss";
+		dynamic_boss.npc_type_id = 200;
+		dynamic_boss.spawn2_id = 0;
+		dynamic_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc add_npc;
+		add_npc.id = 3;
+		add_npc.role = "add";
+		add_npc.npc_type_id = 300;
+		add_npc.complete_on_death = true;
+
+		grouped_event.npcs = { spawn_boss, dynamic_boss, add_npc };
+
+		TEST_ASSERT(ExpeditionDB::IsGroupedBossCompletionMode(grouped_event));
+		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementCount(grouped_event) == 2);
+		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementMatchesSpawn(spawn_boss, 100, 10));
+		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementMatchesSpawn(spawn_boss, 100, 11));
+		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementMatchesSpawn(dynamic_boss, 200, 99));
+		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementMatchesSpawn(add_npc, 300, 0));
+	}
+
+	void GroupedBossAllCompletionRequiresEveryRequirement()
+	{
+		ExpeditionDB::Event grouped_event;
+		grouped_event.completion_mode = ExpeditionDB::kCompletionModeAllBosses;
+
+		ExpeditionDB::EventNpc first_boss;
+		first_boss.id = 10;
+		first_boss.role = "boss";
+		first_boss.npc_type_id = 100;
+		first_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc second_boss;
+		second_boss.id = 20;
+		second_boss.role = "boss";
+		second_boss.npc_type_id = 200;
+		second_boss.complete_on_death = true;
+
+		grouped_event.npcs = { first_boss, second_boss };
+
+		std::unordered_set<uint32_t> completed;
+		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementsComplete(grouped_event, completed));
+		completed.insert(first_boss.id);
+		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementsComplete(grouped_event, completed));
+		completed.insert(second_boss.id);
+		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementsComplete(grouped_event, completed));
+	}
+
+	void GroupedBossValidationHelpersRequireUnambiguousBossGroup()
+	{
+		ExpeditionDB::Event grouped_event;
+		grouped_event.event_name = ExpeditionDB::kSimpleBossEventName;
+		grouped_event.completion_mode = ExpeditionDB::kCompletionModeAllBosses;
+
+		ExpeditionDB::EventNpc dynamic_boss;
+		dynamic_boss.id = 1;
+		dynamic_boss.role = "boss";
+		dynamic_boss.npc_type_id = 100;
+		dynamic_boss.spawn2_id = 0;
+		dynamic_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc spawn_boss;
+		spawn_boss.id = 2;
+		spawn_boss.role = "boss";
+		spawn_boss.npc_type_id = 100;
+		spawn_boss.spawn2_id = 10;
+		spawn_boss.complete_on_death = true;
+
+		grouped_event.npcs = { dynamic_boss, spawn_boss };
+
+		TEST_ASSERT(ExpeditionDB::IsGroupedBossCompletionMode(grouped_event));
+		TEST_ASSERT(Strings::EqualFold(grouped_event.event_name, ExpeditionDB::kSimpleBossEventName));
+		TEST_ASSERT(ExpeditionDB::GroupedBossHasAmbiguousDynamicRequirement(grouped_event));
+
+		spawn_boss.npc_type_id = 200;
+		grouped_event.npcs = { dynamic_boss, spawn_boss };
+		TEST_ASSERT(!ExpeditionDB::GroupedBossHasAmbiguousDynamicRequirement(grouped_event));
 	}
 };
