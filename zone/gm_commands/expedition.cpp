@@ -565,7 +565,7 @@ namespace {
 	{
 		SendCardTop(c, "Create An Expedition");
 		c->Message(Chat::White, "  #expedition create \"Name\"  -  create a draft from your current zone/location and start editing it.");
-		c->Message(Chat::White, "  It uses your current zone/version, your spot as the zone-in and compass, the zone safe point as the return, group size, and a 2h replay timer.");
+		c->Message(Chat::White, "  It uses your current zone/version, your spot as the zone-in and compass, the zone safe point as the return, 6-54 player limits, a 6h duration, and a 1d replay timer.");
 		c->Message(Chat::Yellow, "  Examples:");
 		c->Message(Chat::White, "    #expedition create \"Nagafen's Lair\"");
 		c->Message(Chat::White, "    #expedition create \"Cazic Thule Trial\"");
@@ -740,18 +740,18 @@ namespace {
 		}
 
 		if (names.empty()) {
-			return "Target the boss, then use #expedition boss 6h or #expedition boss 6h loot.";
+			return "Target the boss, then use #expedition boss or #expedition boss loot.";
 		}
 
 		if (names.size() == 1) {
-			return fmt::format("{} boss lockout: {}. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names.front());
+			return fmt::format("{} boss lockout: {}. Target another boss and use #expedition boss loot to add it.", names.size(), names.front());
 		}
 
 		if (names.size() == 2) {
-			return fmt::format("{} boss lockouts: {} and {}. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names[0], names[1]);
+			return fmt::format("{} boss lockouts: {} and {}. Target another boss and use #expedition boss loot to add it.", names.size(), names[0], names[1]);
 		}
 
-		return fmt::format("{} boss lockouts: {}, {}, and {} more. Target another boss and use #expedition boss 6h loot to add it.", names.size(), names[0], names[1], names.size() - 2);
+		return fmt::format("{} boss lockouts: {}, {}, and {} more. Target another boss and use #expedition boss loot to add it.", names.size(), names[0], names[1], names.size() - 2);
 	}
 
 	const ExpeditionDB::Event* FindBossEventForNpc(const ExpeditionDB::Template& template_data, NPC& npc)
@@ -851,8 +851,8 @@ namespace {
 			return {
 				"Set player limits",
 				"The player minimum and maximum are not valid.",
-				"#expedition preset group",
-				"Apply Group Defaults",
+				"#expedition preset raid",
+				"Apply Raid Defaults",
 				{
 					{"#expedition preset solo", "Solo Preset"},
 					{"#expedition preset group", "Group Preset"},
@@ -879,11 +879,11 @@ namespace {
 			return {
 				"Add encounter event",
 				npc ? fmt::format("Your current target [{}] can seed the first boss event.", NpcLabel(*npc)) : "Add at least one event for boss completion, lockouts, and optional loot protection.",
-				npc ? "#expedition boss 6h loot" : "#expedition boss 6h",
+				npc ? "#expedition boss loot" : "#expedition boss",
 				npc ? "Create Boss Event From Target" : "Show Boss Step",
 				{
-					{"#expedition boss 6h", "Use Target Boss"},
-					{"#expedition boss 6h loot", "Use Target Boss With Loot"},
+					{"#expedition boss", "Use Target Boss"},
+					{"#expedition boss loot", "Use Target Boss With Loot"},
 					{"#expedition event group", "New Boss Group"},
 					{"#expedition event list", "List Events"}
 				}
@@ -894,11 +894,11 @@ namespace {
 			return {
 				"Map event NPC",
 				npc ? fmt::format("Map target [{}] to event [{}].", NpcLabel(*npc), event_data->event_name) : fmt::format("Event [{}] has no NPC mapping yet. Target the boss, add, chest, or loot NPC for this event.", event_data->event_name),
-				"#expedition boss 6h",
+				"#expedition boss",
 				npc ? "Use Target Boss" : "Show Boss Step",
 				{
-					{"#expedition boss 6h", "Use Target Boss"},
-					{"#expedition boss 6h loot", "Use Target Boss With Loot"},
+					{"#expedition boss", "Use Target Boss"},
+					{"#expedition boss loot", "Use Target Boss With Loot"},
 					{"#expedition event list", "List Events"}
 				}
 			};
@@ -908,12 +908,12 @@ namespace {
 			return {
 				"Set event lockout",
 				fmt::format("Event [{}] completes successfully but has no lockout duration.", event_data->event_name),
-				"#expedition boss 6h",
-				"Set 6 Hour Event Lockout",
+				"#expedition event lockout 156h",
+				"Set 6.5 Day Event Lockout",
 				{
-					{"#expedition boss 2h", "2 Hour Lockout"},
-					{"#expedition boss 6h", "6 Hour Lockout"},
-					{"#expedition event replay 2h", "2 Hour Replay"}
+					{"#expedition event lockout 156h", "6.5 Day Lockout"},
+					{"#expedition boss", "Use Target Boss"},
+					{"#expedition event replay 1d", "1 Day Replay"}
 				}
 			};
 		}
@@ -922,10 +922,10 @@ namespace {
 			return {
 				"Choose completion trigger",
 				fmt::format("Event [{}] has NPC mappings, but none are marked to complete the event on death.", event_data->event_name),
-				"#expedition boss 6h",
+				"#expedition boss",
 				npc ? "Use Target Boss" : "Show Boss Step",
 				{
-					{"#expedition boss 6h", "Use Target Boss"},
+					{"#expedition boss", "Use Target Boss"},
 					{"#expedition action", "Runtime Actions"},
 					{"#expedition event list", "List Events"}
 				}
@@ -936,11 +936,11 @@ namespace {
 			return {
 				"Set replay timer",
 				"No replay lockout is configured. A replay timer prevents immediate repeated requests.",
-				"#expedition set replay 2h",
-				"Set 2 Hour Replay",
+				"#expedition set replay 1d",
+				"Set 1 Day Replay",
 				{
 					{"#expedition set replay 30m", "30 Minute Replay"},
-					{"#expedition set replay 2h", "2 Hour Replay"},
+					{"#expedition set replay 1d", "1 Day Replay"},
 					{"#expedition set replay none", "No Replay Timer"}
 				}
 			};
@@ -950,11 +950,11 @@ namespace {
 			return {
 				"Consider loot protection",
 				fmt::format("Target [{}] is mapped to event [{}]. Enable loot protection if this NPC gates boss or chest rewards.", NpcLabel(*npc), event_data->event_name),
-				"#expedition boss 6h loot",
+				"#expedition boss loot",
 				"Protect Target Loot",
 				{
-					{"#expedition boss 6h loot", "Protect Target Loot"},
-					{"#expedition boss 6h noloot", "Leave Loot Unprotected"},
+					{"#expedition boss loot", "Protect Target Loot"},
+					{"#expedition boss noloot", "Leave Loot Unprotected"},
 					{"#expedition validate", "Validate"}
 				}
 			};
@@ -1051,7 +1051,7 @@ namespace {
 			{"#expedition set zonein", "Current Zone-In"},
 			{"#expedition set safereturn", "Current Safe Return"},
 			{"#expedition set compass", "Current Compass"},
-			{"#expedition preset group", "Group Preset"},
+			{"#expedition preset raid", "Raid Preset"},
 			{"#expedition", "Home / Overview"}
 		});
 	}
@@ -1117,7 +1117,7 @@ namespace {
 			{"#expedition event group", "New Boss Group"},
 			{"#expedition event list", "List Events"},
 			{"#expedition event npc", "Add Target as Event NPC"},
-			{"#expedition event lockout 6h", "6h Lockout"},
+			{"#expedition event lockout 156h", "6.5d Lockout"},
 			{"#expedition", "Home / Overview"}
 		});
 		if (const auto* template_data = SelectedTemplate(c)) {
@@ -1179,7 +1179,7 @@ namespace {
 		SendActionRow(c, {
 			{fmt::format("#expedition event rename {} \"{}\"", event_data->id, event_data->event_name), "Rename"},
 			{"#expedition event lockout", "Lockout..."},
-			{"#expedition event replay 2h", "Replay 2h"},
+			{"#expedition event replay 1d", "Replay 1d"},
 			{fmt::format("#expedition event remove {}", event_data->id), "Delete Event"}
 		});
 		SendCardBottom(c);
@@ -1206,7 +1206,7 @@ namespace {
 		SendSectionHeader(c, "Preset Catalog");
 		SendHelpLink(c, "#expedition preset solo", "1 player, 90 minute duration, 30 minute replay");
 		SendHelpLink(c, "#expedition preset group", "1-6 players, 6 hour duration, 2 hour replay");
-		SendHelpLink(c, "#expedition preset raid", "6-54 players, 6 hour duration, 2 hour replay");
+		SendHelpLink(c, "#expedition preset raid", "6-54 players, 6 hour duration, 1 day replay");
 		SendHelpLink(c, "#expedition preset boss", "selected event gets timing and targeted NPC as boss");
 		SendHelpLink(c, "#expedition preset chest", "targeted NPC becomes loot-protected chest for selected event");
 		SendActionGroup(c, "Presets", {
@@ -1243,8 +1243,8 @@ namespace {
 		SendActionGroup(c, "Runtime Actions", {
 			{"#expedition action add lock", "Lock"},
 			{"#expedition action add unlock", "Unlock"},
-			{"#expedition action add replay 2h", "2h Replay"},
-			{"#expedition action add lockout 6h", "6h Lockout"},
+			{"#expedition action add replay 1d", "1d Replay"},
+			{"#expedition action add lockout 156h", "6.5d Lockout"},
 			{"#expedition action add remaining 1h", "1h Remaining"},
 			{"#expedition action list", "List Actions"},
 			{"#expedition action clear", "Clear Actions..."}
@@ -1301,24 +1301,125 @@ namespace {
 		}
 	}
 
-	// Render one numbered roster NPC line, plus a clickable GoTo/Target row when it is currently spawned in-zone.
-	void RenderRosterNpc(Client* c, uint32_t number, const std::string& label, uint32_t npc_type_id, const std::string& extra)
+	NPC* ResolveLiveRosterNpc(uint32_t npc_type_id, uint32_t spawn2_id);
+
+	// Render one numbered roster NPC line, plus clickable actions when it is currently spawned in-zone.
+	void RenderRosterNpc(
+		Client* c,
+		uint32_t number,
+		const std::string& label,
+		uint32_t npc_type_id,
+		uint32_t spawn2_id,
+		uint32_t template_id,
+		uint32_t event_id,
+		bool show_manage,
+		const std::string& extra
+	)
 	{
-		NPC* live = entity_list.GetNPCByNPCTypeID(npc_type_id);
+		NPC* live = ResolveLiveRosterNpc(npc_type_id, spawn2_id);
 		std::string name = ExpeditionDB::NpcTypeName(npc_type_id);
 		if (name.empty()) {
 			name = "unknown";
 		}
+		const std::string spawn_label = spawn2_id != 0 ? fmt::format(" spawn {}", spawn2_id) : "";
 		c->Message(live ? Chat::Green : Chat::Gray, fmt::format(
-			"   {:>2}. {}: {} ({}){}  -  {}",
-			number, label, name, npc_type_id, extra, live ? "SPAWNED" : "not spawned"
+			"   {:>2}. {}: {} ({}){}{}  -  {}",
+			number, label, name, npc_type_id, spawn_label, extra, live ? "SPAWNED" : "not spawned"
 		).c_str());
-		if (live) {
-			c->Message(Chat::White, fmt::format("       {}    {}",
-				Saylink::Silent(fmt::format("#expedition goto {}", npc_type_id), "[ GoTo ]"),
-				Saylink::Silent(fmt::format("#expedition target {}", npc_type_id), "[ Target ]")
-			).c_str());
+		if (live || show_manage) {
+			const std::string spawn_arg = spawn2_id != 0 ? fmt::format(" {}", spawn2_id) : "";
+			std::string actions = "       ";
+			if (live) {
+				actions += fmt::format(
+					"{}    {}",
+					Saylink::Silent(fmt::format("#expedition goto {}{}", npc_type_id, spawn_arg), "[ GoTo ]"),
+					Saylink::Silent(fmt::format("#expedition target {}{}", npc_type_id, spawn_arg), "[ Target ]")
+				);
+			}
+			if (show_manage) {
+				if (live) {
+					actions += "    ";
+				}
+				actions += Saylink::Silent(
+					fmt::format("#expedition manage {} {} {} {}", template_id, event_id, npc_type_id, spawn2_id),
+					"[ Manage ]"
+				);
+			}
+			c->Message(Chat::White, actions.c_str());
 		}
+	}
+
+	const ExpeditionDB::Event* FindTemplateEventByID(const ExpeditionDB::Template& template_data, uint32_t event_id)
+	{
+		auto it = std::ranges::find_if(template_data.events, [event_id](const ExpeditionDB::Event& event_data) {
+			return event_data.id == event_id;
+		});
+
+		return it != template_data.events.end() ? &*it : nullptr;
+	}
+
+	const ExpeditionDB::EventNpc* FindEventNpcByMapping(const ExpeditionDB::Event& event_data, uint32_t npc_type_id, uint32_t spawn2_id)
+	{
+		auto it = std::ranges::find_if(event_data.npcs, [&](const ExpeditionDB::EventNpc& event_npc) {
+			return event_npc.npc_type_id == npc_type_id && event_npc.spawn2_id == spawn2_id;
+		});
+
+		return it != event_data.npcs.end() ? &*it : nullptr;
+	}
+
+	void ShowMappedNpcManageMenu(
+		Client* c,
+		const ExpeditionDB::Template& template_data,
+		const ExpeditionDB::Event& event_data,
+		const ExpeditionDB::EventNpc& event_npc
+	)
+	{
+		NPC* live = ResolveLiveRosterNpc(event_npc.npc_type_id, event_npc.spawn2_id);
+		const bool is_chest = Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn;
+		const std::string role_label = is_chest ? "Chest" : "Boss";
+		const std::string npc_name = live ? live->GetCleanName() : ExpeditionDB::NpcTypeName(event_npc.npc_type_id);
+		const std::string trigger =
+			event_npc.complete_on_spawn ? "spawn" :
+			(event_npc.complete_on_death ? "death" : "manual");
+		const bool loot_protected = event_data.loot_protected || event_npc.loot_protected;
+		const std::string base_command = fmt::format(
+			"#expedition manage action {} {} {} {}",
+			template_data.id,
+			event_data.id,
+			event_npc.npc_type_id,
+			event_npc.spawn2_id
+		);
+
+		SendCardTop(c, fmt::format("{}: {} ({})", role_label, npc_name, event_npc.npc_type_id));
+		if (!live) {
+			c->Message(Chat::Gray, "  This NPC is not spawned right now. DB mapping actions are still available.");
+		}
+		SendInfoLine(c, "Event", event_data.event_name);
+		SendInfoLine(c, "Trigger", trigger);
+		SendInfoLine(c, "Lockout", Duration(event_data.lockout_seconds));
+		SendInfoLine(c, "Loot protection", OnOff(loot_protected));
+		c->Message(Chat::White, ChatSeparator());
+
+		if (live) {
+			const std::string spawn_arg = event_npc.spawn2_id != 0 ? fmt::format(" {}", event_npc.spawn2_id) : "";
+			SendActionRow(c, {
+				{fmt::format("#expedition goto {}{}", event_npc.npc_type_id, spawn_arg), "GoTo"},
+				{fmt::format("#expedition target {}{}", event_npc.npc_type_id, spawn_arg), "Target"}
+			});
+		}
+
+		SendActionRow(c, {
+			{fmt::format("{} loot {}", base_command, loot_protected ? "off" : "on"), loot_protected ? "Loot Protection: Off" : "Loot Protection: On"},
+			{"#expedition event lockout", "Set Lockout..."},
+			{fmt::format("{} remove confirm", base_command), ExpeditionDB::EventNpcRemovalDeletesEvent(event_data, event_npc) ? "Remove Boss/Event" : "Remove from Expedition"}
+		});
+		SendActionRow(c, {
+			{fmt::format("{} death {}", base_command, event_npc.complete_on_death ? "off" : "on"), event_npc.complete_on_death ? "Death Trigger Off" : "Death Trigger On"},
+			{fmt::format("{} spawn {}", base_command, event_npc.complete_on_spawn ? "off" : "on"), event_npc.complete_on_spawn ? "Spawn Trigger Off" : "Spawn Trigger On"}
+		});
+		c->Message(Chat::White, fmt::format("  Rename event:  {}",
+			Saylink::Create(fmt::format("#expedition event rename {} \"{}\"", event_data.id, event_data.event_name), false, "[ Rename Event ]")).c_str());
+		SendCardBottom(c);
 	}
 
 	void ShowTemplate(Client* c, const ExpeditionDB::Template& template_data)
@@ -1346,7 +1447,7 @@ namespace {
 				if (Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn) {
 					continue;
 				}
-				RenderRosterNpc(c, ++roster_index, "Boss", event_npc.npc_type_id,
+				RenderRosterNpc(c, ++roster_index, "Boss", event_npc.npc_type_id, event_npc.spawn2_id, template_data.id, event_data.id, true,
 					fmt::format(" - trigger {}", event_npc.complete_on_death ? "death" : "manual"));
 				any_npc = true;
 			}
@@ -1354,7 +1455,7 @@ namespace {
 				if (!(Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn)) {
 					continue;
 				}
-				RenderRosterNpc(c, ++roster_index, "Chest", event_npc.npc_type_id,
+				RenderRosterNpc(c, ++roster_index, "Chest", event_npc.npc_type_id, event_npc.spawn2_id, template_data.id, event_data.id, true,
 					fmt::format(" - completes \"{}\" on spawn, loot protected", event_data.event_name));
 				any_npc = true;
 			}
@@ -1370,7 +1471,7 @@ namespace {
 		}
 		uint32_t requester_index = 0;
 		for (const auto& request_npc : template_data.request_npcs) {
-			RenderRosterNpc(c, ++requester_index, "Requester", request_npc.npc_type_id,
+			RenderRosterNpc(c, ++requester_index, "Requester", request_npc.npc_type_id, request_npc.spawn2_id, template_data.id, 0, false,
 				fmt::format(" @ {} - phrase '{}'", ZoneLabel(request_npc.zone_id), request_npc.phrase));
 		}
 
@@ -1449,8 +1550,8 @@ namespace {
 		c->Message(Chat::White, fmt::format("{} - Use your current location as zone-in.", Saylink::Silent("#expedition fix zonein", "#expedition fix zonein")).c_str());
 		c->Message(Chat::White, fmt::format("{} - Use your current location as safe return.", Saylink::Silent("#expedition fix safereturn", "#expedition fix safereturn")).c_str());
 		c->Message(Chat::White, fmt::format("{} - Add your targeted NPC as request NPC.", Saylink::Silent("#expedition fix requestnpc", "#expedition fix requestnpc")).c_str());
-		c->Message(Chat::White, fmt::format("{} - Set a 2 hour replay lockout.", Saylink::Silent("#expedition fix replay 2h", "#expedition fix replay 2h")).c_str());
-		c->Message(Chat::White, fmt::format("{} - Apply group defaults.", Saylink::Silent("#expedition preset group", "#expedition preset group")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Set a 1 day replay lockout.", Saylink::Silent("#expedition fix replay 1d", "#expedition fix replay 1d")).c_str());
+		c->Message(Chat::White, fmt::format("{} - Apply raid defaults.", Saylink::Silent("#expedition preset raid", "#expedition preset raid")).c_str());
 	}
 
 
@@ -1488,6 +1589,16 @@ namespace {
 		}
 
 		return npc;
+	}
+
+	NPC* ResolveLiveRosterNpc(uint32_t npc_type_id, uint32_t spawn2_id)
+	{
+		if (spawn2_id != 0) {
+			NPC* npc = entity_list.GetNPCBySpawnID(spawn2_id);
+			return npc && npc->GetNPCTypeID() == npc_type_id ? npc : nullptr;
+		}
+
+		return entity_list.GetNPCByNPCTypeID(npc_type_id);
 	}
 
 	const ExpeditionDB::Event* RequireSelectedEvent(Client* c, const ExpeditionDB::Template& template_data)
@@ -1553,6 +1664,7 @@ namespace {
 	void HandleReload(Client* c, const Seperator* sep);
 	void HandleGoto(Client* c, const Seperator* sep);
 	void HandleTargetNpc(Client* c, const Seperator* sep);
+	void HandleManageNpc(Client* c, const Seperator* sep);
 	void HandleHome(Client* c, const Seperator* sep);
 	void RenderHome(Client* c, bool all);
 	void RefreshBuilderView(Client* c);
@@ -1674,6 +1786,9 @@ void command_expedition(Client* c, const Seperator* sep)
 	}
 	if (sub == "target") {
 		return HandleTargetNpc(c, sep);
+	}
+	if (sub == "manage") {
+		return HandleManageNpc(c, sep);
 	}
 	if (sub == "advanced") {
 		ShowAdvancedHelp(c);
@@ -1834,7 +1949,7 @@ void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
 		});
 		c->Message(Chat::White, "  Encounters:");
 		SendActionRow(c, {
-			{"#expedition boss 6h loot", "Target Boss"},
+			{"#expedition boss loot", "Target Boss"},
 			{"#expedition event group", "New Boss Group"},
 			{"#expedition event list", "Event List"}
 		});
@@ -1873,6 +1988,7 @@ void ShowTimeMatrix(Client* c, const std::string& title, const std::string& comm
 		SendActionRow(c, {
 			{command_prefix + " 1d", "1d"}, {command_prefix + " 2d", "2d"},
 			{command_prefix + " 3d", "3d"}, {command_prefix + " 5d", "5d"},
+			{command_prefix + " 156h", "6.5d"},
 			{command_prefix + " 7d", "7d"}, {command_prefix + " 14d", "14d"}
 		});
 		c->Message(Chat::White, ChatSeparator());
@@ -2178,7 +2294,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 				return;
 			}
 			ExpeditionDB::SetDzTemplatePlayers(content_db, dz_template_id, min_players, max_players);
-			c->Message(Chat::Green, fmt::format("Set group size to {} ({}-{} players).", size, min_players, max_players).c_str());
+			c->Message(Chat::Green, fmt::format("Set player limits to {} ({}-{} players).", size, min_players, max_players).c_str());
 		}
 		else if (action == "zonein") {
 			ExpeditionDB::SetDzTemplateZoneIn(content_db, dz_template_id, pos.x, pos.y, pos.z, pos.w);
@@ -2280,7 +2396,7 @@ void HandleCreate(Client* c, const Seperator* sep)
 	ExpeditionDB::SetSelectedTemplate(c->CharacterID(), id);
 	ExpeditionDB::GetBuilderState(c->CharacterID()).edit_mode = true;
 	c->Message(Chat::Green, fmt::format(
-		"Created expedition [{}] \"{}\" with group defaults - now in edit mode. Use [ Rename ] below to change the name, or target NPCs to add bosses / requesters.",
+		"Created expedition [{}] \"{}\" with raid defaults - now in edit mode. Use [ Rename ] below to change the name, or target NPCs to add bosses / requesters.",
 		id, name
 	).c_str());
 	if (const auto* created = ExpeditionDB::FindTemplate(id)) {
@@ -2487,8 +2603,8 @@ void HandleBoss(Client* c, const Seperator* sep)
 {
 	if (strcasecmp(sep->arg[2], "help") == 0) {
 		c->Message(Chat::White, "Usage: #expedition boss [lockout] [loot|noloot|chest]");
-		c->Message(Chat::White, "Example: #expedition boss 6h loot");
-		c->Message(Chat::White, "Example: #expedition boss 6h chest");
+		c->Message(Chat::White, "Example: #expedition boss loot");
+		c->Message(Chat::White, "Example: #expedition boss chest");
 		return;
 	}
 
@@ -2497,7 +2613,7 @@ void HandleBoss(Client* c, const Seperator* sep)
 		return;
 	}
 
-	NPC* npc = RequireTargetNpc(c, "Target the boss NPC, then run #expedition boss 6h or #expedition boss 6h loot.");
+	NPC* npc = RequireTargetNpc(c, "Target the boss NPC, then run #expedition boss or #expedition boss loot.");
 	if (!npc) {
 		return;
 	}
@@ -2600,7 +2716,7 @@ void HandleChest(Client* c, const Seperator* sep)
 
 		const auto* event_data = SelectedEvent(c, *template_data);
 		if (!event_data) {
-			c->Message(Chat::Red, "Add or select the boss event first. Use #expedition boss 6h chest after targeting the boss.");
+			c->Message(Chat::Red, "Add or select the boss event first. Use #expedition boss chest after targeting the boss.");
 			return;
 		}
 
@@ -2952,10 +3068,12 @@ void HandleShow(Client* c, const Seperator* sep)
 void HandleGoto(Client* c, const Seperator* sep)
 {
 		if (!IsStrictUnsigned(sep->arg[2])) {
-			c->Message(Chat::Red, "Usage: #expedition goto <npc_type_id>");
+			c->Message(Chat::Red, "Usage: #expedition goto <npc_type_id> [spawn2_id]");
 			return;
 		}
-		NPC* npc = entity_list.GetNPCByNPCTypeID(Strings::ToUnsignedInt(sep->arg[2]));
+		const uint32_t npc_type_id = Strings::ToUnsignedInt(sep->arg[2]);
+		const uint32_t spawn2_id = IsStrictUnsigned(sep->arg[3]) ? Strings::ToUnsignedInt(sep->arg[3]) : 0;
+		NPC* npc = ResolveLiveRosterNpc(npc_type_id, spawn2_id);
 		if (!npc) {
 			c->Message(Chat::Yellow, "That NPC is not spawned in this zone right now.");
 			return;
@@ -2968,10 +3086,12 @@ void HandleGoto(Client* c, const Seperator* sep)
 void HandleTargetNpc(Client* c, const Seperator* sep)
 {
 		if (!IsStrictUnsigned(sep->arg[2])) {
-			c->Message(Chat::Red, "Usage: #expedition target <npc_type_id>");
+			c->Message(Chat::Red, "Usage: #expedition target <npc_type_id> [spawn2_id]");
 			return;
 		}
-		NPC* npc = entity_list.GetNPCByNPCTypeID(Strings::ToUnsignedInt(sep->arg[2]));
+		const uint32_t npc_type_id = Strings::ToUnsignedInt(sep->arg[2]);
+		const uint32_t spawn2_id = IsStrictUnsigned(sep->arg[3]) ? Strings::ToUnsignedInt(sep->arg[3]) : 0;
+		NPC* npc = ResolveLiveRosterNpc(npc_type_id, spawn2_id);
 		if (!npc) {
 			c->Message(Chat::Yellow, "That NPC is not spawned in this zone right now.");
 			return;
@@ -2979,6 +3099,168 @@ void HandleTargetNpc(Client* c, const Seperator* sep)
 		c->SetTarget(npc);
 		c->SendTargetCommand(npc->GetID());
 		c->Message(Chat::Green, fmt::format("Targeted {}.", npc->GetCleanName()).c_str());
+}
+
+void HandleManageAction(Client* c, const Seperator* sep)
+{
+		if (
+			!IsStrictUnsigned(sep->arg[3]) ||
+			!IsStrictUnsigned(sep->arg[4]) ||
+			!IsStrictUnsigned(sep->arg[5]) ||
+			!IsStrictUnsigned(sep->arg[6])
+		) {
+			c->Message(Chat::Red, "Usage: #expedition manage action <template_id> <event_id> <npc_type_id> <spawn2_id> <loot|death|spawn|remove> [on|off|confirm]");
+			return;
+		}
+
+		const uint32_t template_id = Strings::ToUnsignedInt(sep->arg[3]);
+		const uint32_t event_id = Strings::ToUnsignedInt(sep->arg[4]);
+		const uint32_t npc_type_id = Strings::ToUnsignedInt(sep->arg[5]);
+		const uint32_t spawn2_id = Strings::ToUnsignedInt(sep->arg[6]);
+		const std::string action = Strings::ToLower(sep->arg[7]);
+
+		const auto* template_data = ExpeditionDB::FindTemplate(template_id);
+		if (!template_data) {
+			c->Message(Chat::Red, "Expedition template not found.");
+			return;
+		}
+
+		const auto* event_data = FindTemplateEventByID(*template_data, event_id);
+		if (!event_data) {
+			c->Message(Chat::Red, "Event not found.");
+			return;
+		}
+
+		const auto* event_npc = FindEventNpcByMapping(*event_data, npc_type_id, spawn2_id);
+		if (!event_npc) {
+			c->Message(Chat::Red, "NPC mapping not found for that event.");
+			return;
+		}
+		const std::string event_name = event_data->event_name;
+
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
+		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+
+		if (action == "remove") {
+			if (strcasecmp(sep->arg[8], "confirm") != 0) {
+				c->Message(Chat::Yellow, fmt::format("Type #expedition manage action {} {} {} {} remove confirm to remove this NPC mapping.",
+					template_id, event_id, npc_type_id, spawn2_id).c_str());
+				return;
+			}
+
+			const bool removes_event = ExpeditionDB::EventNpcRemovalDeletesEvent(*event_data, *event_npc);
+			if (!ExpeditionDB::DeleteEventNpc(content_db, event_id, npc_type_id, spawn2_id)) {
+				c->Message(Chat::Red, fmt::format("Failed to remove NPC mapping for event [{}].", event_name).c_str());
+				return;
+			}
+
+			if (removes_event) {
+				if (const auto* refreshed_template = SelectedTemplate(c)) {
+					const uint32_t next_event_id = refreshed_template->events.empty() ? 0 : refreshed_template->events.front().id;
+					ExpeditionDB::SetSelectedEvent(c->CharacterID(), next_event_id);
+				}
+				c->Message(Chat::Green, fmt::format("Saved: removed boss mapping and event [{}].", event_name).c_str());
+			}
+			else {
+				c->Message(Chat::Green, fmt::format("Saved: removed NPC mapping from event [{}].", event_name).c_str());
+			}
+			RefreshBuilderView(c);
+			return;
+		}
+
+		bool enabled = true;
+		if (sep->arg[8][0] != '\0' && !ParseOnOffArg(sep->arg[8], enabled)) {
+			c->Message(Chat::Red, "Usage: #expedition manage action <template_id> <event_id> <npc_type_id> <spawn2_id> <loot|death|spawn> on|off");
+			return;
+		}
+
+		bool ok = false;
+		std::string label;
+		if (action == "loot") {
+			ok = ExpeditionDB::SetEventNpcLoot(content_db, event_id, npc_type_id, spawn2_id, enabled);
+			label = "loot protection";
+		}
+		else if (action == "death") {
+			ok = ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, event_id, npc_type_id, spawn2_id, enabled);
+			label = "complete-on-death";
+		}
+		else if (action == "spawn") {
+			ok = ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, event_id, npc_type_id, spawn2_id, enabled);
+			label = "complete-on-spawn";
+		}
+		else {
+			c->Message(Chat::Red, "Usage: #expedition manage action <template_id> <event_id> <npc_type_id> <spawn2_id> <loot|death|spawn|remove> [on|off|confirm]");
+			return;
+		}
+
+		if (!ok) {
+			c->Message(Chat::Red, fmt::format("Failed to set {} for event [{}].", label, event_name).c_str());
+			return;
+		}
+
+		c->Message(Chat::Green, fmt::format("Saved: event [{}] NPC [{}] {} is [{}].",
+			event_name, ExpeditionDB::NpcTypeLabel(npc_type_id), label, OnOff(enabled)).c_str());
+		if (const auto* refreshed_template = ExpeditionDB::FindTemplate(template_id)) {
+			if (const auto* refreshed_event = FindTemplateEventByID(*refreshed_template, event_id)) {
+				if (const auto* refreshed_npc = FindEventNpcByMapping(*refreshed_event, npc_type_id, spawn2_id)) {
+					ShowMappedNpcManageMenu(c, *refreshed_template, *refreshed_event, *refreshed_npc);
+					return;
+				}
+			}
+		}
+		RefreshBuilderView(c);
+}
+
+// Open the GM boss/chest management menu from a configured mapping, even if it is not spawned.
+void HandleManageNpc(Client* c, const Seperator* sep)
+{
+		if (Strings::EqualFold(sep->arg[2], "action")) {
+			HandleManageAction(c, sep);
+			return;
+		}
+
+		if (
+			!IsStrictUnsigned(sep->arg[2]) ||
+			!IsStrictUnsigned(sep->arg[3]) ||
+			!IsStrictUnsigned(sep->arg[4]) ||
+			!IsStrictUnsigned(sep->arg[5])
+		) {
+			c->Message(Chat::Red, "Usage: #expedition manage <template_id> <event_id> <npc_type_id> <spawn2_id>");
+			return;
+		}
+
+		const uint32_t template_id = Strings::ToUnsignedInt(sep->arg[2]);
+		const uint32_t event_id = Strings::ToUnsignedInt(sep->arg[3]);
+		const uint32_t npc_type_id = Strings::ToUnsignedInt(sep->arg[4]);
+		const uint32_t spawn2_id = Strings::ToUnsignedInt(sep->arg[5]);
+
+		const auto* template_data = ExpeditionDB::FindTemplate(template_id);
+		if (!template_data) {
+			c->Message(Chat::Red, "Expedition template not found.");
+			return;
+		}
+
+		const auto* event_data = FindTemplateEventByID(*template_data, event_id);
+		if (!event_data) {
+			c->Message(Chat::Red, "Event not found.");
+			return;
+		}
+
+		const auto* event_npc = FindEventNpcByMapping(*event_data, npc_type_id, spawn2_id);
+		if (!event_npc) {
+			c->Message(Chat::Red, "NPC mapping not found for that event.");
+			return;
+		}
+
+		NPC* npc = ResolveLiveRosterNpc(npc_type_id, spawn2_id);
+		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_id);
+		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
+		ExpeditionDB::ResetTargetMenu(c->CharacterID());
+		if (npc) {
+			c->SetTarget(npc);
+			c->SendTargetCommand(npc->GetID());
+		}
+		ShowMappedNpcManageMenu(c, *template_data, *event_data, *event_npc);
 }
 
 void HandlePreview(Client* c, const Seperator* sep)
@@ -3037,7 +3319,7 @@ void HandleFix(Client* c, const Seperator* sep)
 			SendScriptedRequestNpcWarning(c, *template_data, *npc);
 		}
 		else if (action == "replay") {
-			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3][0] ? sep->arg[3] : "2h");
+			const uint32_t seconds = sep->arg[3][0] ? ParseExpeditionDuration(sep->arg[3]) : ExpeditionDB::kSimpleSetupReplaySeconds;
 			ExpeditionDB::SetTemplateReplay(content_db, template_data->id, seconds);
 			c->Message(Chat::Green, fmt::format("Set replay lockout to [{}].", Duration(seconds)).c_str());
 		}
@@ -3990,8 +4272,8 @@ void HandlePreset(Client* c, const Seperator* sep)
 		}
 		else if (preset == "raid") {
 			ExpeditionDB::SetDzTemplatePlayers(content_db, dz_template_id, 6, 54);
-			ExpeditionDB::SetDzTemplateDuration(content_db, dz_template_id, ParseExpeditionDuration("6h"));
-			ExpeditionDB::SetTemplateReplay(content_db, template_id, ParseExpeditionDuration("2h"));
+			ExpeditionDB::SetDzTemplateDuration(content_db, dz_template_id, ExpeditionDB::kSimpleSetupDurationSeconds);
+			ExpeditionDB::SetTemplateReplay(content_db, template_id, ExpeditionDB::kSimpleSetupReplaySeconds);
 			c->Message(Chat::Green, "Applied raid expedition preset.");
 		}
 		else if (preset == "boss") {
@@ -4004,8 +4286,8 @@ void HandlePreset(Client* c, const Seperator* sep)
 			const std::string event_name = event_data ? event_data->event_name : "Boss Defeated";
 			ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
 			if (
-				!ExpeditionDB::SetEventLockout(content_db, event_id, ParseExpeditionDuration("6h")) ||
-				!ExpeditionDB::SetEventReplay(content_db, event_id, ParseExpeditionDuration("2h"))
+				!ExpeditionDB::SetEventLockout(content_db, event_id, ExpeditionDB::kSimpleBossLockoutSeconds) ||
+				!ExpeditionDB::SetEventReplay(content_db, event_id, ExpeditionDB::kSimpleBossReplaySeconds)
 			) {
 				c->Message(Chat::Red, fmt::format("Failed to apply timing for boss event [{}].", event_name).c_str());
 				return;

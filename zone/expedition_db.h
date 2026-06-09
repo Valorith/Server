@@ -19,12 +19,12 @@ struct ExpeditionCheckResult;
 
 namespace ExpeditionDB {
 
-inline constexpr uint32_t kSimpleSetupMinPlayers = 1;
-inline constexpr uint32_t kSimpleSetupMaxPlayers = 6;
-inline constexpr uint32_t kSimpleSetupDurationSeconds = 21600;
-inline constexpr uint32_t kSimpleSetupReplaySeconds = 7200;
-inline constexpr uint32_t kSimpleBossLockoutSeconds = 21600;
-inline constexpr uint32_t kSimpleBossReplaySeconds = 7200;
+inline constexpr uint32_t kSimpleSetupMinPlayers = 6;
+inline constexpr uint32_t kSimpleSetupMaxPlayers = 54;
+inline constexpr uint32_t kSimpleSetupDurationSeconds = 6 * 60 * 60;
+inline constexpr uint32_t kSimpleSetupReplaySeconds = 24 * 60 * 60;
+inline constexpr uint32_t kSimpleBossLockoutSeconds = (6 * 24 * 60 * 60) + (12 * 60 * 60);
+inline constexpr uint32_t kSimpleBossReplaySeconds = kSimpleSetupReplaySeconds;
 inline constexpr const char* kSimpleRequestPhrase = "expedition";
 inline constexpr const char* kRequesterLastName = "Expeditions";
 inline constexpr const char* kSimpleRequestMode = "db_only";
