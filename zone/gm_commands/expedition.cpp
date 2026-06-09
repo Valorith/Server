@@ -1423,7 +1423,10 @@ namespace {
 		NPC* live = ResolveLiveRosterNpc(event_npc.npc_type_id, event_npc.spawn2_id);
 		const bool is_chest = Strings::EqualFold(event_npc.role, "chest") || event_npc.complete_on_spawn;
 		const std::string role_label = is_chest ? "Chest" : "Boss";
-		const std::string npc_name = live ? live->GetCleanName() : ExpeditionDB::NpcTypeName(event_npc.npc_type_id);
+		std::string npc_name = live ? live->GetCleanName() : ExpeditionDB::NpcTypeName(event_npc.npc_type_id);
+		if (npc_name.empty()) {
+			npc_name = "unknown";
+		}
 		const std::string trigger =
 			event_npc.complete_on_spawn ? "spawn" :
 			(event_npc.complete_on_death ? "death" : "manual");
@@ -1640,8 +1643,14 @@ namespace {
 	NPC* ResolveLiveRosterNpc(uint32_t npc_type_id, uint32_t spawn2_id)
 	{
 		if (spawn2_id != 0) {
-			NPC* npc = entity_list.GetNPCBySpawnID(spawn2_id);
-			return npc && npc->GetNPCTypeID() == npc_type_id ? npc : nullptr;
+			for (const auto& npc_entry : entity_list.GetNPCList()) {
+				NPC* npc = npc_entry.second;
+				if (npc && npc->GetNPCTypeID() == npc_type_id && npc->GetSpawnPointID() == spawn2_id) {
+					return npc;
+				}
+			}
+
+			return nullptr;
 		}
 
 		return entity_list.GetNPCByNPCTypeID(npc_type_id);
