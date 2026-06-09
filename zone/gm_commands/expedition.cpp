@@ -1137,6 +1137,7 @@ namespace {
 		SendSectionHeader(c, "Event Basics");
 		SendHelpLink(c, "#expedition event add \"Event Name\"", "add and select a DB event");
 		SendHelpLink(c, "#expedition event group", "create or manage a grouped boss event");
+		SendHelpLink(c, "#expedition event group chest", "link targeted chest spawn to selected grouped boss event");
 		SendHelpLink(c, "#expedition event select <id|name>", "select event for short follow-up commands");
 		SendHelpLink(c, "#expedition event list", "list events on selected expedition");
 		SendHelpLink(c, "#expedition event rename", "show event rename commands");
@@ -1211,10 +1212,36 @@ namespace {
 		}
 
 		c->Message(Chat::White, ChatSeparator());
+		SendInfoLine(c, "Chest Triggers", fmt::format("{} target(s)", std::ranges::count_if(event_data->npcs, ExpeditionDB::IsGroupedBossChestTrigger)));
+		uint32_t chest_index = 0;
+		for (const auto& event_npc : event_data->npcs) {
+			if (!ExpeditionDB::IsGroupedBossChestTrigger(event_npc)) {
+				continue;
+			}
+
+			const std::string mapping_type = event_npc.spawn2_id == 0 ? "dynamic npc-type" : "spawn-specific";
+			c->Message(Chat::White, fmt::format(
+				"   {:>2}. {}   ({})",
+				++chest_index,
+				NpcMappingLabel(event_npc.npc_type_id, event_npc.spawn2_id),
+				mapping_type
+			).c_str());
+		}
+
+		if (chest_index == 0) {
+			c->Message(Chat::Gray, "   (target a chest and click Add Target Chest)");
+		}
+
+		c->Message(Chat::White, ChatSeparator());
 		c->Message(Chat::White, "  Boss Targets:");
 		SendActionRow(c, {
 			{"#expedition event group add", "Add Target Boss"},
 			{"#expedition event group remove", "Remove Target Boss"}
+		});
+		c->Message(Chat::White, "  Chest Trigger:");
+		SendActionRow(c, {
+			{"#expedition event group chest", "Add Target Chest"},
+			{"#expedition event group removechest", "Remove Target Chest"}
 		});
 		c->Message(Chat::White, "  Completion Policy:");
 		SendActionRow(c, {
@@ -2927,8 +2954,8 @@ void ShowRoleQuestion(Client* c, const ExpeditionDB::Template& template_data, NP
 		c->SendFullPopup(title.c_str(), body.c_str(), yes_id, no_id, 1, 0, "Yes", "No");
 }
 
-// Links a loot chest to a specific boss event: its spawn completes that event (and fires that
-// boss's lockout), with loot protection. Used for both the single-boss auto-link and the chooser.
+// Links a loot chest to a specific event: its spawn completes that event (and fires that
+// event's lockout), with loot protection. Used for both the auto-link and the chooser.
 void ApplyChestToEvent(Client* c, uint32_t entity_id, uint32_t event_id)
 {
 		const auto* template_data = RequireSelectedTemplate(c);
@@ -2949,7 +2976,7 @@ void ApplyChestToEvent(Client* c, uint32_t entity_id, uint32_t event_id)
 			}
 		}
 		if (!event_data) {
-			c->Message(Chat::Red, "That boss event no longer exists - re-target the chest to link it.");
+			c->Message(Chat::Red, "That event no longer exists - re-target the chest to link it.");
 			return;
 		}
 
@@ -2966,19 +2993,19 @@ void ApplyChestToEvent(Client* c, uint32_t entity_id, uint32_t event_id)
 		}
 		ExpeditionDB::SetSelectedEvent(c->CharacterID(), event_id);
 		c->Message(Chat::Green, fmt::format(
-			"Saved: loot chest [{}] is linked to [{}] - its spawn now completes that boss's event and fires its lockout (loot protected).",
+			"Saved: loot chest [{}] is linked to [{}] - its spawn now completes that event and fires its lockout (loot protected).",
 			NpcLabel(*npc), event_name).c_str());
 		if (const auto* refreshed = ExpeditionDB::FindTemplate(template_id)) {
 			ShowEditScreen(c, *refreshed);
 		}
 }
 
-// When an expedition has more than one boss, ask which boss's event this chest should complete.
+// When an expedition has more than one event, ask which event this chest should complete.
 void ShowChestLinkChooser(Client* c, const ExpeditionDB::Template& template_data, NPC& npc, uint32_t entity_id)
 {
 		SendEditBanner(c, template_data);
-		SendCardTop(c, "Link Loot Chest To Boss");
-		c->Message(Chat::White, fmt::format("  Which boss should [{}] be linked to? Its spawn will complete that boss's event and trigger its lockout.",
+		SendCardTop(c, "Link Loot Chest To Event");
+		c->Message(Chat::White, fmt::format("  Which event should [{}] be linked to? Its spawn will complete that event and trigger its lockout.",
 			NpcLabel(npc)).c_str());
 		c->Message(Chat::White, ChatSeparator());
 		for (const auto& event_data : template_data.events) {
@@ -3819,6 +3846,43 @@ void HandleEventGroup(Client* c, const Seperator* sep, const ExpeditionDB::Templ
 			return;
 		}
 
+		if (sub_action == "chest") {
+			NPC* npc = RequireTargetNpc(c, "Target a chest NPC, then click Add Target Chest again.");
+			if (!npc) {
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			const uint32_t npc_type_id = npc->GetNPCTypeID();
+			const uint32_t spawn2_id = npc->GetSpawnPointID();
+			const auto* mapped_npc = FindEventNpc(*event_data, *npc);
+			if (mapped_npc && ExpeditionDB::IsGroupedBossChestTrigger(*mapped_npc)) {
+				c->Message(Chat::Yellow, fmt::format("Target [{}] is already a chest trigger for grouped event [{}].", NpcLabel(*npc), selected_event_name).c_str());
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			if (
+				!ExpeditionDB::SetEventNpc(content_db, selected_event_id, npc_type_id, spawn2_id, "chest") ||
+				!ExpeditionDB::SetEventNpcCompleteOnDeath(content_db, selected_event_id, npc_type_id, spawn2_id, false) ||
+				!ExpeditionDB::SetEventNpcCompleteOnSpawn(content_db, selected_event_id, npc_type_id, spawn2_id, true) ||
+				!ExpeditionDB::SetEventNpcLoot(content_db, selected_event_id, npc_type_id, spawn2_id, true)
+			) {
+				c->Message(Chat::Red, fmt::format("Failed to add target chest trigger to grouped event [{}].", selected_event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format(
+				"Saved: chest [{}] now completes grouped event [{}] on spawn.",
+				NpcLabel(*npc),
+				selected_event_name
+			).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(selected_event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
 		if (sub_action == "remove") {
 			NPC* npc = RequireTargetNpc(c, "Target a grouped boss, then click Remove Target Boss again.");
 			if (!npc) {
@@ -3849,7 +3913,37 @@ void HandleEventGroup(Client* c, const Seperator* sep, const ExpeditionDB::Templ
 			return;
 		}
 
-		c->Message(Chat::Red, "Usage: #expedition event group new|mode|add|remove");
+		if (sub_action == "removechest") {
+			NPC* npc = RequireTargetNpc(c, "Target a grouped chest trigger, then click Remove Target Chest again.");
+			if (!npc) {
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			const auto* mapped_npc = FindEventNpc(*event_data, *npc);
+			if (!mapped_npc || !ExpeditionDB::IsGroupedBossChestTrigger(*mapped_npc)) {
+				c->Message(Chat::Yellow, "Target is not a chest trigger for the selected grouped boss event.");
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+
+			if (!ExpeditionDB::DeleteEventNpcMapping(content_db, selected_event_id, mapped_npc->npc_type_id, mapped_npc->spawn2_id)) {
+				c->Message(Chat::Red, fmt::format("Failed to remove target chest trigger from grouped event [{}].", selected_event_name).c_str());
+				return;
+			}
+
+			c->Message(Chat::Green, fmt::format(
+				"Saved: removed chest trigger [{}] from grouped event [{}].",
+				NpcLabel(*npc),
+				selected_event_name
+			).c_str());
+			if (const auto* refreshed_event = ExpeditionDB::FindEvent(selected_event_id)) {
+				ShowGroupedBossEventCard(c, refreshed_event);
+			}
+			return;
+		}
+
+		c->Message(Chat::Red, "Usage: #expedition event group new|mode|add|remove|chest|removechest");
 		ShowGroupedBossEventCard(c, event_data);
 }
 

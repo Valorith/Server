@@ -771,6 +771,10 @@ namespace {
 	bool CompleteEventForNpc(DynamicZone& expedition, const Event& event_data, const EventNpc& event_npc, Client* notifier)
 	{
 		if (IsGroupedBossCompletionMode(event_data)) {
+			if (IsGroupedBossChestTrigger(event_npc)) {
+				return CompleteRuntimeEvent(expedition, event_data, RuntimeEventName(event_data, event_npc), notifier);
+			}
+
 			if (!IsGroupedBossRequirement(event_npc)) {
 				return false;
 			}
@@ -1599,12 +1603,12 @@ ValidationResult ValidateTemplate(const Template& template_data)
 				result.errors.push_back(fmt::format("Event [{}] has an NPC mapping without an NPC type.", event_data.event_name));
 			}
 
-			if (grouped_boss_event && !IsGroupedBossRequirement(event_npc)) {
-				result.errors.push_back(fmt::format("Grouped boss event [{}] has a non-boss or non-death NPC mapping [{}].", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
+			if (grouped_boss_event && !IsGroupedBossRequirement(event_npc) && !IsGroupedBossChestTrigger(event_npc)) {
+				result.errors.push_back(fmt::format("Grouped boss event [{}] has a non-boss/non-death mapping that is not a chest spawn trigger [{}].", event_data.event_name, NpcTypeLabel(event_npc.npc_type_id)));
 			}
 
-			if (grouped_boss_event && event_npc.complete_on_spawn) {
-				result.errors.push_back(fmt::format("Grouped boss event [{}] cannot use spawn-completion NPC mappings.", event_data.event_name));
+			if (grouped_boss_event && event_npc.complete_on_spawn && !IsGroupedBossChestTrigger(event_npc)) {
+				result.errors.push_back(fmt::format("Grouped boss event [{}] can only use spawn-completion mappings for chest triggers.", event_data.event_name));
 			}
 
 			if (event_npc.spawn2_id == 0 && !event_npc.complete_on_spawn && !grouped_boss_event) {
