@@ -3818,6 +3818,11 @@ void HandleEventGroup(Client* c, const Seperator* sep, const ExpeditionDB::Templ
 				ShowGroupedBossEventCard(c, event_data);
 				return;
 			}
+			if (mapped_npc && ExpeditionDB::IsGroupedBossChestTrigger(*mapped_npc)) {
+				c->Message(Chat::Yellow, fmt::format("Target [{}] is already a chest trigger for grouped event [{}]. Remove the chest trigger before adding it as a boss.", NpcLabel(*npc), selected_event_name).c_str());
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
 
 			const bool ambiguous_dynamic = std::ranges::any_of(event_data->npcs, [&](const ExpeditionDB::EventNpc& event_npc) {
 				return ExpeditionDB::IsGroupedBossRequirement(event_npc) &&
@@ -3858,6 +3863,11 @@ void HandleEventGroup(Client* c, const Seperator* sep, const ExpeditionDB::Templ
 			const auto* mapped_npc = FindEventNpc(*event_data, *npc);
 			if (mapped_npc && ExpeditionDB::IsGroupedBossChestTrigger(*mapped_npc)) {
 				c->Message(Chat::Yellow, fmt::format("Target [{}] is already a chest trigger for grouped event [{}].", NpcLabel(*npc), selected_event_name).c_str());
+				ShowGroupedBossEventCard(c, event_data);
+				return;
+			}
+			if (mapped_npc && ExpeditionDB::IsGroupedBossRequirement(*mapped_npc)) {
+				c->Message(Chat::Yellow, fmt::format("Target [{}] is already a boss for grouped event [{}]. Remove the boss before adding it as a chest trigger.", NpcLabel(*npc), selected_event_name).c_str());
 				ShowGroupedBossEventCard(c, event_data);
 				return;
 			}
