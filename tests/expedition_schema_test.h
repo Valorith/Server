@@ -32,6 +32,7 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossAvailabilityIsTemplateSpecific);
 		TEST_ADD(ExpeditionSchemaTest::BossLockoutSpawnGateUsesConfiguredBossMappings);
 		TEST_ADD(ExpeditionSchemaTest::GroupedBossRequirementMatchingSupportsDynamicBosses);
+		TEST_ADD(ExpeditionSchemaTest::GroupedBossChestTriggerDoesNotCountAsRequirement);
 		TEST_ADD(ExpeditionSchemaTest::GroupedBossAllCompletionRequiresEveryRequirement);
 		TEST_ADD(ExpeditionSchemaTest::GroupedBossValidationHelpersRequireUnambiguousBossGroup);
 	}
@@ -432,6 +433,39 @@ private:
 		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementMatchesSpawn(spawn_boss, 100, 11));
 		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementMatchesSpawn(dynamic_boss, 200, 99));
 		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementMatchesSpawn(add_npc, 300, 0));
+	}
+
+	void GroupedBossChestTriggerDoesNotCountAsRequirement()
+	{
+		ExpeditionDB::Event grouped_event;
+		grouped_event.completion_mode = ExpeditionDB::kCompletionModeAllBosses;
+
+		ExpeditionDB::EventNpc first_boss;
+		first_boss.id = 1;
+		first_boss.role = "boss";
+		first_boss.npc_type_id = 100;
+		first_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc second_boss;
+		second_boss.id = 2;
+		second_boss.role = "boss";
+		second_boss.npc_type_id = 200;
+		second_boss.complete_on_death = true;
+
+		ExpeditionDB::EventNpc chest_trigger;
+		chest_trigger.id = 3;
+		chest_trigger.role = "chest";
+		chest_trigger.npc_type_id = 300;
+		chest_trigger.complete_on_spawn = true;
+
+		grouped_event.npcs = { first_boss, second_boss, chest_trigger };
+
+		TEST_ASSERT(ExpeditionDB::IsGroupedBossChestTrigger(chest_trigger));
+		TEST_ASSERT(ExpeditionDB::GroupedBossRequirementCount(grouped_event) == 2);
+
+		std::unordered_set<uint32_t> completed;
+		completed.insert(chest_trigger.id);
+		TEST_ASSERT(!ExpeditionDB::GroupedBossRequirementsComplete(grouped_event, completed));
 	}
 
 	void GroupedBossAllCompletionRequiresEveryRequirement()

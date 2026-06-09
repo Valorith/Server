@@ -89,6 +89,11 @@ inline bool IsBossEventNpc(const EventNpc& event_npc)
 	return Strings::EqualFold(event_npc.role, "boss");
 }
 
+inline bool IsChestEventNpc(const EventNpc& event_npc)
+{
+	return Strings::EqualFold(event_npc.role, "chest");
+}
+
 inline bool IsKnownCompletionMode(const std::string& completion_mode)
 {
 	return Strings::EqualFold(completion_mode, kCompletionModeFirst) ||
@@ -123,6 +128,11 @@ inline bool IsGroupedBossCompletionMode(const Event& event_data)
 inline bool IsGroupedBossRequirement(const EventNpc& event_npc)
 {
 	return IsBossEventNpc(event_npc) && event_npc.npc_type_id != 0 && event_npc.complete_on_death;
+}
+
+inline bool IsGroupedBossChestTrigger(const EventNpc& event_npc)
+{
+	return IsChestEventNpc(event_npc) && event_npc.npc_type_id != 0 && event_npc.complete_on_spawn && !event_npc.complete_on_death;
 }
 
 inline bool GroupedBossRequirementMatchesSpawn(const EventNpc& event_npc, uint32_t npc_type_id, uint32_t spawn2_id)
