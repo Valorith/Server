@@ -3054,10 +3054,10 @@ void ApplyEditAdd(Client* c, uint32_t entity_id, const std::string& role)
 		}
 
 		if (role == "chest") {
-			// A chest must be linked to a boss event (its spawn completes that event). Auto-link when
-			// there is exactly one boss; otherwise ask which boss it belongs to.
+			// A chest must be linked to an existing event. Auto-link when there is
+			// exactly one event; otherwise ask which event it should complete.
 			if (template_data->events.empty()) {
-				c->Message(Chat::Red, "Add a boss first - a loot chest completes an existing boss event when it spawns.");
+				c->Message(Chat::Red, "Add an event first - a loot chest completes an existing event when it spawns.");
 				RefreshBuilderView(c);
 				return;
 			}
@@ -3126,7 +3126,7 @@ void HandleEdit(Client* c, const Seperator* sep)
 		// Internal: chest-link chooser callback (#expedition edit chestlink <chest_entity_id> <event_id>).
 		if (action == "chestlink") {
 			if (!IsStrictUnsigned(sep->arg[3]) || !IsStrictUnsigned(sep->arg[4])) {
-				c->Message(Chat::Red, "Pick a boss from the chest link menu.");
+				c->Message(Chat::Red, "Pick an event from the chest link menu.");
 				return;
 			}
 			ApplyChestToEvent(c, Strings::ToUnsignedInt(sep->arg[3]), Strings::ToUnsignedInt(sep->arg[4]));
@@ -3138,7 +3138,7 @@ void HandleEdit(Client* c, const Seperator* sep)
 			c->Message(Chat::White, "Toggle a guided add flow for the selected expedition.");
 			SendHelpLink(c, "#expedition edit on", "enable edit mode for the selected expedition");
 			SendHelpLink(c, "#expedition edit off", "disable edit mode");
-			c->Message(Chat::White, "While on, target any NPC to get role popups (Boss / Chest / Requester). A chest links to the boss whose event it completes.");
+			c->Message(Chat::White, "While on, target any NPC to get role popups (Boss / Chest / Requester). A chest links to the event it completes.");
 			return;
 		}
 
@@ -4659,8 +4659,8 @@ void ExpeditionEditPopupResponse(Client* c, uint32_t popup_id)
 	switch (step) {
 		case ExpeditionEditPopup::AddBoss:      ApplyEditAdd(c, entity_id, "boss"); break;
 		case ExpeditionEditPopup::AskChest:
-			// A chest can only complete an existing boss event - skip the chest question entirely
-			// when no boss exists yet and go straight to the Requester question.
+			// A chest can only complete an existing event - skip the chest question
+			// when no event exists yet and go straight to the Requester question.
 			if (template_data->events.empty()) {
 				ShowRoleQuestion(c, *template_data, *npc, entity_id, "requester");
 			}
