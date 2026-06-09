@@ -25,7 +25,7 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::BossEventNpcRemovalDeletesEvent);
 		TEST_ADD(ExpeditionSchemaTest::LockoutNamespaceUsesDynamicZoneName);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
-		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreGroupReady);
+		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreRaidReady);
 		TEST_ADD(ExpeditionSchemaTest::SharedRequesterMenuSortsExpeditions);
 		TEST_ADD(ExpeditionSchemaTest::RequesterLockoutReasonsAreStatusAware);
 		TEST_ADD(ExpeditionSchemaTest::BaseZoneBossSpawnedReasonUsesFormattedUnavailableMessage);
@@ -245,14 +245,14 @@ private:
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(30) == nullptr);
 	}
 
-	void SimpleBuilderDefaultsAreGroupReady()
+	void SimpleBuilderDefaultsAreRaidReady()
 	{
-		TEST_ASSERT(ExpeditionDB::kSimpleSetupMinPlayers == 1);
-		TEST_ASSERT(ExpeditionDB::kSimpleSetupMaxPlayers == 6);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupMinPlayers == 6);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupMaxPlayers == 54);
 		TEST_ASSERT(ExpeditionDB::kSimpleSetupDurationSeconds == 21600);
-		TEST_ASSERT(ExpeditionDB::kSimpleSetupReplaySeconds == 7200);
-		TEST_ASSERT(ExpeditionDB::kSimpleBossLockoutSeconds == 21600);
-		TEST_ASSERT(ExpeditionDB::kSimpleBossReplaySeconds == 7200);
+		TEST_ASSERT(ExpeditionDB::kSimpleSetupReplaySeconds == 86400);
+		TEST_ASSERT(ExpeditionDB::kSimpleBossLockoutSeconds == 561600);
+		TEST_ASSERT(ExpeditionDB::kSimpleBossReplaySeconds == 86400);
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestPhrase) == "expedition");
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleRequestMode) == "db_only");
 		TEST_ASSERT(std::string(ExpeditionDB::kSimpleBossEventName) == "Boss Defeated");
