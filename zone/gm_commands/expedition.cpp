@@ -15,8 +15,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <ctime>
 #include <cstring>
+#include <limits>
 
 namespace {
 	const ExpeditionDB::Template* SelectedTemplate(Client* c)
@@ -266,6 +268,50 @@ namespace {
 		}
 
 		return Strings::SecondsToTime(seconds);
+	}
+
+	uint32_t AdjustDurationSeconds(uint32_t current_seconds, int32_t delta_seconds, bool allow_none)
+	{
+		const int64_t adjusted_seconds = static_cast<int64_t>(current_seconds) + delta_seconds;
+		if (adjusted_seconds <= 0) {
+			return allow_none ? 0 : 1;
+		}
+
+		if (adjusted_seconds > std::numeric_limits<uint32_t>::max()) {
+			return std::numeric_limits<uint32_t>::max();
+		}
+
+		return static_cast<uint32_t>(adjusted_seconds);
+	}
+
+	std::string DurationCommandArg(uint32_t seconds, bool allow_none)
+	{
+		if (!seconds && allow_none) {
+			return "none";
+		}
+
+		return fmt::format("{}", seconds);
+	}
+
+	std::pair<std::string, std::string> DurationAction(
+		const std::string& command_prefix,
+		uint32_t seconds,
+		bool allow_none,
+		const std::string& label
+	)
+	{
+		return {fmt::format("{} {}", command_prefix, DurationCommandArg(seconds, allow_none)), label};
+	}
+
+	std::pair<std::string, std::string> DurationAdjustAction(
+		const std::string& command_prefix,
+		uint32_t current_seconds,
+		int32_t delta_seconds,
+		bool allow_none,
+		const std::string& label
+	)
+	{
+		return DurationAction(command_prefix, AdjustDurationSeconds(current_seconds, delta_seconds, allow_none), allow_none, label);
 	}
 
 	std::string Location(uint32_t zone_id, float x, float y, float z, float h = 0.0f)
@@ -1179,7 +1225,7 @@ namespace {
 		SendActionRow(c, {
 			{fmt::format("#expedition event rename {} \"{}\"", event_data->id, event_data->event_name), "Rename"},
 			{"#expedition event lockout", "Lockout..."},
-			{"#expedition event replay 1d", "Replay 1d"},
+			{"#expedition event replay", "Replay..."},
 			{fmt::format("#expedition event remove {}", event_data->id), "Delete Event"}
 		});
 		SendCardBottom(c);
@@ -1965,20 +2011,24 @@ void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
 }
 
 // Click-driven configuration card: shows current values and applies changes via buttons (no typing).
-// Drill-down time picker: a minute/hour/day matrix of clickable presets. Each option re-runs
-// command_prefix with the chosen value (e.g. "#expedition event lockout 6h").
-void ShowTimeMatrix(Client* c, const std::string& title, const std::string& command_prefix, const std::string& current, bool allow_none)
+// Drill-down time picker: a minute/hour/day matrix of clickable adjustments and presets.
+// Each option re-runs command_prefix with the chosen value (e.g. "#expedition event lockout 6h").
+void ShowTimeMatrix(Client* c, const std::string& title, const std::string& command_prefix, uint32_t current_seconds, bool allow_none)
 {
 		SendCardTop(c, title);
-		SendInfoLine(c, "Current", current);
+		SendInfoLine(c, "Current", Duration(current_seconds));
 		c->Message(Chat::White, "  Minutes:");
 		SendActionRow(c, {
+			DurationAdjustAction(command_prefix, current_seconds, -60, allow_none, "-1m"),
+			DurationAdjustAction(command_prefix, current_seconds, 60, allow_none, "+1m"),
 			{command_prefix + " 5m", "5m"}, {command_prefix + " 10m", "10m"},
 			{command_prefix + " 15m", "15m"}, {command_prefix + " 30m", "30m"},
 			{command_prefix + " 45m", "45m"}
 		});
 		c->Message(Chat::White, "  Hours:");
 		SendActionRow(c, {
+			DurationAdjustAction(command_prefix, current_seconds, -3600, allow_none, "-1h"),
+			DurationAdjustAction(command_prefix, current_seconds, 3600, allow_none, "+1h"),
 			{command_prefix + " 1h", "1h"}, {command_prefix + " 2h", "2h"},
 			{command_prefix + " 3h", "3h"}, {command_prefix + " 4h", "4h"},
 			{command_prefix + " 6h", "6h"}, {command_prefix + " 8h", "8h"},
@@ -1986,14 +2036,19 @@ void ShowTimeMatrix(Client* c, const std::string& title, const std::string& comm
 		});
 		c->Message(Chat::White, "  Days:");
 		SendActionRow(c, {
+			DurationAdjustAction(command_prefix, current_seconds, -86400, allow_none, "-1d"),
+			DurationAdjustAction(command_prefix, current_seconds, 86400, allow_none, "+1d"),
 			{command_prefix + " 1d", "1d"}, {command_prefix + " 2d", "2d"},
 			{command_prefix + " 3d", "3d"}, {command_prefix + " 5d", "5d"},
 			{command_prefix + " 156h", "6.5d"},
 			{command_prefix + " 7d", "7d"}, {command_prefix + " 14d", "14d"}
 		});
 		c->Message(Chat::White, ChatSeparator());
+		c->Message(Chat::White, fmt::format("  Exact:  {}   {}",
+			Saylink::Create(command_prefix + " ", false, "[ Set Exact Value ]"),
+			allow_none ? fmt::format("{} none|<duration>", command_prefix) : fmt::format("{} <duration>", command_prefix)).c_str());
 		if (allow_none) {
-			SendActionRow(c, {{command_prefix + " none", "No Lockout (clear)"}});
+			SendActionRow(c, {{command_prefix + " none", "Clear (none)"}});
 		}
 		SendCardBottom(c);
 }
@@ -2173,7 +2228,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 		if (action == "duration") {
 			if (sep->arg[3][0] == '\0') {
 				ShowTimeMatrix(c, fmt::format("Duration: {}", template_data->name),
-					"#expedition config duration", Duration(template_data->dz_template.duration_seconds), false);
+					"#expedition config duration", template_data->dz_template.duration_seconds, false);
 				return;
 			}
 			const uint32_t seconds = ParseExpeditionDuration(sep->arg[3]);
@@ -2187,7 +2242,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 		else if (action == "replay") {
 			if (sep->arg[3][0] == '\0') {
 				ShowTimeMatrix(c, fmt::format("Replay Timer: {}", template_data->name),
-					"#expedition config replay", Duration(template_data->replay_lockout_seconds), true);
+					"#expedition config replay", template_data->replay_lockout_seconds, true);
 				return;
 			}
 			const bool clear = IsClearDurationArg(sep->arg[3]);
@@ -3960,7 +4015,7 @@ void HandleEvent(Client* c, const Seperator* sep)
 			if (sep->arg[3][0] == '\0') {
 				const auto* ev = ExpeditionDB::FindEvent(selected_event_id);
 				ShowTimeMatrix(c, fmt::format("Boss Lockout: {}", selected_event_name),
-					"#expedition event lockout", Duration(ev ? ev->lockout_seconds : 0), true);
+					"#expedition event lockout", ev ? ev->lockout_seconds : 0, true);
 				return;
 			}
 			const bool clear = IsClearDurationArg(sep->arg[3]);
@@ -3980,7 +4035,9 @@ void HandleEvent(Client* c, const Seperator* sep)
 
 		if (action == "replay") {
 			if (sep->arg[3][0] == '\0') {
-				c->Message(Chat::Red, "Usage: #expedition event replay none|<duration>");
+				const auto* ev = ExpeditionDB::FindEvent(selected_event_id);
+				ShowTimeMatrix(c, fmt::format("Event Replay: {}", selected_event_name),
+					"#expedition event replay", ev ? ev->replay_lockout_seconds : 0, true);
 				return;
 			}
 			const uint32_t seconds = IsClearDurationArg(sep->arg[3]) ? 0 : ParseExpeditionDuration(sep->arg[3]);
