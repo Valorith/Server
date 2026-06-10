@@ -3162,7 +3162,13 @@ void HandleShow(Client* c, const Seperator* sep)
 			NeedSelection(c);
 			return;
 		}
+		auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		const bool switching_edit_target = builder_state.edit_mode && builder_state.selected_template_id != template_data->id;
 		ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
+		if (switching_edit_target) {
+			builder_state.edit_mode = false;
+			c->Message(Chat::Yellow, "Stopped editing because Show switched to a different expedition.");
+		}
 		ShowTemplate(c, *template_data);
 }
 
