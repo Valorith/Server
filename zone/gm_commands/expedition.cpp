@@ -1498,6 +1498,37 @@ namespace {
 		SendCardBottom(c);
 	}
 
+	void SendBuilderActionMenu(Client* c, const ExpeditionDB::Template& template_data)
+	{
+		const auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		const bool editing_this = builder_state.edit_mode && builder_state.selected_template_id == template_data.id;
+
+		c->Message(Chat::White, "  Build:");
+		SendActionRow(c, {
+			{"#expedition config", "Configure"},
+			{fmt::format("#expedition show {}", template_data.id), "Show"},
+			template_data.enabled
+				? std::pair<std::string, std::string>{"#expedition disable", "Unpublish"}
+				: std::pair<std::string, std::string>{"#expedition publish", "Publish"}
+		});
+		c->Message(Chat::White, "  Encounters:");
+		SendActionRow(c, {
+			{"#expedition boss loot", "Target Boss"},
+			{"#expedition event group", "New Boss Group"},
+			{"#expedition event list", "Event List"}
+		});
+		c->Message(Chat::White, "  Navigate:");
+		SendActionRow(c, {
+			editing_this
+				? std::pair<std::string, std::string>{"#expedition edit off", "Stop Editing"}
+				: std::pair<std::string, std::string>{fmt::format("#expedition edit on {}", template_data.id), "Edit This"},
+			{"#expedition", "Back to List"}
+		});
+		// Rename uses a non-silent saylink: clicking pre-fills the command in your input box to edit the name.
+		c->Message(Chat::White, fmt::format("  Rename:  {}",
+			Saylink::Create("#expedition rename ", false, "[ Rename ]")).c_str());
+	}
+
 	void ShowTemplate(Client* c, const ExpeditionDB::Template& template_data)
 	{
 		SendCardTop(c, fmt::format("Expedition: {} [{}]   ({})",
@@ -1552,11 +1583,12 @@ namespace {
 		}
 
 		c->Message(Chat::White, ChatSeparator());
+		c->Message(Chat::White, "  Manage:");
 		SendActionRow(c, {
-			{fmt::format("#expedition edit on {}", template_data.id), "Edit This"},
-			{fmt::format("#expedition delete {}", template_data.id), "Delete"},
-			{"#expedition", "Back to List"}
+			{fmt::format("#expedition delete {}", template_data.id), "Delete"}
 		});
+		c->Message(Chat::White, ChatSeparator());
+		SendBuilderActionMenu(c, template_data);
 		SendCardBottom(c);
 	}
 
@@ -2020,29 +2052,7 @@ void ShowEditScreen(Client* c, const ExpeditionDB::Template& template_data)
 		}
 		c->Message(Chat::White, ChatSeparator());
 
-		// Build/publish actions on one row, navigation on the next, so the row never wraps awkwardly.
-		c->Message(Chat::White, "  Build:");
-		SendActionRow(c, {
-			{"#expedition config", "Configure"},
-			{fmt::format("#expedition show {}", template_data.id), "Show"},
-			template_data.enabled
-				? std::pair<std::string, std::string>{"#expedition disable", "Unpublish"}
-				: std::pair<std::string, std::string>{"#expedition publish", "Publish"}
-		});
-		c->Message(Chat::White, "  Encounters:");
-		SendActionRow(c, {
-			{"#expedition boss loot", "Target Boss"},
-			{"#expedition event group", "New Boss Group"},
-			{"#expedition event list", "Event List"}
-		});
-		c->Message(Chat::White, "  Navigate:");
-		SendActionRow(c, {
-			{"#expedition edit off", "Stop Editing"},
-			{"#expedition", "Back to List"}
-		});
-		// Rename uses a non-silent saylink: clicking pre-fills the command in your input box to edit the name.
-		c->Message(Chat::White, fmt::format("  Rename:  {}",
-			Saylink::Create("#expedition rename ", false, "[ Rename ]")).c_str());
+		SendBuilderActionMenu(c, template_data);
 		SendCardBottom(c);
 }
 
@@ -3151,6 +3161,16 @@ void HandleShow(Client* c, const Seperator* sep)
 		if (!template_data) {
 			NeedSelection(c);
 			return;
+		}
+		auto& builder_state = ExpeditionDB::GetBuilderState(c->CharacterID());
+		const bool switching_template = builder_state.selected_template_id != template_data->id;
+		const bool switching_edit_target = builder_state.edit_mode && switching_template;
+		if (switching_template) {
+			ExpeditionDB::SetSelectedTemplate(c->CharacterID(), template_data->id);
+		}
+		if (switching_edit_target) {
+			builder_state.edit_mode = false;
+			c->Message(Chat::Yellow, "Stopped editing because Show switched to a different expedition.");
 		}
 		ShowTemplate(c, *template_data);
 }
