@@ -2437,11 +2437,13 @@ void NPC::Damage(Mob* other, int64 damage, uint16 spell_id, EQ::skills::SkillTyp
 		spell_id = SPELL_UNKNOWN;
 
 	//handle EVENT_ATTACK. Resets after we have not been attacked for 12 seconds
-	if (attacked_timer.Check()) {
-		parse->EventMercNPC(EVENT_ATTACK, this, other);
-	}
+	if (other) {
+		if (attacked_timer.Check()) {
+			parse->EventMercNPC(EVENT_ATTACK, this, other);
+		}
 
-	attacked_timer.Start(CombatEventTimer_expire);
+		attacked_timer.Start(CombatEventTimer_expire);
+	}
 
 	if (!IsEngaged())
 		zone->AddAggroMob();

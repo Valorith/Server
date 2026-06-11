@@ -4978,15 +4978,17 @@ void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType
 	}
 
 	//handle EVENT_ATTACK. Resets after we have not been attacked for 12 seconds
-	if (from && attacked_timer.Check()) {
-		if (parse->BotHasQuestSub(EVENT_ATTACK)) {
-			LogCombat("Triggering EVENT_ATTACK due to attack by [{}]", from->GetName());
+	if (from) {
+		if (attacked_timer.Check()) {
+			if (parse->BotHasQuestSub(EVENT_ATTACK)) {
+				LogCombat("Triggering EVENT_ATTACK due to attack by [{}]", from->GetName());
 
-			parse->EventBot(EVENT_ATTACK, this, from, "", 0);
+				parse->EventBot(EVENT_ATTACK, this, from, "", 0);
+			}
 		}
-	}
 
-	attacked_timer.Start(CombatEventTimer_expire);
+		attacked_timer.Start(CombatEventTimer_expire);
+	}
 	// if spell is lifetap add hp to the caster
 	if (IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
 		int64 healed = GetActSpellHealing(spell_id, damage);
