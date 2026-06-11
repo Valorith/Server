@@ -1820,6 +1820,7 @@ void EntityList::ForEachCombatLogObserver(
 	Mob *sender,
 	Mob *other,
 	float proximity_range,
+	bool proximity_inclusive,
 	bool ignore_sender,
 	Mob *skipped_mob,
 	const std::function<void(Client *)> &fn
@@ -1907,7 +1908,7 @@ void EntityList::ForEachCombatLogObserver(
 		}
 
 		float dist_sq = DistanceSquared(candidate->GetPosition(), sender->GetPosition());
-		if (dist_sq <= proximity_sq) {
+		if (proximity_inclusive ? dist_sq <= proximity_sq : dist_sq < proximity_sq) {
 			return; // the proximity send already covered (or filtered) them
 		}
 
@@ -1962,7 +1963,7 @@ void EntityList::QueueCombatClients(
 		distance = zone->GetClientUpdateRange(); // mirror QueueCloseClients' radius for the proximity dedup
 	}
 
-	ForEachCombatLogObserver(sender, other, distance, ignore_sender, skipped_mob, [&](Client *client) {
+	ForEachCombatLogObserver(sender, other, distance, false, ignore_sender, skipped_mob, [&](Client *client) {
 		// same filter predicate QueueCloseClients applies to in-range clients
 		eqFilterMode client_filter = client->GetFilter(filter);
 		if (
@@ -2002,7 +2003,7 @@ void EntityList::FilteredMessageCombatString(
 		message6, message7, message8, message9
 	);
 
-	ForEachCombatLogObserver(sender, other, dist, skipsender, skip, [&](Client *client) {
+	ForEachCombatLogObserver(sender, other, dist, true, skipsender, skip, [&](Client *client) {
 		// FilteredMessageString checks the client's filter before allocating
 		client->FilteredMessageString(
 			sender, type, filter, string_id,
@@ -2054,7 +2055,7 @@ void EntityList::FilteredMessageCombatClose(
 		}
 	}
 
-	ForEachCombatLogObserver(sender, other, dist, skipsender, skipped_mob, [&](Client *client) {
+	ForEachCombatLogObserver(sender, other, dist, true, skipsender, skipped_mob, [&](Client *client) {
 		client->FilteredMessage(sender, type, filter, buffer);
 	});
 }

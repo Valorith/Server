@@ -4968,7 +4968,8 @@ bool Bot::Death(Mob *killer_mob, int64 damage, uint16 spell_id, EQ::skills::Skil
 }
 
 void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable, int8 buffslot, bool iBuffTic, eSpecialAttacks special) {
-	if (!from) {
+	// orphaned buff tics carry no caster mob (Spells:BuffTicAttributionFallback)
+	if (!from && !iBuffTic) {
 		return;
 	}
 
@@ -4977,7 +4978,7 @@ void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType
 	}
 
 	//handle EVENT_ATTACK. Resets after we have not been attacked for 12 seconds
-	if (attacked_timer.Check()) {
+	if (from && attacked_timer.Check()) {
 		if (parse->BotHasQuestSub(EVENT_ATTACK)) {
 			LogCombat("Triggering EVENT_ATTACK due to attack by [{}]", from->GetName());
 

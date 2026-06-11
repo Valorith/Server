@@ -2728,14 +2728,14 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			buffs[e.slot_id].casterid = c->GetID();
 			buffs[e.slot_id].client   = true;
 
-			strncpy(buffs[e.slot_id].caster_name, c->GetName(), 64);
+			strn0cpy(buffs[e.slot_id].caster_name, c->GetName(), sizeof(buffs[e.slot_id].caster_name));
 		} else {
 			buffs[e.slot_id].casterid = 0;
 			buffs[e.slot_id].client   = false;
 
 			// keep the stored name so buff tic attribution survives the
 			// caster being gone (Spells:BuffTicAttributionFallback)
-			strncpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), 64);
+			strn0cpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), sizeof(buffs[e.slot_id].caster_name));
 		}
 
 		buffs[e.slot_id].ticsremaining     = e.ticsremaining;

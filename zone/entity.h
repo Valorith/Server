@@ -436,7 +436,11 @@ public:
 	// proximity copy. Combat-only; non-combat proximity messaging must keep
 	// using the existing Close functions.
 	Mob*	ResolveCombatLogAnchor(Mob* mob);
-	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool ignore_sender, Mob* skipped_mob, const std::function<void(Client*)>& fn);
+	// proximity_inclusive mirrors the paired proximity send's range test so
+	// members exactly at range are neither dropped nor doubled:
+	// QueueCloseClients delivers strictly inside range (pass false),
+	// the Filtered*Close* string sends deliver at <= range (pass true)
+	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool ignore_sender, Mob* skipped_mob, const std::function<void(Client*)>& fn);
 	void	QueueCombatClients(Mob* sender, Mob* other, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
 	void	FilteredMessageCombatString(
 		Mob* sender,
