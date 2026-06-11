@@ -1793,6 +1793,272 @@ void EntityList::QueueCloseClients(
 	}
 }
 
+// combat log group/raid parity: a combat participant "anchors" observer
+// delivery to its own client/bot/merc identity, or to its owner for pets and
+// swarm pets; plain NPCs have no anchor
+Mob *EntityList::ResolveCombatLogAnchor(Mob *mob)
+{
+	if (mob->IsOfClientBotMerc()) {
+		return mob;
+	}
+
+	Mob *owner = nullptr;
+	if (mob->GetOwnerID()) {
+		owner = GetMob(mob->GetOwnerID());
+	} else if (mob->IsNPC() && mob->CastToNPC()->GetSwarmOwner()) {
+		owner = GetMob(mob->CastToNPC()->GetSwarmOwner());
+	}
+
+	if (owner && owner->IsOfClientBotMerc()) {
+		return owner;
+	}
+
+	return nullptr;
+}
+
+void EntityList::ForEachCombatLogObserver(
+	Mob *sender,
+	Mob *other,
+	float proximity_range,
+	bool ignore_sender,
+	Mob *skipped_mob,
+	const std::function<void(Client *)> &fn
+)
+{
+	if (!sender || !RuleB(Combat, GroupRaidCombatLogParity)) {
+		return;
+	}
+
+	// plain-NPC vs plain-NPC (or vs nothing) has no observers - bail on raw
+	// member reads before any virtual call or entity lookup; this runs on
+	// every swing in the zone
+	if (sender->IsNPC() && !sender->GetOwnerID() && !sender->CastToNPC()->GetSwarmOwner() &&
+		(!other || (other->IsNPC() && !other->GetOwnerID() && !other->CastToNPC()->GetSwarmOwner()))) {
+		return;
+	}
+
+	Mob *anchors[2] = {
+		ResolveCombatLogAnchor(sender),
+		(other && other != sender) ? ResolveCombatLogAnchor(other) : nullptr
+	};
+
+	if (anchors[1] == anchors[0]) {
+		anchors[1] = nullptr;
+	}
+	if (!anchors[0]) {
+		anchors[0] = anchors[1];
+		anchors[1] = nullptr;
+	}
+	if (!anchors[0]) {
+		return;
+	}
+
+	// resolve each anchor's party once - raid lookups are cached
+	// (Client::p_raid_instance / Bot::GetStoredRaid); group lookups scan the
+	// zone's group list, so they happen at most twice per event here and
+	// never per candidate
+	Raid   *raids[2]  = { nullptr, nullptr };
+	Group  *groups[2] = { nullptr, nullptr };
+	Client *solos[2]  = { nullptr, nullptr };
+
+	for (int i = 0; i < 2; i++) {
+		if (!anchors[i]) {
+			continue;
+		}
+
+		if (anchors[i]->IsClient()) {
+			Client *client = anchors[i]->CastToClient();
+			raids[i] = GetRaidByClient(client);
+			if (!raids[i]) {
+				groups[i] = GetGroupByClient(client);
+				if (!groups[i]) {
+					solos[i] = client;
+				}
+			}
+		} else if (anchors[i]->IsBot()) {
+			raids[i] = anchors[i]->CastToBot()->GetStoredRaid();
+			if (!raids[i]) {
+				groups[i] = GetGroupByMob(anchors[i]);
+			}
+		} else {
+			groups[i] = GetGroupByMob(anchors[i]);
+		}
+	}
+
+	// same-party collapse: both anchors in one raid/group deliver once; a
+	// client is in at most one group xor one raid, so the surviving parties
+	// are disjoint and need no per-candidate dedup
+	if (anchors[1] &&
+		((raids[1] && raids[1] == raids[0]) || (groups[1] && groups[1] == groups[0]))) {
+		anchors[1] = nullptr;
+	}
+
+	float proximity_sq  = proximity_range * proximity_range;
+	float parity_range  = static_cast<float>(RuleI(Range, GroupRaidCombatMessages));
+	float parity_sq     = parity_range * parity_range;
+
+	auto process = [&](Client *candidate) {
+		if (!candidate || candidate == skipped_mob || (ignore_sender && candidate == sender)) {
+			return;
+		}
+
+		if (!candidate->Connected()) {
+			return;
+		}
+
+		float dist_sq = DistanceSquared(candidate->GetPosition(), sender->GetPosition());
+		if (dist_sq <= proximity_sq) {
+			return; // the proximity send already covered (or filtered) them
+		}
+
+		if (parity_range > 0 && dist_sq > parity_sq) {
+			return;
+		}
+
+		fn(candidate);
+	};
+
+	for (int i = 0; i < 2; i++) {
+		if (!anchors[i]) {
+			continue;
+		}
+
+		if (raids[i]) {
+			for (const auto &m : raids[i]->members) {
+				if (m.member) { // bot and out-of-zone entries have a null member
+					process(m.member);
+				}
+			}
+		} else if (groups[i]) {
+			for (auto *m : groups[i]->members) {
+				if (m && m->IsClient()) { // groups also hold bots/mercs
+					process(m->CastToClient());
+				}
+			}
+		} else if (solos[i]) {
+			process(solos[i]);
+		}
+	}
+}
+
+void EntityList::QueueCombatClients(
+	Mob *sender,
+	Mob *other,
+	const EQApplicationPacket *app,
+	bool ignore_sender,
+	float distance,
+	Mob *skipped_mob,
+	bool is_ack_required,
+	eqFilterType filter
+)
+{
+	QueueCloseClients(sender, app, ignore_sender, distance, skipped_mob, is_ack_required, filter);
+
+	if (!sender) {
+		return; // QueueCloseClients already broadcast zone-wide
+	}
+
+	if (distance <= 0) {
+		distance = zone->GetClientUpdateRange(); // mirror QueueCloseClients' radius for the proximity dedup
+	}
+
+	ForEachCombatLogObserver(sender, other, distance, ignore_sender, skipped_mob, [&](Client *client) {
+		// same filter predicate QueueCloseClients applies to in-range clients
+		eqFilterMode client_filter = client->GetFilter(filter);
+		if (
+			filter == FilterNone || client_filter == FilterShow ||
+			(client_filter == FilterShowGroupOnly &&
+			 (sender == client || (client->GetGroup() && client->GetGroup()->IsGroupMember(sender)))) ||
+			(client_filter == FilterShowSelfOnly && client == sender)
+			) {
+			client->QueuePacket(app, is_ack_required, Client::CLIENT_CONNECTED);
+		}
+	});
+}
+
+void EntityList::FilteredMessageCombatString(
+	Mob *sender,
+	Mob *other,
+	bool skipsender,
+	float dist,
+	uint32 type,
+	eqFilterType filter,
+	uint32 string_id,
+	Mob *skip,
+	const char *message1,
+	const char *message2,
+	const char *message3,
+	const char *message4,
+	const char *message5,
+	const char *message6,
+	const char *message7,
+	const char *message8,
+	const char *message9
+)
+{
+	FilteredMessageCloseString(
+		sender, skipsender, dist, type, filter, string_id, skip,
+		message1, message2, message3, message4, message5,
+		message6, message7, message8, message9
+	);
+
+	ForEachCombatLogObserver(sender, other, dist, skipsender, skip, [&](Client *client) {
+		// FilteredMessageString checks the client's filter before allocating
+		client->FilteredMessageString(
+			sender, type, filter, string_id,
+			message1, message2, message3, message4, message5,
+			message6, message7, message8, message9
+		);
+	});
+}
+
+void EntityList::FilteredMessageCombatClose(
+	Mob *sender,
+	Mob *other,
+	bool skipsender,
+	float dist,
+	uint32 type,
+	eqFilterType filter,
+	Mob *skipped_mob,
+	const char *message,
+	...
+)
+{
+	if (!sender) {
+		return;
+	}
+
+	va_list argptr;
+	char    buffer[4096];
+
+	va_start(argptr, message);
+	vsnprintf(buffer, 4095, message, argptr);
+	va_end(argptr);
+
+	// proximity pass on the close-mob cache - FilteredMessageClose scans the
+	// whole client list, and this path fires per heal/HoT tick
+	float dist2 = dist * dist;
+	for (auto &e : sender->GetCloseMobList(dist)) {
+		Mob *mob = e.second;
+		if (!mob || !mob->IsClient()) {
+			continue;
+		}
+
+		Client *client = mob->CastToClient();
+		if (client == skipped_mob || (skipsender && client == sender)) {
+			continue;
+		}
+
+		if (DistanceSquared(client->GetPosition(), sender->GetPosition()) <= dist2) {
+			client->FilteredMessage(sender, type, filter, buffer);
+		}
+	}
+
+	ForEachCombatLogObserver(sender, other, dist, skipsender, skipped_mob, [&](Client *client) {
+		client->FilteredMessage(sender, type, filter, buffer);
+	});
+}
+
 //sender can be null
 void EntityList::QueueClients(
 	Mob *sender, const EQApplicationPacket *app,

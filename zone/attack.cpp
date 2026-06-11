@@ -3383,7 +3383,14 @@ void Mob::DamageShield(Mob* attacker, bool spell_ds) {
 		b->type    = spellbonuses.DamageShieldType;
 		b->spellid = 0x0;
 		b->damage  = DS;
-		entity_list.QueueCloseClients(this, &p);
+		// ranges above the close-mob cache bound degrade to full zone scans
+		entity_list.QueueCombatClients(
+			this,
+			attacker,
+			&p,
+			false,
+			std::min(RuleI(Range, DamageShieldMessages), RuleI(Range, MobCloseScanDistance))
+		);
 	}
 	else if (DS > 0 && !spell_ds) {
 		//we are healing the attacker...
@@ -4580,8 +4587,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 					}
 
 					if (!FromDamageShield) {
-						entity_list.QueueCloseClients(
+						entity_list.QueueCombatClients(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							&p, /* packet */
 							false, /* Skip Sender */
 							((IsValidSpell(spell_id)) ? RuleI(Range, SpellMessages) : RuleI(Range, DamageMessages)),
@@ -4626,8 +4634,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 						}
 					}
 					else {
-						entity_list.FilteredMessageCloseString(
+						entity_list.FilteredMessageCombatString(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							false, /* Sender is attacker, so do not skip */
 							RuleI(Range, SpellMessages),
 							Chat::NonMelee, /* 283 */
@@ -4658,8 +4667,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 					if (attacker->IsClient()) {
 						attacker->CastToClient()->QueuePacket(&p, true, CLIENT_CONNECTED, filter);
 					} else {
-						entity_list.QueueCloseClients(
+						entity_list.QueueCombatClients(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							&p, /* packet */
 							false, /* Skip Sender */
 							(
@@ -4713,8 +4723,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				(IsDamageSpell(spell_id) && IsDiscipline(spell_id)))
 				) {
 				a->type = DamageTypeSpell;
-				entity_list.QueueCloseClients(
+				entity_list.QueueCombatClients(
 					this, /* Sender */
+					attacker, /* Other combat party */
 					&p, /* packet */
 					false, /* Skip Sender */
 					range, /* distance packet travels at the speed of sound */
@@ -4732,10 +4743,11 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				// Send normal message to observers
 				// Exclude damage done by client pets as that's handled
 				// elsewhere using proper "my pet damage filter"
-				Mob *owner = attacker->GetOwner();
+				Mob *owner = attacker ? attacker->GetOwner() : nullptr;
 				if (!owner || (owner && !owner->IsClient())) {
-					entity_list.QueueCloseClients(
+					entity_list.QueueCombatClients(
 						this, /* Sender */
+						attacker, /* Other combat party */
 						&p, /* packet */
 						true, /* Skip Sender */
 						range, /* distance packet travels at the speed of sound */
@@ -4765,8 +4777,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 			}
 
 			/* older clients don't have the below String ID, but it will be filtered */
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				attacker, /* Other combat party */
 				true, /* Skip Sender */
 				RuleI(Range, SpellMessages),
 				Chat::DotDamage, /* Type: 325 */
@@ -5334,8 +5347,9 @@ void Mob::TryPetCriticalHit(Mob *defender, DamageHitInfo &hit)
 			hit.damage_done += 5;
 			hit.damage_done = (hit.damage_done * critMod) / 100;
 
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false,  /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */
@@ -5412,8 +5426,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 
 				int slay_sex = GetGender() == Gender::Female ? FEMALE_SLAYUNDEAD : MALE_SLAYUNDEAD;
 
-				entity_list.FilteredMessageCloseString(
+				entity_list.FilteredMessageCombatString(
 					this, /* Sender */
+					defender, /* Other combat party */
 					false, /* Skip Sender */
 					RuleI(Range, CriticalDamage),
 					Chat::MeleeCrit, /* Type: 301 */
@@ -5504,8 +5519,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 						}
 						hit.damage_done = hit.damage_done * 200 / 100;
 
-						entity_list.FilteredMessageCloseString(
+						entity_list.FilteredMessageCombatString(
 							this, /* Sender */
+							defender, /* Other combat party */
 							false, /* Skip Sender */
 							RuleI(Range, CriticalDamage),
 							Chat::MeleeCrit, /* Type: 301 */
@@ -5533,8 +5549,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 				hit.damage_done += og_damage * 119 / 100;
 				LogCombat("Crip damage [{}]", hit.damage_done);
 
-				entity_list.FilteredMessageCloseString(
+				entity_list.FilteredMessageCombatString(
 					this, /* Sender */
+					defender, /* Other combat party */
 					false, /* Skip Sender */
 					RuleI(Range, CriticalDamage),
 					Chat::MeleeCrit, /* Type: 301 */
@@ -5563,8 +5580,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 			}
 
 			/* Normal Critical hit message */
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false, /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */
@@ -5623,8 +5641,9 @@ bool Mob::TryFinishingBlow(Mob *defender, int64 &damage)
 			proc_chance >= zone->random.Int(1, 1000)
 		) {
 			/* Finishing Blow Critical Message */
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false, /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */

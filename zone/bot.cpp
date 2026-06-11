@@ -5104,7 +5104,9 @@ bool Bot::TryFinishingBlow(Mob *defender, int64 &damage)
 		if (defender->GetLevel() <= levelreq && (chance >= zone->random.Int(1, 1000))) {
 			LogCombat("Landed a finishing blow: levelreq at [{}] other level [{}]",
 				levelreq, defender->GetLevel());
-			entity_list.MessageCloseString(this, false, 200, Chat::MeleeCrit, FINISHING_BLOW, GetName());
+			entity_list.FilteredMessageCombatString(
+				this, defender, false, RuleI(Range, CriticalDamage),
+				Chat::MeleeCrit, FilterMeleeCrits, FINISHING_BLOW, 0, GetName());
 			damage = fb_damage;
 			return true;
 		} else {
