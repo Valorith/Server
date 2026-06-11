@@ -4812,7 +4812,7 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 	}
 }
 
-void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
+void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* caster_name_fallback)
 {
 #ifdef LUA_EQEMU
 	uint64 lua_ret = 0;
@@ -4881,11 +4881,37 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
 					itoa(acthealed));
 				}
 			}
-		} else if (
-			CastToClient()->GetFilter(FilterHealOverTime) != FilterShowSelfOnly ||
-			CastToClient()->GetFilter(FilterHealOverTime) != FilterHide
-		) {
-			Message(Chat::NonMelee, "You have been healed for %d points of damage.", acthealed);
+		} else if (IsClient()) {
+			eqFilterMode heal_filter = CastToClient()->GetFilter(FilterHealOverTime);
+			if (heal_filter != FilterShowSelfOnly && heal_filter != FilterHide) {
+				// the buff's stored caster name (passed by HoT tics) restores
+				// attribution when the caster mob is gone
+				if (caster_name_fallback && caster_name_fallback[0]) {
+					MessageString(Chat::NonMelee, YOU_HEALED, caster_name_fallback, itoa(acthealed));
+				} else {
+					Message(Chat::NonMelee, "You have been healed for %d points of damage.", acthealed);
+				}
+			}
+		}
+
+		// third-person broadcast so other players' heals are parseable; no
+		// stock string ID exists, so this composes live-format text
+		if (RuleB(Combat, HealBystanderMessages) && caster && caster != this && IsValidSpell(spell_id)) {
+			if (IsBuffSpell(spell_id)) {
+				entity_list.FilteredMessageCombatClose(
+					caster, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					Chat::NonMelee, FilterHealOverTime, /*skipped_mob*/ this,
+					"%s healed %s over time for %llu hit points by %s.",
+					caster->GetCleanName(), GetCleanName(),
+					(unsigned long long) acthealed, spells[spell_id].name);
+			} else {
+				entity_list.FilteredMessageCombatClose(
+					caster, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					Chat::NonMelee, FilterSpellDamage, /*skipped_mob*/ this,
+					"%s healed %s for %llu hit points by %s.",
+					caster->GetCleanName(), GetCleanName(),
+					(unsigned long long) acthealed, spells[spell_id].name);
+			}
 		}
 	}
 
