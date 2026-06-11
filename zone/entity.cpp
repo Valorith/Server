@@ -1898,6 +1898,11 @@ void EntityList::ForEachCombatLogObserver(
 	float parity_range  = static_cast<float>(RuleI(Range, GroupRaidCombatMessages));
 	float parity_sq     = parity_range * parity_range;
 
+	// the paired proximity send iterates the sender's close-mob cache, so a
+	// member inside proximity_range but not yet rescanned into the cache was
+	// not covered - only skip candidates the cache actually contained
+	const auto &sender_close_mobs = sender->GetCloseMobList(proximity_range);
+
 	auto process = [&](Client *candidate) {
 		if (!candidate || candidate == skipped_mob || (ignore_sender && candidate == sender)) {
 			return;
@@ -1908,7 +1913,8 @@ void EntityList::ForEachCombatLogObserver(
 		}
 
 		float dist_sq = DistanceSquared(candidate->GetPosition(), sender->GetPosition());
-		if (proximity_inclusive ? dist_sq <= proximity_sq : dist_sq < proximity_sq) {
+		if ((proximity_inclusive ? dist_sq <= proximity_sq : dist_sq < proximity_sq) &&
+			sender_close_mobs.count(candidate->GetID())) {
 			return; // the proximity send already covered (or filtered) them
 		}
 
