@@ -3381,7 +3381,10 @@ void Mob::DamageShield(Mob* attacker, bool spell_ds) {
 		b->target  = attacker->GetID();
 		b->source  = GetID();
 		b->type    = spellbonuses.DamageShieldType;
-		b->spellid = 0x0;
+		// real id only for true buff damage shields: the spell_ds id is a
+		// synthetic message-selection id, and clients render nonzero-spellid
+		// OP_Damage differently across versions - hence default off
+		b->spellid = (RuleB(Combat, DamageShieldSpellAttribution) && !spell_ds) ? spellid : 0;
 		b->damage  = DS;
 		// ranges above the close-mob cache bound degrade to full zone scans
 		entity_list.QueueCombatClients(
