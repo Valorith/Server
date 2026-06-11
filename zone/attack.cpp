@@ -4900,21 +4900,28 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* ca
 		}
 
 		// third-person broadcast so other players' heals are parseable; no
-		// stock string ID exists, so this composes live-format text
-		if (RuleB(Combat, HealBystanderMessages) && caster && caster != this && IsValidSpell(spell_id)) {
+		// stock string ID exists, so this composes live-format text. For
+		// orphaned HoT tics the buff's stored caster name attributes the
+		// line and the heal target anchors delivery (like orphaned DoTs)
+		const char *heal_source_name =
+			caster ? caster->GetCleanName() :
+			(caster_name_fallback && caster_name_fallback[0]) ? caster_name_fallback : nullptr;
+
+		if (RuleB(Combat, HealBystanderMessages) && heal_source_name && caster != this && IsValidSpell(spell_id)) {
+			Mob *heal_anchor = caster ? caster : this;
 			if (IsBuffSpell(spell_id)) {
 				entity_list.FilteredMessageCombatClose(
-					caster, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					heal_anchor, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
 					Chat::NonMelee, FilterHealOverTime, /*skipped_mob*/ this,
 					"%s healed %s over time for %llu hit points by %s.",
-					caster->GetCleanName(), GetCleanName(),
+					heal_source_name, GetCleanName(),
 					(unsigned long long) acthealed, spells[spell_id].name);
 			} else {
 				entity_list.FilteredMessageCombatClose(
-					caster, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					heal_anchor, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
 					Chat::NonMelee, FilterSpellDamage, /*skipped_mob*/ this,
 					"%s healed %s for %llu hit points by %s.",
-					caster->GetCleanName(), GetCleanName(),
+					heal_source_name, GetCleanName(),
 					(unsigned long long) acthealed, spells[spell_id].name);
 			}
 		}
