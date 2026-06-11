@@ -441,8 +441,13 @@ public:
 	// proximity_inclusive mirrors the paired proximity send's range test so
 	// members exactly at range are neither dropped nor doubled:
 	// QueueCloseClients delivers strictly inside range (pass false),
-	// the Filtered*Close* string sends deliver at <= range (pass true)
-	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool ignore_sender, Mob* skipped_mob, const std::function<void(Client*)>& fn);
+	// the Filtered*Close* string sends deliver at <= range (pass true).
+	// proximity_covers_all_in_range is true when the paired proximity send
+	// scans every client (FilteredMessageCloseString) and false when it only
+	// reaches the sender's close-mob cache (QueueCloseClients and the
+	// FilteredMessageCombatClose proximity pass) - cache misses inside range
+	// must still get the observer copy, full scans must not double-deliver
+	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<void(Client*)>& fn);
 	void	QueueCombatClients(Mob* sender, Mob* other, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
 	void	FilteredMessageCombatString(
 		Mob* sender,
