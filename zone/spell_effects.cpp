@@ -3936,7 +3936,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 				}
 
 				effect_value = -effect_value;
-				Damage(caster, effect_value, buff.spellid, spell.skill, false, i, true);
+				Damage(caster, effect_value, buff.spellid, spell.skill, false, slot, true);
 			} else if (effect_value > 0) {
 				// Regen spell...
 				// handled with bonuses
@@ -3975,7 +3975,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 					} else if (!caster->IsClient())
 						AddToHateList(caster, effect_value);
 				}
-				Damage(caster, effect_value, buff.spellid, spell.skill, false, i, true);
+				Damage(caster, effect_value, buff.spellid, spell.skill, false, slot, true);
 			} else if (effect_value > 0) {
 				// healing spell...
 				HealDamage(effect_value, caster);
