@@ -2733,7 +2733,9 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			buffs[e.slot_id].casterid = 0;
 			buffs[e.slot_id].client   = false;
 
-			strncpy(buffs[e.slot_id].caster_name, "", 64);
+			// keep the stored name so buff tic attribution survives the
+			// caster being gone (Spells:BuffTicAttributionFallback)
+			strncpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), 64);
 		}
 
 		buffs[e.slot_id].ticsremaining     = e.ticsremaining;

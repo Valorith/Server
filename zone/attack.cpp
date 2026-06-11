@@ -4762,35 +4762,52 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 	else {
 		//else, it is a buff tic...
 		// So we can see our dot dmg like live shows it.
-		if (IsValidSpell(spell_id) && damage > 0 && attacker && attacker != this) {
+		if (IsValidSpell(spell_id) && damage > 0 && attacker != this) {
 			//might filter on (attack_skill>200 && attack_skill<250), but I dont think we need it
-			if (!attacker->IsCorpse() && attacker->IsClient()) {
+			// when the caster mob is gone, attribute the tic from the name
+			// stored on the buff (Spells:BuffTicAttributionFallback); skip
+			// silently only if both are gone
+			const char *caster_name = nullptr;
+			if (attacker) {
+				caster_name = attacker->GetCleanName();
+			} else if (
+				RuleB(Spells, BuffTicAttributionFallback) &&
+				buffslot >= 0 &&
+				buffslot < GetMaxTotalSlots() &&
+				buffs[buffslot].caster_name[0]
+			) {
+				caster_name = buffs[buffslot].caster_name;
+			}
+
+			if (attacker && !attacker->IsCorpse() && attacker->IsClient()) {
 				attacker->FilteredMessageString(attacker, Chat::DotDamage,
 					FilterDOT, YOUR_HIT_DOT, GetCleanName(), itoa(damage),
 					spells[spell_id].name);
 			}
 
-			if (IsClient()) {
-				FilteredMessageString(this, Chat::DotDamage, FilterDOT,
-					YOU_TAKE_DOT, itoa(damage), attacker->GetCleanName(),
-					spells[spell_id].name);
-			}
+			if (caster_name) {
+				if (IsClient()) {
+					FilteredMessageString(this, Chat::DotDamage, FilterDOT,
+						YOU_TAKE_DOT, itoa(damage), caster_name,
+						spells[spell_id].name);
+				}
 
-			/* older clients don't have the below String ID, but it will be filtered */
-			entity_list.FilteredMessageCombatString(
-				this, /* Sender */
-				attacker, /* Other combat party */
-				true, /* Skip Sender */
-				RuleI(Range, SpellMessages),
-				Chat::DotDamage, /* Type: 325 */
-				FilterDOT, /* FilterType: 19 */
-				OTHER_HIT_DOT,  /* MessageFormat: %1 has taken %2 damage from %3 by %4. */
-				attacker,		/* sent above */
-				GetCleanName(), /* Message1 */
-				itoa(damage), /* Message2 */
-				attacker->GetCleanName(), /* Message3 */
-				spells[spell_id].name /* Message4 */
-			);
+				/* older clients don't have the below String ID, but it will be filtered */
+				entity_list.FilteredMessageCombatString(
+					this, /* Sender */
+					attacker, /* Other combat party */
+					true, /* Skip Sender */
+					RuleI(Range, SpellMessages),
+					Chat::DotDamage, /* Type: 325 */
+					FilterDOT, /* FilterType: 19 */
+					OTHER_HIT_DOT,  /* MessageFormat: %1 has taken %2 damage from %3 by %4. */
+					attacker,		/* sent above */
+					GetCleanName(), /* Message1 */
+					itoa(damage), /* Message2 */
+					caster_name, /* Message3 */
+					spells[spell_id].name /* Message4 */
+				);
+			}
 		}
 	}
 }

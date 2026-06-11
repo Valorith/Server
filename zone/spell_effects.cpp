@@ -3914,21 +3914,27 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 			effect_value = CalcSpellEffectValue(buff.spellid, i, buff.casterlevel, buff.instrument_mod,
 							    caster, buff.ticsremaining);
 			// Handle client cast DOTs here.
-			if (caster && effect_value < 0) {
+			// Spells:BuffTicAttributionFallback keeps DoTs dealing damage
+			// after the caster dies or leaves the zone; hate, focus damage
+			// and resource tap still require the live caster
+			if (effect_value < 0 && (caster || RuleB(Spells, BuffTicAttributionFallback))) {
 
-				if (IsDetrimentalSpell(buff.spellid)) {
-					if (caster->IsClient()) {
-						if (!caster->CastToClient()->GetFeigned()) {
+				if (caster) {
+					if (IsDetrimentalSpell(buff.spellid)) {
+						if (caster->IsClient()) {
+							if (!caster->CastToClient()->GetFeigned()) {
+								AddToHateList(caster, -effect_value);
+							}
+						} else if (!IsClient()) { // Allow NPC's to generate hate if casted on other NPC's
 							AddToHateList(caster, -effect_value);
 						}
-					} else if (!IsClient()) { // Allow NPC's to generate hate if casted on other NPC's
-						AddToHateList(caster, -effect_value);
 					}
+
+					effect_value = caster->GetActDoTDamage(buff.spellid, effect_value, this);
+
+					caster->ResourceTap(-effect_value, buff.spellid);
 				}
 
-				effect_value = caster->GetActDoTDamage(buff.spellid, effect_value, this);
-
-				caster->ResourceTap(-effect_value, buff.spellid);
 				effect_value = -effect_value;
 				Damage(caster, effect_value, buff.spellid, spell.skill, false, i, true);
 			} else if (effect_value > 0) {
