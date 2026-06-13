@@ -7545,6 +7545,19 @@ ADD COLUMN `max_level` INT(11) NOT NULL DEFAULT '0' AFTER `min_level`;
 ALTER TABLE `dynamic_zones`
 ADD COLUMN `min_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `max_players`,
 ADD COLUMN `max_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `min_level`;
+
+UPDATE `dynamic_zones` dz
+INNER JOIN `instance_list` il
+	ON dz.`instance_id` = il.`id`
+INNER JOIN `dynamic_zone_templates` dzt
+	ON dz.`name` = dzt.`name`
+	AND il.`zone` = dzt.`zone_id`
+	AND il.`version` = dzt.`zone_version`
+SET dz.`min_level` = dzt.`min_level`,
+	dz.`max_level` = dzt.`max_level`
+WHERE dz.`type` = 1
+	AND dz.`min_level` = 0
+	AND dz.`max_level` = 0;
 )"
 	},
 // -- template; copy/paste this when you need to create a new entry

@@ -407,6 +407,14 @@ namespace {
 			return fmt::format("need {}-{} players", check.min_players, check.max_players);
 		}
 
+		if (check.reason == "min_level") {
+			return "below minimum level";
+		}
+
+		if (check.reason == "max_level") {
+			return "above maximum level";
+		}
+
 		if (check.reason == "no_members") {
 			return "no eligible members";
 		}
@@ -1975,7 +1983,7 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 			if (menu_template_id != 0) {
 				if (menu_template_id == template_data->id) {
 					OfferRequestConfirmation(client, *template_data);
-					return true;
+					return false;
 				}
 				continue;
 			}
