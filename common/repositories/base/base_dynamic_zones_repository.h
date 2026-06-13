@@ -44,6 +44,8 @@ public:
 		uint8_t     has_zone_in;
 		int8_t      is_locked;
 		int8_t      add_replay;
+		uint32_t    min_level;
+		uint32_t    max_level;
 	};
 
 	static std::string PrimaryKey()
@@ -79,6 +81,8 @@ public:
 			"has_zone_in",
 			"is_locked",
 			"add_replay",
+			"min_level",
+			"max_level",
 		};
 	}
 
@@ -110,6 +114,8 @@ public:
 			"has_zone_in",
 			"is_locked",
 			"add_replay",
+			"min_level",
+			"max_level",
 		};
 	}
 
@@ -175,6 +181,8 @@ public:
 		e.has_zone_in         = 0;
 		e.is_locked           = 0;
 		e.add_replay          = 1;
+		e.min_level           = 0;
+		e.max_level           = 0;
 
 		return e;
 	}
@@ -236,6 +244,8 @@ public:
 			e.has_zone_in         = row[22] ? static_cast<uint8_t>(strtoul(row[22], nullptr, 10)) : 0;
 			e.is_locked           = row[23] ? static_cast<int8_t>(atoi(row[23])) : 0;
 			e.add_replay          = row[24] ? static_cast<int8_t>(atoi(row[24])) : 1;
+			e.min_level           = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
+			e.max_level           = row[26] ? static_cast<uint32_t>(strtoul(row[26], nullptr, 10)) : 0;
 
 			return e;
 		}
@@ -293,6 +303,8 @@ public:
 		v.push_back(columns[22] + " = " + std::to_string(e.has_zone_in));
 		v.push_back(columns[23] + " = " + std::to_string(e.is_locked));
 		v.push_back(columns[24] + " = " + std::to_string(e.add_replay));
+		v.push_back(columns[25] + " = " + std::to_string(e.min_level));
+		v.push_back(columns[26] + " = " + std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -339,6 +351,8 @@ public:
 		v.push_back(std::to_string(e.has_zone_in));
 		v.push_back(std::to_string(e.is_locked));
 		v.push_back(std::to_string(e.add_replay));
+		v.push_back(std::to_string(e.min_level));
+		v.push_back(std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -393,6 +407,8 @@ public:
 			v.push_back(std::to_string(e.has_zone_in));
 			v.push_back(std::to_string(e.is_locked));
 			v.push_back(std::to_string(e.add_replay));
+			v.push_back(std::to_string(e.min_level));
+			v.push_back(std::to_string(e.max_level));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
@@ -451,6 +467,8 @@ public:
 			e.has_zone_in         = row[22] ? static_cast<uint8_t>(strtoul(row[22], nullptr, 10)) : 0;
 			e.is_locked           = row[23] ? static_cast<int8_t>(atoi(row[23])) : 0;
 			e.add_replay          = row[24] ? static_cast<int8_t>(atoi(row[24])) : 1;
+			e.min_level           = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
+			e.max_level           = row[26] ? static_cast<uint32_t>(strtoul(row[26], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -500,6 +518,8 @@ public:
 			e.has_zone_in         = row[22] ? static_cast<uint8_t>(strtoul(row[22], nullptr, 10)) : 0;
 			e.is_locked           = row[23] ? static_cast<int8_t>(atoi(row[23])) : 0;
 			e.add_replay          = row[24] ? static_cast<int8_t>(atoi(row[24])) : 1;
+			e.min_level           = row[25] ? static_cast<uint32_t>(strtoul(row[25], nullptr, 10)) : 0;
+			e.max_level           = row[26] ? static_cast<uint32_t>(strtoul(row[26], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -599,6 +619,8 @@ public:
 		v.push_back(std::to_string(e.has_zone_in));
 		v.push_back(std::to_string(e.is_locked));
 		v.push_back(std::to_string(e.add_replay));
+		v.push_back(std::to_string(e.min_level));
+		v.push_back(std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -646,6 +668,8 @@ public:
 			v.push_back(std::to_string(e.has_zone_in));
 			v.push_back(std::to_string(e.is_locked));
 			v.push_back(std::to_string(e.add_replay));
+			v.push_back(std::to_string(e.min_level));
+			v.push_back(std::to_string(e.max_level));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}

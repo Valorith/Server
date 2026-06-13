@@ -53,6 +53,8 @@ public:
 		int      leader_id;
 		int      min_players;
 		int      max_players;
+		int      min_level;
+		int      max_level;
 		int      instance_id;
 		int      type;
 		int      dz_switch_id;
@@ -90,6 +92,8 @@ public:
 				dynamic_zones.leader_id,
 				dynamic_zones.min_players,
 				dynamic_zones.max_players,
+				dynamic_zones.min_level,
+				dynamic_zones.max_level,
 				dynamic_zones.instance_id,
 				dynamic_zones.type,
 				dynamic_zones.dz_switch_id,
@@ -131,6 +135,8 @@ public:
 		entry.leader_id           = strtol(row[col++], nullptr, 10);
 		entry.min_players         = strtol(row[col++], nullptr, 10);
 		entry.max_players         = strtol(row[col++], nullptr, 10);
+		entry.min_level           = strtol(row[col++], nullptr, 10);
+		entry.max_level           = strtol(row[col++], nullptr, 10);
 		entry.instance_id         = strtol(row[col++], nullptr, 10);
 		entry.type                = strtol(row[col++], nullptr, 10);
 		entry.dz_switch_id        = strtol(row[col++], nullptr, 10);
@@ -379,6 +385,7 @@ public:
 		uint32_t    id;
 		std::string name;
 		uint32_t    dz_id;
+		uint32_t    level;
 	};
 
 	// get character ids with possible active dz id by type
@@ -403,7 +410,8 @@ public:
 			SELECT
 				character_data.id,
 				character_data.name,
-				MAX(dynamic_zones.id)
+				MAX(dynamic_zones.id),
+				character_data.level
 			FROM character_data
 				LEFT JOIN dynamic_zone_members
 					ON character_data.id = dynamic_zone_members.character_id
@@ -426,6 +434,7 @@ public:
 				entry.id    = std::strtoul(row[0], nullptr, 10);
 				entry.name  = row[1];
 				entry.dz_id = row[2] ? std::strtoul(row[2], nullptr, 10) : 0;
+				entry.level = row[3] ? std::strtoul(row[3], nullptr, 10) : 0;
 
 				entries.push_back(std::move(entry));
 			}

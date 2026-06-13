@@ -12028,6 +12028,12 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 		return;
 	}
 
+	// Player-facing "Form Expedition?" confirmation popup (Yes -> create).
+	if (ExpeditionRequestPopup::Owns(popup_response->popupid)) {
+		ExpeditionDB::HandleRequestConfirmPopup(*this, popup_response->popupid);
+		return;
+	}
+
 	//Get Item Details if POPUPID_REPLACE_SPELLWINDOW was used
 
 	/**

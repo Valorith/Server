@@ -41,6 +41,8 @@ public:
 		float       zone_in_y;
 		float       zone_in_z;
 		float       zone_in_h;
+		int32_t     min_level;
+		int32_t     max_level;
 	};
 
 	static std::string PrimaryKey()
@@ -73,6 +75,8 @@ public:
 			"zone_in_y",
 			"zone_in_z",
 			"zone_in_h",
+			"min_level",
+			"max_level",
 		};
 	}
 
@@ -101,6 +105,8 @@ public:
 			"zone_in_y",
 			"zone_in_z",
 			"zone_in_h",
+			"min_level",
+			"max_level",
 		};
 	}
 
@@ -163,6 +169,8 @@ public:
 		e.zone_in_y        = 0;
 		e.zone_in_z        = 0;
 		e.zone_in_h        = 0;
+		e.min_level        = 46;
+		e.max_level        = 0;
 
 		return e;
 	}
@@ -221,6 +229,8 @@ public:
 			e.zone_in_y        = row[19] ? strtof(row[19], nullptr) : 0;
 			e.zone_in_z        = row[20] ? strtof(row[20], nullptr) : 0;
 			e.zone_in_h        = row[21] ? strtof(row[21], nullptr) : 0;
+			e.min_level        = row[22] ? static_cast<int32_t>(atoi(row[22])) : 46;
+			e.max_level        = row[23] ? static_cast<int32_t>(atoi(row[23])) : 0;
 
 			return e;
 		}
@@ -275,6 +285,8 @@ public:
 		v.push_back(columns[19] + " = " + std::to_string(e.zone_in_y));
 		v.push_back(columns[20] + " = " + std::to_string(e.zone_in_z));
 		v.push_back(columns[21] + " = " + std::to_string(e.zone_in_h));
+		v.push_back(columns[22] + " = " + std::to_string(e.min_level));
+		v.push_back(columns[23] + " = " + std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -318,6 +330,8 @@ public:
 		v.push_back(std::to_string(e.zone_in_y));
 		v.push_back(std::to_string(e.zone_in_z));
 		v.push_back(std::to_string(e.zone_in_h));
+		v.push_back(std::to_string(e.min_level));
+		v.push_back(std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -369,6 +383,8 @@ public:
 			v.push_back(std::to_string(e.zone_in_y));
 			v.push_back(std::to_string(e.zone_in_z));
 			v.push_back(std::to_string(e.zone_in_h));
+			v.push_back(std::to_string(e.min_level));
+			v.push_back(std::to_string(e.max_level));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
@@ -424,6 +440,8 @@ public:
 			e.zone_in_y        = row[19] ? strtof(row[19], nullptr) : 0;
 			e.zone_in_z        = row[20] ? strtof(row[20], nullptr) : 0;
 			e.zone_in_h        = row[21] ? strtof(row[21], nullptr) : 0;
+			e.min_level        = row[22] ? static_cast<int32_t>(atoi(row[22])) : 46;
+			e.max_level        = row[23] ? static_cast<int32_t>(atoi(row[23])) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -470,6 +488,8 @@ public:
 			e.zone_in_y        = row[19] ? strtof(row[19], nullptr) : 0;
 			e.zone_in_z        = row[20] ? strtof(row[20], nullptr) : 0;
 			e.zone_in_h        = row[21] ? strtof(row[21], nullptr) : 0;
+			e.min_level        = row[22] ? static_cast<int32_t>(atoi(row[22])) : 46;
+			e.max_level        = row[23] ? static_cast<int32_t>(atoi(row[23])) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -566,6 +586,8 @@ public:
 		v.push_back(std::to_string(e.zone_in_y));
 		v.push_back(std::to_string(e.zone_in_z));
 		v.push_back(std::to_string(e.zone_in_h));
+		v.push_back(std::to_string(e.min_level));
+		v.push_back(std::to_string(e.max_level));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -610,6 +632,8 @@ public:
 			v.push_back(std::to_string(e.zone_in_y));
 			v.push_back(std::to_string(e.zone_in_z));
 			v.push_back(std::to_string(e.zone_in_h));
+			v.push_back(std::to_string(e.min_level));
+			v.push_back(std::to_string(e.max_level));
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}

@@ -81,6 +81,8 @@ void DynamicZoneBase::LoadRepositoryResult(DynamicZonesRepository::DynamicZoneIn
 	m_leader.id          = dz_entry.leader_id;
 	m_min_players        = dz_entry.min_players;
 	m_max_players        = dz_entry.max_players;
+	m_min_level          = dz_entry.min_level;
+	m_max_level          = dz_entry.max_level;
 	m_instance_id        = dz_entry.instance_id;
 	m_type               = static_cast<DynamicZoneType>(dz_entry.type);
 	m_dz_switch_id       = dz_entry.dz_switch_id;
@@ -136,6 +138,8 @@ uint32_t DynamicZoneBase::SaveToDatabase()
 	dz.leader_id           = m_leader.id;
 	dz.min_players         = m_min_players;
 	dz.max_players         = m_max_players;
+	dz.min_level           = m_min_level;
+	dz.max_level           = m_max_level;
 	dz.instance_id         = static_cast<int32_t>(m_instance_id),
 	dz.type                = static_cast<uint8_t>(m_type);
 	dz.dz_switch_id        = m_dz_switch_id;
@@ -684,6 +688,8 @@ void DynamicZoneBase::LoadTemplate(const DynamicZoneTemplatesRepository::Dynamic
 	m_name               = dz_template.name;
 	m_min_players        = dz_template.min_players;
 	m_max_players        = dz_template.max_players;
+	m_min_level          = dz_template.min_level;
+	m_max_level          = dz_template.max_level;
 	m_duration           = std::chrono::seconds(dz_template.duration_seconds);
 	m_dz_switch_id       = dz_template.dz_switch_id;
 	m_compass.zone_id    = dz_template.compass_zone_id;
