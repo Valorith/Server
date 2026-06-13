@@ -64,6 +64,7 @@ namespace {
 	std::unordered_map<uint32_t, Template> g_templates;
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
 	std::unordered_map<uint32_t, uint16_t> g_last_gm_target_menu_entity;
+	std::unordered_map<uint32_t, uint32_t> g_pending_request_confirmations;
 	std::unordered_map<uint32_t, std::unordered_set<std::string>> g_completed_runtime_events;
 	std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::unordered_set<uint32_t>>> g_grouped_boss_progress;
 
@@ -1918,11 +1919,13 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::str
 			template_data.name,
 			FormatExpeditionRequirements(template_data)
 		);
+
+		g_pending_request_confirmations[client.CharacterID()] = template_data.id;
 		client.SendFullPopup(
 			"Form Expedition?",
 			body.c_str(),
-			ExpeditionRequestPopup::Make(template_data.id), // Yes -> create
-			0,                                              // No  -> dismiss, no action
+			ExpeditionRequestPopup::kConfirm, // Yes -> create
+			ExpeditionRequestPopup::kCancel,  // No  -> dismiss and clear pending request
 			1, 0, "Yes", "No"
 		);
 	}
@@ -2041,10 +2044,21 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 void HandleRequestConfirmPopup(Client& client, uint32_t popup_id)
 {
-	// Player answered "Yes" on the "Form Expedition?" confirmation popup. Look up the encoded
+	auto pending = g_pending_request_confirmations.find(client.CharacterID());
+	if (pending == g_pending_request_confirmations.end()) {
+		return;
+	}
+
+	const uint32_t template_id = pending->second;
+	g_pending_request_confirmations.erase(pending);
+
+	if (!ExpeditionRequestPopup::Accepted(popup_id)) {
+		return;
+	}
+
+	// Player answered "Yes" on the "Form Expedition?" confirmation popup. Look up the pending
 	// template and create it. TryCreateTemplateRequest re-validates (level, player count,
 	// lockouts) and messages the player on failure.
-	const uint32_t template_id = ExpeditionRequestPopup::TemplateOf(popup_id);
 	const Template* template_data = FindTemplate(template_id);
 	if (!template_data) {
 		return;

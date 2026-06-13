@@ -2251,21 +2251,21 @@ void ShowLevelMatrix(
 	const std::string& title,
 	const std::string& command_prefix,
 	uint32_t current,
-	bool allow_unlimited,
+	const std::string& zero_label,
 	const std::string& back_command = {},
 	const std::string& back_label = {}
 )
 {
 		SendCardTop(c, title);
-		SendInfoLine(c, "Current", (allow_unlimited && current == 0) ? "Unlimited" : fmt::format("{}", current));
+		SendInfoLine(c, "Current", (current == 0) ? zero_label : fmt::format("{}", current));
 		c->Message(Chat::White, fmt::format(
 			"  Tip: type  {} <level>  to set an exact value{}.",
 			command_prefix,
-			allow_unlimited ? " (0 = Unlimited)" : ""
+			!zero_label.empty() ? fmt::format(" (0 = {})", zero_label) : ""
 		).c_str());
-		if (allow_unlimited) {
-			c->Message(Chat::White, "  No cap:");
-			SendActionRow(c, {{command_prefix + " 0", "Unlimited"}});
+		if (!zero_label.empty()) {
+			c->Message(Chat::White, zero_label == "Unlimited" ? "  No cap:" : "  No minimum:");
+			SendActionRow(c, {{command_prefix + " 0", zero_label}});
 		}
 		c->Message(Chat::White, "  Low:");
 		SendActionRow(c, {
@@ -2583,7 +2583,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 		else if (action == "minlevel") {
 			if (sep->arg[3][0] == '\0') {
 				ShowLevelMatrix(c, fmt::format("Min Level: {}", template_data->name),
-					"#expedition config minlevel", template_data->dz_template.min_level, false,
+					"#expedition config minlevel", template_data->dz_template.min_level, "Any",
 					"#expedition config", "Back to Config");
 				return;
 			}
@@ -2606,7 +2606,7 @@ void HandleConfig(Client* c, const Seperator* sep)
 		else if (action == "maxlevel") {
 			if (sep->arg[3][0] == '\0') {
 				ShowLevelMatrix(c, fmt::format("Max Level: {}", template_data->name),
-					"#expedition config maxlevel", template_data->dz_template.max_level, true,
+					"#expedition config maxlevel", template_data->dz_template.max_level, "Unlimited",
 					"#expedition config", "Back to Config");
 				return;
 			}
