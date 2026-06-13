@@ -356,7 +356,7 @@ namespace {
 
 	bool HasActiveBaseZoneBoss(const Template& template_data)
 	{
-		if (!IsCurrentBaseZoneForTemplate(template_data)) {
+		if (!template_data.require_bosses_dead || !IsCurrentBaseZoneForTemplate(template_data)) {
 			return false;
 		}
 
@@ -581,7 +581,11 @@ namespace {
 		client.Message(Chat::NPCQuestSay, "%s", title.c_str());
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 		for (const auto& entry : entries) {
-			const std::string status = (entry.note.empty() || entry.status_block) ? entry.status : fmt::format("{} ({})", entry.status, entry.note);
+			// Status-block notes read as a sentence continuation ("Unavailable while ..."),
+			// other notes are parenthetical hints ("Locked (replay timer active)").
+			const std::string status = entry.note.empty() ? entry.status :
+				entry.status_block ? fmt::format("{} {}", entry.status, entry.note) :
+				fmt::format("{} ({})", entry.status, entry.note);
 			if (!entry.phrase.empty()) {
 				const std::string action = Saylink::Silent(entry.phrase, fmt::format("[ {} ]", entry.button));
 				const std::string line = multi ?
@@ -596,9 +600,6 @@ namespace {
 				fmt::format("   {}", status);
 			const uint16_t chat_type = entry.status == "Locked" ? Chat::Red : Chat::Yellow;
 			client.Message(chat_type, "%s", line.c_str());
-			if (entry.status_block && !entry.note.empty()) {
-				client.Message(chat_type, "      %s", entry.note.c_str());
-			}
 		}
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
 	}
@@ -894,6 +895,7 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 		true,
 		false,
 		false,
+		true,
 		kSimpleRequestPhrase,
 		kSimpleRequestMode,
 		""
@@ -1025,6 +1027,13 @@ bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent)
 bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled)
 {
 	const bool ok = ExpeditionRepository::UpdateTemplateBossOnlySpawn(db, template_id, enabled);
+	Reload(db);
+	return ok;
+}
+
+bool SetTemplateRequireBossesDead(Database& db, uint32_t template_id, bool enabled)
+{
+	const bool ok = ExpeditionRepository::UpdateTemplateRequireBossesDead(db, template_id, enabled);
 	Reload(db);
 	return ok;
 }

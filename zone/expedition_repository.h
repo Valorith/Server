@@ -39,6 +39,7 @@ uint32_t InsertTemplate(
 	bool replay_on_join,
 	bool silent,
 	bool boss_only_spawn,
+	bool require_bosses_dead,
 	const std::string& request_phrase,
 	const std::string& request_mode,
 	const std::string& notes
@@ -57,6 +58,7 @@ bool UpdateTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool UpdateTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool UpdateTemplateSilent(Database& db, uint32_t template_id, bool silent);
 bool UpdateTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled);
+bool UpdateTemplateRequireBossesDead(Database& db, uint32_t template_id, bool enabled);
 bool UpdateTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode);
 bool DeleteTemplate(Database& db, uint32_t template_id);
 

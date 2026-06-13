@@ -1150,6 +1150,7 @@ namespace {
 		SendHelpLink(c, "#expedition set requestmode db_only|script_can_opt_in|script_only", "choose DB/script request handling");
 		SendHelpLink(c, "#expedition set silent on|off", "toggle normal create/failure messages");
 		SendHelpLink(c, "#expedition set bossonly on|off", "toggle spawning only mapped boss NPCs in expedition instances");
+		SendHelpLink(c, "#expedition set bossesdead on|off", "toggle requiring base zone bosses to be dead before creation");
 		SendHelpLink(c, "#expedition set switchid target|<id>", "set dynamic-zone switch entity id");
 
 		SendActionGroup(c, "Common Setup Actions", {
@@ -1617,6 +1618,7 @@ namespace {
 		SendInfoLine(c, "Replay", Duration(template_data.replay_lockout_seconds));
 		SendInfoLine(c, "Requests", template_data.request_mode);
 		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
+		SendInfoLine(c, "Require bosses dead", OnOff(template_data.require_bosses_dead));
 		c->Message(Chat::White, ChatSeparator());
 
 		c->Message(Chat::Yellow, "Bosses & Chests:");
@@ -1697,6 +1699,7 @@ namespace {
 			OnOff(template_data.silent)
 		).c_str());
 		c->Message(Chat::White, fmt::format("Boss-only spawns: {}", OnOff(template_data.boss_only_spawn)).c_str());
+		c->Message(Chat::White, fmt::format("Require bosses dead: {}", OnOff(template_data.require_bosses_dead)).c_str());
 		c->Message(Chat::White, fmt::format(
 			"Zone-in: {}",
 			Location(template_data.dz_template.zone_id, template_data.dz_template.zone_in_x, template_data.dz_template.zone_in_y, template_data.dz_template.zone_in_z, template_data.dz_template.zone_in_h)
@@ -2319,6 +2322,7 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 		SendInfoLine(c, "Zone-in", dz.override_zone_in ? "set" : "NOT SET");
 		SendInfoLine(c, "Safe return", dz.return_zone_id ? "set" : "default");
 		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
+		SendInfoLine(c, "Require bosses dead", OnOff(template_data.require_bosses_dead));
 		c->Message(Chat::White, ChatSeparator());
 
 		c->Message(Chat::White, "  Destination:");
@@ -2368,6 +2372,11 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 		SendActionRow(c, {
 			{"#expedition config bossonly on", "Bosses Only"},
 			{"#expedition config bossonly off", "Normal Spawns"}
+		});
+		c->Message(Chat::White, "  Availability (block creation while bosses are up in the base zone):");
+		SendActionRow(c, {
+			{"#expedition config bossesdead on", "Require Bosses Dead"},
+			{"#expedition config bossesdead off", "Ignore Base Zone Bosses"}
 		});
 		c->Message(Chat::White, ChatSeparator());
 		SendActionRow(c, {
@@ -2543,6 +2552,15 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetTemplateBossOnlySpawn(content_db, template_id, enabled);
 			c->Message(Chat::Green, fmt::format("Set boss-only spawns to [{}].", OnOff(enabled)).c_str());
+		}
+		else if (action == "bossesdead" || action == "bosses_dead") {
+			bool enabled = false;
+			if (!ParseOnOffArg(sep->arg[3], enabled)) {
+				c->Message(Chat::Red, "Usage: #expedition config bossesdead on|off");
+				return;
+			}
+			ExpeditionDB::SetTemplateRequireBossesDead(content_db, template_id, enabled);
+			c->Message(Chat::Green, fmt::format("Set require bosses dead to [{}].", OnOff(enabled)).c_str());
 		}
 		else {
 			ShowConfigScreen(c, *template_data);
@@ -3850,6 +3868,15 @@ void HandleSet(Client* c, const Seperator* sep)
 			}
 			ExpeditionDB::SetTemplateBossOnlySpawn(content_db, template_data->id, enabled);
 			c->Message(Chat::Green, fmt::format("Set boss-only spawns to [{}].", OnOff(enabled)).c_str());
+		}
+		else if (field == "bossesdead" || field == "bosses_dead") {
+			bool enabled = false;
+			if (!ParseOnOffArg(sep->arg[3], enabled)) {
+				c->Message(Chat::Red, "Usage: #expedition set bossesdead on|off");
+				return;
+			}
+			ExpeditionDB::SetTemplateRequireBossesDead(content_db, template_data->id, enabled);
+			c->Message(Chat::Green, fmt::format("Set require bosses dead to [{}].", OnOff(enabled)).c_str());
 		}
 		else if (field == "requestmode") {
 			if (!IsRequestModeArg(sep->arg[3])) {

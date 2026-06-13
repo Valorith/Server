@@ -219,6 +219,7 @@ struct Template {
 	bool replay_on_join = true;
 	bool silent = false;
 	bool boss_only_spawn = false;
+	bool require_bosses_dead = true;
 	std::string request_phrase = "expedition";
 	std::string request_mode = "db_only";
 	std::string notes;
@@ -401,6 +402,7 @@ bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent);
 bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled);
+bool SetTemplateRequireBossesDead(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode);
 bool SetDzTemplateZone(Database& db, uint32_t dz_template_id, uint32_t zone_id, uint32_t version);
 bool SetDzTemplateDuration(Database& db, uint32_t dz_template_id, uint32_t seconds);
