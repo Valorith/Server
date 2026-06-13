@@ -302,6 +302,12 @@ jobs:
           Write-Host "Installing Strawberry Perl $version (the supported EQEmu Windows Perl)"
           Invoke-WebRequest -Uri $url -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dest -Force
+          # perl.exe's MinGW runtime (e.g. libgcc_s_seh-1.dll) can live in c\bin; copy it
+          # next to perl.exe so FindPerl can run perl during configure WITHOUT putting the
+          # MinGW toolchain (gcc/g++) on PATH, which would derail the MSVC/Ninja build.
+          foreach ($d in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll') {
+            if (Test-Path "$dest\c\bin\$d") { Copy-Item "$dest\c\bin\$d" "$dest\perl\bin\" -Force }
+          }
           # Put 5.24 ahead of the runner's default Strawberry so FindPerl links perl524.dll.
           "$dest\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "$dest\perl\bin"      | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8

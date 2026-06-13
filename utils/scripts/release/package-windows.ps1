@@ -348,7 +348,9 @@ function Find-RuntimeDependency {
 function Test-IsStrawberryPerlProvidedDll {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Name
+        [string]$Name,
+
+        [string]$RequiredBy
     )
 
     # The release links the officially-supported Strawberry Perl (5.24), which must be
@@ -362,13 +364,19 @@ function Test-IsStrawberryPerlProvidedDll {
         return $true
     }
 
+    # The MinGW runtime is host-provided ONLY when it is pulled in by the host's
+    # perl5xx.dll. If any other (MSVC) binary ever links it, it must still be bundled or
+    # flagged -- never silently dropped -- so gate this on the requiring file.
     $mingwRuntime = @(
         "libgcc_s_seh-1.dll",
         "libstdc++-6.dll",
         "libwinpthread-1.dll"
     )
+    if ($mingwRuntime -contains $Name) {
+        return ($RequiredBy -match '^perl5\d+\.dll$')
+    }
 
-    return ($mingwRuntime -contains $Name)
+    return $false
 }
 
 function Copy-DynamicRuntimeDependencies {
@@ -423,7 +431,7 @@ function Resolve-RuntimeDependencies {
                 if ($dependency -match "^(api-ms-win-|ext-ms-)") {
                     continue
                 }
-                if (Test-IsStrawberryPerlProvidedDll -Name $dependency) {
+                if (Test-IsStrawberryPerlProvidedDll -Name $dependency -RequiredBy $_.Name) {
                     continue
                 }
                 if ($systemDlls.Contains($dependency)) {
@@ -472,7 +480,7 @@ function Test-RuntimeDependencies {
             if ($dependency -match "^(api-ms-win-|ext-ms-)") {
                 continue
             }
-            if (Test-IsStrawberryPerlProvidedDll -Name $dependency) {
+            if (Test-IsStrawberryPerlProvidedDll -Name $dependency -RequiredBy $_.Name) {
                 continue
             }
             if ($systemDlls.Contains($dependency)) {
@@ -549,6 +557,20 @@ function Test-PackageContents {
     if ($blockedFiles.Count -gt 0) {
         $blockedNames = $blockedFiles | Sort-Object Name | ForEach-Object { $_.Name }
         throw "Release package contains non-runtime files:`n$($blockedNames -join "`n")"
+    }
+
+    # Perl and its MinGW runtime are intentionally host-provided (the user's installed
+    # Strawberry Perl 5.24). Assert they were not bundled so a future change cannot
+    # silently reintroduce bundling -- a bundled perl5xx.dll ships the build machine's
+    # @INC paths and breaks every Perl quest on user machines.
+    $hostProvidedFiles = @(Get-ChildItem -Path $stageDir -File | Where-Object {
+        $_.Name -match '^perl5\d+\.dll$' -or
+        @("libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll") -contains $_.Name
+    })
+
+    if ($hostProvidedFiles.Count -gt 0) {
+        $hostProvidedNames = $hostProvidedFiles | Sort-Object Name | ForEach-Object { $_.Name }
+        throw "Release package bundles host-provided Perl runtime (it must come from the user's installed Strawberry Perl):`n$($hostProvidedNames -join "`n")"
     }
 }
 
