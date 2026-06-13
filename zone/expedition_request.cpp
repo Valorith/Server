@@ -22,6 +22,7 @@
 
 #include "common/repositories/character_expedition_lockouts_repository.h"
 #include "zone/client.h"
+#include "zone/entity.h"
 #include "zone/groups.h"
 #include "zone/raids.h"
 #include "zone/string_ids.h"
@@ -197,7 +198,14 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 
 		m_members.emplace_back(character.id, character.name, DynamicZoneMemberStatus::Online);
 		char_ids.push_back(character.id);
-		m_member_levels.emplace_back(character.name, character.level);
+
+		uint32_t member_level = character.level;
+		if (Client* member_client = entity_list.GetClientByCharID(character.id))
+		{
+			member_level = member_client->GetLevel();
+		}
+
+		m_member_levels.emplace_back(character.name, member_level);
 	}
 
 	auto lockouts = CharacterExpeditionLockoutsRepository::GetLockouts(database, char_ids, m_dz->GetName());
