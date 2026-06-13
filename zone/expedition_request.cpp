@@ -141,6 +141,11 @@ bool ExpeditionRequest::CanMembersJoin(const std::vector<std::string>& member_na
 		requirements_met = IsPlayerCountValidated();
 	}
 
+	if (requirements_met)
+	{
+		requirements_met = IsLevelValidated();
+	}
+
 	return requirements_met;
 }
 
@@ -192,6 +197,7 @@ bool ExpeditionRequest::CheckMembersForConflicts(const std::vector<std::string>&
 
 		m_members.emplace_back(character.id, character.name, DynamicZoneMemberStatus::Online);
 		char_ids.push_back(character.id);
+		m_member_levels.emplace_back(character.name, character.level);
 	}
 
 	auto lockouts = CharacterExpeditionLockoutsRepository::GetLockouts(database, char_ids, m_dz->GetName());
@@ -322,6 +328,52 @@ bool ExpeditionRequest::IsPlayerCountValidated()
 
 	if (gm_bypass && !m_silent) {
 		m_requester->Message(Chat::White, "Your GM Status allows you to bypass expedition minimum and maximum player restrictions.");
+	}
+
+	return requirements_met;
+}
+
+bool ExpeditionRequest::IsLevelValidated()
+{
+	const uint32_t min_level = m_dz->GetMinLevel();
+	const uint32_t max_level = m_dz->GetMaxLevel(); // 0 == unlimited
+
+	if (min_level == 0 && max_level == 0)
+	{
+		return true; // no level restriction configured
+	}
+
+	// GMs bypass level restrictions just as they bypass the player-count requirement
+	auto bypass_status = RuleI(Expedition, MinStatusToBypassPlayerCountRequirements);
+	if (m_requester && m_requester->GetGM() && m_requester->Admin() >= bypass_status)
+	{
+		return true;
+	}
+
+	bool requirements_met = true;
+
+	for (const auto& [name, level] : m_member_levels)
+	{
+		if (min_level != 0 && level < min_level)
+		{
+			requirements_met = false;
+			m_failure_reason = "min_level";
+			if (!m_silent)
+			{
+				Client::SendCrossZoneMessage(m_leader, m_leader_name, Chat::Red, fmt::format(
+					"{} is below the minimum level of {} required for this expedition.", name, min_level));
+			}
+		}
+		else if (max_level != 0 && level > max_level)
+		{
+			requirements_met = false;
+			m_failure_reason = "max_level";
+			if (!m_silent)
+			{
+				Client::SendCrossZoneMessage(m_leader, m_leader_name, Chat::Red, fmt::format(
+					"{} is above the maximum level of {} allowed for this expedition.", name, max_level));
+			}
+		}
 	}
 
 	return requirements_met;

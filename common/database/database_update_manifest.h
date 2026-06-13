@@ -7522,6 +7522,31 @@ ADD COLUMN `require_bosses_dead` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1' AFTER 
 )",
 		.content_schema_update = true
 	},
+	ManifestEntry{
+		.version = 9348,
+		.description = "2026_06_13_expedition_min_max_level.sql",
+		.check = "SHOW COLUMNS FROM `dynamic_zone_templates` LIKE 'min_level'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `dynamic_zone_templates`
+ADD COLUMN `min_level` INT(11) NOT NULL DEFAULT '46' AFTER `max_players`,
+ADD COLUMN `max_level` INT(11) NOT NULL DEFAULT '0' AFTER `min_level`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9349,
+		.description = "2026_06_13_dynamic_zones_min_max_level.sql",
+		.check = "SHOW COLUMNS FROM `dynamic_zones` LIKE 'min_level'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `dynamic_zones`
+ADD COLUMN `min_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `max_players`,
+ADD COLUMN `max_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `min_level`;
+)"
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,

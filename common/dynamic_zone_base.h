@@ -111,6 +111,8 @@ public:
 	uint32_t GetMaxPlayers() const { return m_max_players; }
 	uint32_t GetMemberCount() const { return static_cast<uint32_t>(m_members.size()); }
 	uint32_t GetMinPlayers() const { return m_min_players; }
+	uint32_t GetMaxLevel() const { return m_max_level; }
+	uint32_t GetMinLevel() const { return m_min_level; }
 	uint32_t GetSecondsRemaining() const;
 	uint16_t GetZoneID() const { return static_cast<uint16_t>(m_zone_id); }
 	uint32_t GetZoneIndex() const { return (m_instance_id << 16) | (m_zone_id & 0xffff); }
@@ -159,6 +161,8 @@ public:
 	void SetMaxPlayers(uint32_t max_players) { m_max_players = max_players; }
 	void SetMemberStatus(uint32_t character_id, DynamicZoneMemberStatus status);
 	void SetMinPlayers(uint32_t min_players) { m_min_players = min_players; }
+	void SetMaxLevel(uint32_t max_level) { m_max_level = max_level; }
+	void SetMinLevel(uint32_t min_level) { m_min_level = min_level; }
 	void SetName(const std::string& name) { m_name = name; }
 	void SetReplayOnJoin(bool enabled, bool update_db = false);
 	void SetSafeReturn(const DynamicZoneLocation& location, bool update_db = false);
@@ -217,6 +221,8 @@ protected:
 	uint32_t m_zone_version = 0;
 	uint32_t m_min_players = 0;
 	uint32_t m_max_players = 0;
+	uint32_t m_min_level = 0;
+	uint32_t m_max_level = 0;
 	int m_dz_switch_id = 0;
 	bool m_never_expires = false;
 	bool m_has_zonein = false;
@@ -249,6 +255,8 @@ public:
 			m_zone_version,
 			m_min_players,
 			m_max_players,
+			m_min_level,
+			m_max_level,
 			m_dz_switch_id,
 			m_never_expires,
 			m_has_zonein,

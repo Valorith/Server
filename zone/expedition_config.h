@@ -56,3 +56,13 @@ namespace ExpeditionEditPopup
 
 // Dispatches a two-button popup response for the expedition edit-mode add flow (defined in gm_commands/expedition.cpp).
 void ExpeditionEditPopupResponse(Client* client, uint32_t popup_id);
+
+// Player-facing "Form Expedition?" confirmation popup. Encodes the template id to create in the
+// low bits and uses a distinct base, so its ids never collide with ExpeditionEditPopup's.
+namespace ExpeditionRequestPopup
+{
+	inline constexpr uint32_t kBase = 0x41000000u; // distinct from ExpeditionEditPopup::kBase (0x40000000)
+	inline uint32_t Make(uint32_t template_id) { return kBase | (template_id & 0x000FFFFFu); }
+	inline bool Owns(uint32_t popup_id) { return (popup_id & 0xFFF00000u) == kBase; }
+	inline uint32_t TemplateOf(uint32_t popup_id) { return popup_id & 0x000FFFFFu; }
+}

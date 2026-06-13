@@ -2246,6 +2246,49 @@ void ShowCountMatrix(
 		SendCardBottom(c);
 }
 
+void ShowLevelMatrix(
+	Client* c,
+	const std::string& title,
+	const std::string& command_prefix,
+	uint32_t current,
+	bool allow_unlimited,
+	const std::string& back_command = {},
+	const std::string& back_label = {}
+)
+{
+		SendCardTop(c, title);
+		SendInfoLine(c, "Current", (allow_unlimited && current == 0) ? "Unlimited" : fmt::format("{}", current));
+		c->Message(Chat::White, fmt::format(
+			"  Tip: type  {} <level>  to set an exact value{}.",
+			command_prefix,
+			allow_unlimited ? " (0 = Unlimited)" : ""
+		).c_str());
+		if (allow_unlimited) {
+			c->Message(Chat::White, "  No cap:");
+			SendActionRow(c, {{command_prefix + " 0", "Unlimited"}});
+		}
+		c->Message(Chat::White, "  Low:");
+		SendActionRow(c, {
+			{command_prefix + " 1", "1"}, {command_prefix + " 10", "10"},
+			{command_prefix + " 20", "20"}, {command_prefix + " 30", "30"}
+		});
+		c->Message(Chat::White, "  Mid:");
+		SendActionRow(c, {
+			{command_prefix + " 40", "40"}, {command_prefix + " 46", "46"},
+			{command_prefix + " 50", "50"}, {command_prefix + " 55", "55"}
+		});
+		c->Message(Chat::White, "  High:");
+		SendActionRow(c, {
+			{command_prefix + " 60", "60"}, {command_prefix + " 65", "65"},
+			{command_prefix + " 70", "70"}, {command_prefix + " 75", "75"}
+		});
+		if (!back_command.empty() && !back_label.empty()) {
+			c->Message(Chat::White, "  Navigate:");
+			SendActionRow(c, {{back_command, back_label}});
+		}
+		SendCardBottom(c);
+}
+
 std::vector<uint32_t> ExistingZoneVersions(uint32_t zone_id)
 {
 	std::vector<uint32_t> versions;
@@ -2319,6 +2362,9 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 		SendInfoLine(c, "Duration", Duration(dz.duration_seconds));
 		SendInfoLine(c, "Replay", Duration(template_data.replay_lockout_seconds));
 		SendInfoLine(c, "Players", fmt::format("{} - {}", dz.min_players, dz.max_players));
+		SendInfoLine(c, "Level", fmt::format("{} - {}",
+			dz.min_level ? std::to_string(dz.min_level) : "Any",
+			dz.max_level ? std::to_string(dz.max_level) : "Unlimited"));
 		SendInfoLine(c, "Zone-in", dz.override_zone_in ? "set" : "NOT SET");
 		SendInfoLine(c, "Safe return", dz.return_zone_id ? "set" : "default");
 		SendInfoLine(c, "Boss-only spawns", OnOff(template_data.boss_only_spawn));
@@ -2361,6 +2407,22 @@ void ShowConfigScreen(Client* c, const ExpeditionDB::Template& template_data)
 			{"#expedition config maxplayers 24", "24"},
 			{"#expedition config maxplayers 54", "54"},
 			{"#expedition config maxplayers", "More..."}
+		});
+		c->Message(Chat::White, "  Min level (lowest level allowed to join):");
+		SendActionRow(c, {
+			{"#expedition config minlevel 1", "1"},
+			{"#expedition config minlevel 46", "46"},
+			{"#expedition config minlevel 50", "50"},
+			{"#expedition config minlevel 60", "60"},
+			{"#expedition config minlevel", "More..."}
+		});
+		c->Message(Chat::White, "  Max level (highest level allowed; Unlimited = no cap):");
+		SendActionRow(c, {
+			{"#expedition config maxlevel 0", "Unlimited"},
+			{"#expedition config maxlevel 50", "50"},
+			{"#expedition config maxlevel 60", "60"},
+			{"#expedition config maxlevel 65", "65"},
+			{"#expedition config maxlevel", "More..."}
 		});
 		c->Message(Chat::White, "  Locations (captures your current spot):");
 		SendActionRow(c, {
@@ -2516,6 +2578,53 @@ void HandleConfig(Client* c, const Seperator* sep)
 			}
 			else {
 				c->Message(Chat::Green, fmt::format("Set max players to {}.", new_max).c_str());
+			}
+		}
+		else if (action == "minlevel") {
+			if (sep->arg[3][0] == '\0') {
+				ShowLevelMatrix(c, fmt::format("Min Level: {}", template_data->name),
+					"#expedition config minlevel", template_data->dz_template.min_level, false,
+					"#expedition config", "Back to Config");
+				return;
+			}
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition config minlevel <level>");
+				return;
+			}
+			const uint32_t new_min = Strings::ToUnsignedInt(sep->arg[3]);
+			const uint32_t cur_max = template_data->dz_template.max_level;
+			// max_level 0 means unlimited; otherwise keep min <= max by raising the cap to match
+			const uint32_t new_max = (cur_max != 0 && new_min > cur_max) ? new_min : cur_max;
+			ExpeditionDB::SetDzTemplateLevels(content_db, dz_template_id, new_min, new_max);
+			if (new_max != cur_max) {
+				c->Message(Chat::Green, fmt::format("Set min level to {} (raised max to {} to stay valid).", new_min, new_max).c_str());
+			}
+			else {
+				c->Message(Chat::Green, fmt::format("Set min level to {}.", new_min).c_str());
+			}
+		}
+		else if (action == "maxlevel") {
+			if (sep->arg[3][0] == '\0') {
+				ShowLevelMatrix(c, fmt::format("Max Level: {}", template_data->name),
+					"#expedition config maxlevel", template_data->dz_template.max_level, true,
+					"#expedition config", "Back to Config");
+				return;
+			}
+			if (!IsStrictUnsigned(sep->arg[3])) {
+				c->Message(Chat::Red, "Usage: #expedition config maxlevel <level> (0 = unlimited)");
+				return;
+			}
+			const uint32_t new_max = Strings::ToUnsignedInt(sep->arg[3]); // 0 == unlimited
+			const uint32_t cur_min = template_data->dz_template.min_level;
+			// when a cap is set, keep min <= max by lowering the floor to match
+			const uint32_t new_min = (new_max != 0 && cur_min > new_max) ? new_max : cur_min;
+			ExpeditionDB::SetDzTemplateLevels(content_db, dz_template_id, new_min, new_max);
+			const std::string max_label = (new_max == 0) ? std::string("Unlimited") : std::to_string(new_max);
+			if (new_min != cur_min) {
+				c->Message(Chat::Green, fmt::format("Set max level to {} (lowered min to {} to stay valid).", max_label, new_min).c_str());
+			}
+			else {
+				c->Message(Chat::Green, fmt::format("Set max level to {}.", max_label).c_str());
 			}
 		}
 		else if (action == "size") {

@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 class Client;
@@ -52,6 +53,7 @@ private:
 	bool CanGroupRequest(Group* group);
 	bool CheckMembersForConflicts(const std::vector<std::string>& member_names);
 	bool IsPlayerCountValidated();
+	bool IsLevelValidated();
 	bool SaveLeaderLockouts(const std::vector<DzLockout>& leader_lockouts);
 	void SendLeaderMemberInExpedition(const std::string& name, bool is_solo);
 	void SendLeaderMemberReplayLockout(const std::string& name, const DzLockout& lockout, bool is_solo);
@@ -68,4 +70,5 @@ private:
 	std::string m_failure_reason;
 	std::vector<DynamicZoneMember> m_members;
 	std::vector<DzLockout> m_lockouts;
+	std::vector<std::pair<std::string, uint32_t>> m_member_levels; // name + level captured during conflict scan
 };
