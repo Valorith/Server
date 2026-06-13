@@ -7419,6 +7419,7 @@ CREATE TABLE IF NOT EXISTS `expedition_templates` (
 	`replay_on_join` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`silent` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`require_bosses_dead` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`request_phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
 	`request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only',
 	`notes` TEXT NULL,
@@ -7506,6 +7507,18 @@ ADD COLUMN `boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `sil
 		.sql = R"(
 ALTER TABLE `expedition_template_events`
 ADD COLUMN `completion_mode` VARCHAR(32) NOT NULL DEFAULT 'first_completion' AFTER `sort_order`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9347,
+		.description = "2026_06_12_expedition_require_bosses_dead.sql",
+		.check = "SHOW COLUMNS FROM `expedition_templates` LIKE 'require_bosses_dead'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_templates`
+ADD COLUMN `require_bosses_dead` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1' AFTER `boss_only_spawn`;
 )",
 		.content_schema_update = true
 	},
