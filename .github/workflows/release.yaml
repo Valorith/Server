@@ -292,11 +292,29 @@ jobs:
           New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
           "VCPKG_BINARY_SOURCES=clear;files,$cachePath,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Install officially-supported Strawberry Perl (5.24)
+        shell: pwsh
+        run: |
+          $version = "5.24.4.1"
+          $url = "https://strawberryperl.com/download/$version/strawberry-perl-$version-64bit-portable.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "strawberry-$version.zip"
+          $dest = "C:\Strawberry-5.24"
+          Write-Host "Installing Strawberry Perl $version (the supported EQEmu Windows Perl)"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          # Put 5.24 ahead of the runner's default Strawberry so FindPerl links perl524.dll.
+          "$dest\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$dest\perl\bin"      | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $perlExe = "$dest\perl\bin\perl.exe".Replace('\', '/')
+          "PERL_524_EXE=$perlExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & "$dest\perl\bin\perl.exe" -e "printf qq{Linking against Strawberry Perl %vd\n}, $^V"
+
       - name: Configure
         shell: pwsh
         run: |
           cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DPERL_EXECUTABLE="$env:PERL_524_EXE" `
             -DEQEMU_BUILD_TESTS=ON `
             -DEQEMU_BUILD_LOGIN=ON `
             -DEQEMU_BUILD_LUA=ON `
