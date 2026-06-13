@@ -358,6 +358,14 @@ function Copy-DynamicRuntimeDependencies {
         # OpenSSL 3 may load this provider dynamically for legacy algorithms.
         "legacy.dll",
 
+        # The MinGW-built Strawberry perl5xx.dll depends on libstdc++-6.dll. The
+        # recursive resolver skips it whenever the build runner happens to expose a
+        # libstdc++-6.dll under a Windows system path (GitHub's windows-latest image
+        # does), so it must be force-bundled here. Without it zone.exe -- the only exe
+        # that imports perlXXX.dll -- fails to launch (STATUS_DLL_NOT_FOUND, or a
+        # STATUS_ENTRYPOINT_NOT_FOUND when a mismatched copy is found on PATH).
+        "libstdc++-6.dll",
+
         # Included to keep the release bundle aligned with the known-good package shape.
         "pkgconf-7.dll"
     )
@@ -476,6 +484,7 @@ function Test-PackageContents {
         "libmariadb.dll",
         "libsodium.dll",
         "libssl-3-x64.dll",
+        "libstdc++-6.dll",
         "libwinpthread-1.dll",
         "loginserver.exe",
         "lua51.dll",
