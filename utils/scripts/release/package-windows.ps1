@@ -6,13 +6,20 @@ param(
     [string]$Tag,
 
     [Parameter(Mandatory = $true)]
-    [string]$CommitSha
+    [string]$CommitSha,
+
+    [string]$BuildBinDir
 )
 
 $ErrorActionPreference = "Stop"
 
 $rootDir = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
-$binDir = Join-Path $rootDir "build/bin"
+$binDir = if ($BuildBinDir) {
+    (Resolve-Path -LiteralPath $BuildBinDir).Path
+}
+else {
+    Join-Path $rootDir "build/bin"
+}
 $distDir = Join-Path $rootDir "dist"
 $packageName = "eqemu-server-windows-x64-$Tag"
 $stageDir = Join-Path $distDir $packageName
@@ -410,6 +417,25 @@ function Copy-DynamicRuntimeDependencies {
     }
 }
 
+function Get-BuildRootFromBinDir {
+    $current = (Resolve-Path -LiteralPath $binDir).Path
+
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath (Join-Path $current "CMakeCache.txt") -PathType Leaf) {
+            return $current
+        }
+
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) {
+            break
+        }
+
+        $current = $parent
+    }
+
+    return (Join-Path $rootDir "build")
+}
+
 function Resolve-RuntimeDependencies {
     $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
     if (-not $dumpbin) {
@@ -526,6 +552,7 @@ function Test-PackageContents {
         "pkgconf-7.dll",
         "pvio_shmem.dll",
         "queryserv.exe",
+        "README-windows-dropin.txt",
         "release-manifest.json",
         "sha256_password.dll",
         "shared_memory.exe",
@@ -590,10 +617,11 @@ foreach ($binary in $requiredBinaries) {
     Copy-UniqueFile -Path $path
 }
 
+$buildRoot = Get-BuildRootFromBinDir
 $libraryRoots = @(
     $binDir,
-    (Join-Path $rootDir "build/libs"),
-    (Join-Path $rootDir "build/vcpkg_installed"),
+    (Join-Path $buildRoot "libs"),
+    (Join-Path $buildRoot "vcpkg_installed"),
     (Join-Path $rootDir "vcpkg_installed")
 )
 
@@ -601,6 +629,8 @@ Copy-DynamicRuntimeDependencies
 Copy-VisualCppRuntime
 Resolve-RuntimeDependencies
 Test-RuntimeDependencies
+
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README-windows-dropin.txt") -Destination $stageDir -Force
 
 $manifestFiles = @(Get-ChildItem -Path $stageDir -File | Sort-Object Name | ForEach-Object {
     [PSCustomObject]@{

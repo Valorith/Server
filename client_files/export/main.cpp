@@ -96,6 +96,8 @@ int main(int argc, char **argv)
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
+	fs::create_directories(fmt::format("{}/export", PathManager::Instance()->GetServerPath()));
+
 	std::string export_type;
 
 	if (argv[1]) {
@@ -201,4 +203,3 @@ void ExportDBStrings(SharedDatabase *db)
 
 	LogInfo("Exported [{}] Database String{}", lines.size(), lines.size() != 1 ? "s" : "");
 }
-

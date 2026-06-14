@@ -345,6 +345,14 @@ jobs:
             -Tag "${{ needs.prepare-release.outputs.tag }}" `
             -CommitSha "${{ needs.prepare-release.outputs.release_sha }}"
 
+      - name: Smoke test drop-in package
+        shell: pwsh
+        run: |
+          ./utils/scripts/release/smoke-windows-dropin.ps1 `
+            -PackageZip "dist/eqemu-server-windows-x64-${{ needs.prepare-release.outputs.tag }}.zip" `
+            -PerlBinDir "C:\Strawberry-5.24\perl\bin" `
+            -MariaDbPluginRoot "build\vcpkg_installed"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
