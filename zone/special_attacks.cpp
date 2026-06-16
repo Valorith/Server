@@ -498,6 +498,14 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	}
 
 	const uint8 class_id = GetClass();
+	const bool is_kick = ca_atk->m_skill == EQ::skills::SkillKick;
+	const bool is_monk_special_attack = (
+		ca_atk->m_skill == EQ::skills::SkillFlyingKick ||
+		ca_atk->m_skill == EQ::skills::SkillDragonPunch ||
+		ca_atk->m_skill == EQ::skills::SkillEagleStrike ||
+		ca_atk->m_skill == EQ::skills::SkillTigerClaw ||
+		ca_atk->m_skill == EQ::skills::SkillRoundKick
+	);
 
 	// Warrior, Ranger, Monk, Beastlord, and Berserker can kick always
 	const uint32 allowed_kick_classes = RuleI(Combat, ExtraAllowedKickClassesBitmask);
@@ -515,7 +523,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	if (
 		ca_atk->m_atk == 100 &&
-		ca_atk->m_skill == EQ::skills::SkillKick &&
+		is_kick &&
 		can_use_kick
 	) {
 		if (GetTarget() != this) {
@@ -536,17 +544,21 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		}
 	}
 
-	if (class_id == Class::Monk) {
-		reuse_time = MonkSpecialAttack(GetTarget(), ca_atk->m_skill) - 1 - skill_reduction;
+	const bool can_use_monk_double_special_attack = is_monk_special_attack || (is_kick && found_skill);
 
-		// Live AA - Technique of Master Wu
-		int wu_chance = (
+	if (class_id == Class::Monk && can_use_monk_double_special_attack) {
+		if (is_monk_special_attack) {
+			reuse_time = MonkSpecialAttack(GetTarget(), ca_atk->m_skill) - 1 - skill_reduction;
+		}
+
+		// Double special attack effects, such as Technique of Master Wu
+		int double_special_attack_chance = (
 			itembonuses.DoubleSpecialAttack +
 			spellbonuses.DoubleSpecialAttack +
 			aabonuses.DoubleSpecialAttack
 		);
 
-		if (wu_chance) {
+		if (double_special_attack_chance) {
 			const int monk_special_attacks[5] = {
 				EQ::skills::SkillFlyingKick,
 				EQ::skills::SkillDragonPunch,
@@ -557,14 +569,14 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 			int extra = 0;
 			// always 1/4 of the double attack chance, 25% at rank 5 (100/4)
-			while (wu_chance > 0) {
-				if (zone->random.Roll(wu_chance)) {
+			while (double_special_attack_chance > 0) {
+				if (zone->random.Roll(double_special_attack_chance)) {
 					++extra;
 				} else {
 					break;
 				}
 
-				wu_chance /= 4;
+				double_special_attack_chance /= 4;
 			}
 
 			if (extra) {
@@ -588,7 +600,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 			}
 		}
 
-		if (reuse_time < 100) {
+		if (is_monk_special_attack && reuse_time < 100) {
 			// hackish... but we return a huge reuse time if this is an
 			// invalid skill, otherwise, we can safely assume it is a
 			// valid monk skill and just cast it to a SkillType
