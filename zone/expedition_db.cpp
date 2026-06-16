@@ -365,25 +365,71 @@ namespace {
 			zone->GetZoneID() == static_cast<uint32_t>(template_data.dz_template.zone_id);
 	}
 
+	bool ShouldCheckBaseZoneBossAvailability(const Template& template_data)
+	{
+		return template_data.require_bosses_dead && IsCurrentBaseZoneForTemplate(template_data);
+	}
+
+	bool IsActiveBaseZoneBoss(const EventNpc& event_npc)
+	{
+		return IsBaseZoneAvailabilityBoss(event_npc) &&
+			entity_list.IsActiveNPCSpawnedByNpcTypeID(event_npc.npc_type_id, event_npc.spawn2_id);
+	}
+
 	bool HasActiveBaseZoneBoss(const Template& template_data)
 	{
-		if (!template_data.require_bosses_dead || !IsCurrentBaseZoneForTemplate(template_data)) {
+		if (!ShouldCheckBaseZoneBossAvailability(template_data)) {
 			return false;
 		}
 
 		for (const auto& event_data : template_data.events) {
 			for (const auto& event_npc : event_data.npcs) {
-				if (!IsBaseZoneAvailabilityBoss(event_npc)) {
-					continue;
-				}
-
-				if (entity_list.IsActiveNPCSpawnedByNpcTypeID(event_npc.npc_type_id, event_npc.spawn2_id)) {
+				if (IsActiveBaseZoneBoss(event_npc)) {
 					return true;
 				}
 			}
 		}
 
 		return false;
+	}
+
+	std::vector<std::string> ActiveBaseZoneBossNames(const Template& template_data)
+	{
+		std::vector<std::string> boss_names;
+		if (!ShouldCheckBaseZoneBossAvailability(template_data)) {
+			return boss_names;
+		}
+
+		std::unordered_set<std::string> seen_bosses;
+		for (const auto& event_data : template_data.events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (!IsActiveBaseZoneBoss(event_npc)) {
+					continue;
+				}
+
+				const std::string key = fmt::format("{}:{}", event_npc.npc_type_id, event_npc.spawn2_id);
+				if (!seen_bosses.insert(key).second) {
+					continue;
+				}
+
+				boss_names.push_back(NpcTypeName(event_npc.npc_type_id));
+			}
+		}
+
+		return boss_names;
+	}
+
+	void SendActiveBaseZoneBossList(Client& client, const Template& template_data)
+	{
+		const auto boss_names = ActiveBaseZoneBossNames(template_data);
+		if (boss_names.empty()) {
+			return;
+		}
+
+		client.Message(Chat::Red, "Required bosses still alive:");
+		for (const auto& boss_name : boss_names) {
+			client.Message(Chat::Red, "  - %s", boss_name.c_str());
+		}
 	}
 
 	std::string RequestFailureLabel(const ExpeditionCheckResult& check)
@@ -459,6 +505,9 @@ namespace {
 		if (!check.success) {
 			if (!template_data.silent) {
 				client.Message(Chat::Red, fmt::format("Cannot create expedition: {}.", RequestFailureLabel(check)).c_str());
+				if (IsBaseZoneBossSpawnedReason(check.reason)) {
+					SendActiveBaseZoneBossList(client, template_data);
+				}
 			}
 			return true;
 		}
@@ -611,6 +660,7 @@ namespace {
 			std::string note;
 			std::string level_text;
 			std::string players_text;
+			std::vector<std::string> required_bosses_alive;
 			bool level_met = false;
 			bool players_met = false;
 			bool status_block = false;
@@ -659,6 +709,9 @@ namespace {
 				else {
 					entry.note = RequestMenuNoteLabel(check);
 					entry.status_block = IsRequesterStatusBlockReason(check.reason);
+					if (IsBaseZoneBossSpawnedReason(check.reason)) {
+						entry.required_bosses_alive = ActiveBaseZoneBossNames(*template_data);
+					}
 				}
 			}
 			entries.push_back(std::move(entry));
@@ -700,6 +753,12 @@ namespace {
 			// real eligibility (green = meets it, red = does not; independent of any GM bypass).
 			client.Message(entry.level_met ? Chat::Green : Chat::Red, "     %s", entry.level_text.c_str());
 			client.Message(entry.players_met ? Chat::Green : Chat::Red, "     %s", entry.players_text.c_str());
+			if (!entry.required_bosses_alive.empty()) {
+				client.Message(Chat::Red, "     Required bosses still alive:");
+				for (const auto& boss_name : entry.required_bosses_alive) {
+					client.Message(Chat::Red, "       - %s", boss_name.c_str());
+				}
+			}
 
 			// Light divider between expeditions (omitted after the last one).
 			if (multi && i + 1 < entries.size()) {
