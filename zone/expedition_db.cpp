@@ -1654,7 +1654,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		}
 
 		if (!has_concrete_boss) {
-			result.errors.push_back("Boss-only spawn mode requires at least one boss NPC mapping with a concrete spawn2_id.");
+			result.warnings.push_back("Boss-only spawn mode has no boss NPC mapping with a concrete spawn2_id; only request NPCs, trigger NPCs, and script-spawned NPCs will be available.");
 		}
 	}
 
