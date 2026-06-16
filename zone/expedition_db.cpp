@@ -419,9 +419,8 @@ namespace {
 		return boss_names;
 	}
 
-	void SendActiveBaseZoneBossList(Client& client, const Template& template_data)
+	void SendActiveBaseZoneBossList(Client& client, const std::vector<std::string>& boss_names)
 	{
-		const auto boss_names = ActiveBaseZoneBossNames(template_data);
 		if (boss_names.empty()) {
 			return;
 		}
@@ -506,7 +505,7 @@ namespace {
 			if (!template_data.silent) {
 				client.Message(Chat::Red, fmt::format("Cannot create expedition: {}.", RequestFailureLabel(check)).c_str());
 				if (IsBaseZoneBossSpawnedReason(check.reason)) {
-					SendActiveBaseZoneBossList(client, template_data);
+					SendActiveBaseZoneBossList(client, check.base_zone_bosses_alive);
 				}
 			}
 			return true;
@@ -710,7 +709,7 @@ namespace {
 					entry.note = RequestMenuNoteLabel(check);
 					entry.status_block = IsRequesterStatusBlockReason(check.reason);
 					if (IsBaseZoneBossSpawnedReason(check.reason)) {
-						entry.required_bosses_alive = ActiveBaseZoneBossNames(*template_data);
+						entry.required_bosses_alive = check.base_zone_bosses_alive;
 					}
 				}
 			}
@@ -1936,7 +1935,8 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template
 		return result;
 	}
 
-	if (HasActiveBaseZoneBoss(template_data)) {
+	result.base_zone_bosses_alive = ActiveBaseZoneBossNames(template_data);
+	if (!result.base_zone_bosses_alive.empty()) {
 		result.reason = kBaseZoneBossSpawnedReason;
 		return result;
 	}

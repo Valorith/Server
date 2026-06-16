@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class Client;
 
@@ -24,6 +25,7 @@ struct ExpeditionCheckResult
 	uint32_t max_players = 0;
 	bool is_raid = false;
 	std::string reason;
+	std::vector<std::string> base_zone_bosses_alive;
 };
 
 uint32_t ParseExpeditionDuration(const std::string& duration);
