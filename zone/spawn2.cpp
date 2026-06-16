@@ -18,6 +18,7 @@
 
 #include "spawn2.h"
 
+#include "common/bodytypes.h"
 #include "common/repositories/criteria/content_filter_criteria.h"
 #include "common/repositories/respawn_times_repository.h"
 #include "common/repositories/spawn_condition_values_repository.h"
@@ -490,6 +491,60 @@ void Spawn2::DeathReset(bool realdeath)
 	}
 }
 
+std::unordered_map<uint32, std::unordered_set<uint32>> ZoneDatabase::GetNPCTypeIDsByBodyTypeBySpawn2ID(
+	uint32 zone_id,
+	int16 version,
+	uint8 body_type_id
+)
+{
+	std::unordered_map<uint32, std::unordered_set<uint32>> npc_type_ids_by_spawn2_id;
+	const auto body_type_filter = static_cast<uint32>(body_type_id);
+
+	const char* zone_name = ZoneName(zone_id);
+	if (!zone_name) {
+		return npc_type_ids_by_spawn2_id;
+	}
+
+	auto results = QueryDatabase(fmt::format(
+		SQL(
+			SELECT DISTINCT
+				spawn2.id,
+				spawnentry.npcID
+			FROM spawn2
+			INNER JOIN spawnentry
+				ON spawnentry.spawngroupID = spawn2.spawngroupID
+			INNER JOIN npc_types
+				ON npc_types.id = spawnentry.npcID
+			WHERE spawn2.zone = '{}'
+				AND (spawn2.version = {} OR spawn2.version = -1)
+				AND npc_types.bodytype = {}
+				{}
+				{}
+		),
+		zone_name,
+		version,
+		body_type_filter,
+		ContentFilterCriteria::apply("spawn2"),
+		ContentFilterCriteria::apply("spawnentry")
+	));
+
+	if (!results.Success()) {
+		LogError(
+			"Failed to load bodytype [{}] NPC types by spawn2 for zone [{}]: {}",
+			body_type_filter,
+			zone_name,
+			results.ErrorMessage()
+		);
+		return npc_type_ids_by_spawn2_id;
+	}
+
+	for (auto row = results.begin(); row != results.end(); ++row) {
+		npc_type_ids_by_spawn2_id[Strings::ToUnsignedInt(row[0])].insert(Strings::ToUnsignedInt(row[1]));
+	}
+
+	return npc_type_ids_by_spawn2_id;
+}
+
 bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spawn2_list, int16 version) {
 
 	std::unordered_map<uint32, uint32> spawn_times;
@@ -560,6 +615,10 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 	}
 
 	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(zone->GetDynamicZone());
+	const ExpeditionDB::NPCTypeIDsBySpawn2ID always_allowed_npc_type_ids_by_spawn2_id =
+		boss_only_filter.enabled ?
+			GetNPCTypeIDsByBodyTypeBySpawn2ID(zoneid, version, BodyType::Special) :
+			ExpeditionDB::NPCTypeIDsBySpawn2ID{};
 
 	// normal spawn2 loading
 	for (auto &s: spawns) {
@@ -578,15 +637,15 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 			}
 		}
 
-		const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
-		if (boss_only_filter.enabled) {
-			if (!boss_only_filter.AllowsSpawn2(s.id)) {
-				spawn_enabled = false;
-			}
-			else {
-				allowed_npc_type_ids = boss_only_filter.AllowedNPCTypeIDs(s.id);
-			}
-		}
+		std::unordered_set<uint32_t> combined_allowed_npc_type_ids;
+		const std::unordered_set<uint32_t>* allowed_npc_type_ids =
+			ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+				boss_only_filter,
+				always_allowed_npc_type_ids_by_spawn2_id,
+				s.id,
+				spawn_enabled,
+				combined_allowed_npc_type_ids
+			);
 
 		auto new_spawn = new Spawn2(
 			s.id,

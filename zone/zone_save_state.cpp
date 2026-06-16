@@ -1,5 +1,6 @@
 #include "zone_save_state.h"
 
+#include "common/bodytypes.h"
 #include "common/repositories/criteria/content_filter_criteria.h"
 #include "common/repositories/spawn2_repository.h"
 #include "zone/corpse.h"
@@ -432,6 +433,10 @@ bool Zone::LoadZoneState(
 
 	LogInfo("Loading zone state spawns for zone [{}] instance [{}] spawns [{}]", GetShortName(), zone->GetInstanceID(), spawn_states.size());
 	const auto boss_only_filter = ExpeditionDB::GetBossOnlySpawnFilter(GetDynamicZone());
+	const ExpeditionDB::NPCTypeIDsBySpawn2ID always_allowed_npc_type_ids_by_spawn2_id =
+		boss_only_filter.enabled ?
+			content_db.GetNPCTypeIDsByBodyTypeBySpawn2ID(zoneid, zone->GetInstanceVersion(), BodyType::Special) :
+			ExpeditionDB::NPCTypeIDsBySpawn2ID{};
 
 	if (!IsZoneStateValid(spawn_states)) {
 		LogZoneState("Invalid zone state data for zone [{}]", GetShortName());
@@ -489,15 +494,15 @@ bool Zone::LoadZoneState(
 			}
 		}
 
-		const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
-		if (boss_only_filter.enabled) {
-			if (!boss_only_filter.AllowsSpawn2(s.spawn2_id)) {
-				spawn_enabled = false;
-			}
-			else {
-				allowed_npc_type_ids = boss_only_filter.AllowedNPCTypeIDs(s.spawn2_id);
-			}
-		}
+		std::unordered_set<uint32_t> combined_allowed_npc_type_ids;
+		const std::unordered_set<uint32_t>* allowed_npc_type_ids =
+			ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+				boss_only_filter,
+				always_allowed_npc_type_ids_by_spawn2_id,
+				s.spawn2_id,
+				spawn_enabled,
+				combined_allowed_npc_type_ids
+			);
 
 		// find spawn 2 by id
 		Spawn2Repository::Spawn2 spawn2;
@@ -582,15 +587,15 @@ bool Zone::LoadZoneState(
 				}
 			}
 
-			const std::unordered_set<uint32_t>* allowed_npc_type_ids = nullptr;
-			if (boss_only_filter.enabled) {
-				if (!boss_only_filter.AllowsSpawn2(s.id)) {
-					spawn_enabled = false;
-				}
-				else {
-					allowed_npc_type_ids = boss_only_filter.AllowedNPCTypeIDs(s.id);
-				}
-			}
+			std::unordered_set<uint32_t> combined_allowed_npc_type_ids;
+			const std::unordered_set<uint32_t>* allowed_npc_type_ids =
+				ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+					boss_only_filter,
+					always_allowed_npc_type_ids_by_spawn2_id,
+					s.id,
+					spawn_enabled,
+					combined_allowed_npc_type_ids
+				);
 
 			LogZoneState("Missing spawn2 [{}] in zone state, this NPC spawn was newly created", s.id);
 			uint32 spawn_time_left = 0;
