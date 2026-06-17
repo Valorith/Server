@@ -62,6 +62,26 @@ bool HasPrimaryPiercingWeapon(const Client *client)
 	);
 }
 
+bool CanAutoSkillBackstab(const Client *client, Mob *target)
+{
+	if (!HasPrimaryPiercingWeapon(client)) {
+		return false;
+	}
+
+	if (client->BehindMob(target, client->GetX(), client->GetY())) {
+		return true;
+	}
+
+	const auto item_bonuses = client->GetItemBonuses();
+	const auto spell_bonuses = client->GetSpellBonuses();
+	const auto aa_bonuses = client->GetAABonuses();
+
+	return (
+		(item_bonuses.FrontalBackstabChance + spell_bonuses.FrontalBackstabChance + aa_bonuses.FrontalBackstabChance) > 0 ||
+		(item_bonuses.FrontalBackstabMinDmg + spell_bonuses.FrontalBackstabMinDmg + aa_bonuses.FrontalBackstabMinDmg) > 0
+	);
+}
+
 pTimerType GetAutoSkillTimer(const Client *client, EQ::skills::SkillType skill)
 {
 	if (
@@ -206,7 +226,7 @@ void Client::ProcessAutoSkills()
 			continue;
 		}
 
-		if (skill == EQ::skills::SkillBackstab && !HasPrimaryPiercingWeapon(this)) {
+		if (skill == EQ::skills::SkillBackstab && !CanAutoSkillBackstab(this, target)) {
 			continue;
 		}
 
