@@ -8,6 +8,7 @@ set(export_headers
 )
 
 add_executable(export_client_files ${export_sources} ${export_headers})
+eqemu_normalize_unix_binary(export_client_files)
 
 install(TARGETS export_client_files RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

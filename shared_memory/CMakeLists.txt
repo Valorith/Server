@@ -12,6 +12,7 @@ set(shared_memory_headers
 )
 
 add_executable(shared_memory ${shared_memory_sources} ${shared_memory_headers})
+eqemu_normalize_unix_binary(shared_memory)
 
 install(TARGETS shared_memory RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

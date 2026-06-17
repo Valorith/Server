@@ -11,8 +11,8 @@ TAG="$2"
 COMMIT_SHA="$3"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-BIN_DIR="${ROOT_DIR}/build/bin"
-DIST_DIR="${ROOT_DIR}/dist"
+BIN_DIR="${EQEMU_RELEASE_BIN_DIR:-${ROOT_DIR}/build/bin}"
+DIST_DIR="${EQEMU_RELEASE_DIST_DIR:-${ROOT_DIR}/dist}"
 PACKAGE_NAME="eqemu-server-linux-x64-${TAG}"
 STAGE_DIR="${DIST_DIR}/${PACKAGE_NAME}"
 ZIP_PATH="${DIST_DIR}/${PACKAGE_NAME}.zip"
@@ -48,9 +48,7 @@ require_tool() {
 }
 
 require_tool ldd
-require_tool patchelf
 require_tool python3
-require_tool readelf
 require_tool zip
 
 rm -rf "$STAGE_DIR" "$ZIP_PATH"
@@ -63,36 +61,9 @@ for binary in "${REQUIRED_BINARIES[@]}"; do
   fi
 done
 
-while IFS= read -r -d '' executable; do
-  name="$(basename "$executable")"
-  if [ "$name" = "tests" ]; then
-    continue
-  fi
-  copy_unique "$executable"
-done < <(find "$BIN_DIR" -maxdepth 1 -type f -perm /111 -print0)
-
-LIBRARY_DIRS=(
-  "${BIN_DIR}"
-  "${ROOT_DIR}/build/libs"
-  "${ROOT_DIR}/build/vcpkg_installed"
-  "${ROOT_DIR}/vcpkg_installed"
-)
-
-for library_dir in "${LIBRARY_DIRS[@]}"; do
-  if [ ! -d "$library_dir" ]; then
-    continue
-  fi
-
-  while IFS= read -r -d '' library; do
-    copy_unique "$library"
-  done < <(find "$library_dir" \( -type f -o -type l \) \( -name "*.so" -o -name "*.so.[0-9]*" \) ! -path "*/debug/*" -print0)
+for binary in "${REQUIRED_BINARIES[@]}"; do
+  copy_unique "${BIN_DIR}/${binary}"
 done
-
-while IFS= read -r -d '' elf_file; do
-  if readelf -d "$elf_file" >/dev/null 2>&1; then
-    patchelf --force-rpath --set-rpath '$ORIGIN' "$elf_file"
-  fi
-done < <(find "$STAGE_DIR" -maxdepth 1 -type f \( -perm /111 -o -name "*.so" -o -name "*.so.[0-9]*" \) -print0)
 
 for binary in "${REQUIRED_BINARIES[@]}"; do
   ldd_output="$(LD_LIBRARY_PATH="$STAGE_DIR" ldd "${STAGE_DIR}/${binary}" || true)"
