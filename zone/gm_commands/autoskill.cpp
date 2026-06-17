@@ -83,6 +83,59 @@ std::string GetApplicableSkillsList(Client *client)
 	return Strings::Join(skill_names, ", ");
 }
 
+bool UsesSecondaryCombatAbilityCooldown(Client *client, EQ::skills::SkillType skill)
+{
+	return (
+		client->ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
+		skill == EQ::skills::SkillTigerClaw
+	);
+}
+
+void ShowAutoSkillMenuEntry(Client *client, EQ::skills::SkillType skill)
+{
+	const auto *definition = EQ::skills::autoskill::GetSkillDefinition(skill);
+	if (!definition) {
+		return;
+	}
+
+	const bool enabled = client->IsAutoSkillEnabled(skill);
+	const auto toggle_link = Saylink::Silent(
+		fmt::format(
+			"#autoskill {} {}",
+			definition->command_name,
+			enabled ? "off" : "on"
+		),
+		enabled ? "[Turn Off]" : "[Turn On]"
+	);
+
+	client->Message(
+		Chat::White,
+		fmt::format(
+			"  {}: {} {}",
+			definition->name,
+			enabled ? "On" : "Off",
+			toggle_link
+		).c_str()
+	);
+}
+
+void ShowAutoSkillMenuGroup(
+	Client *client,
+	const std::string &title,
+	const std::vector<EQ::skills::SkillType> &skills
+)
+{
+	if (skills.empty()) {
+		return;
+	}
+
+	client->Message(Chat::White, title.c_str());
+
+	for (const auto skill : skills) {
+		ShowAutoSkillMenuEntry(client, skill);
+	}
+}
+
 void ShowAutoSkillMenu(Client *client)
 {
 	const auto applicable_skills = client->GetApplicableAutoSkills();
@@ -91,34 +144,23 @@ void ShowAutoSkillMenu(Client *client)
 		return;
 	}
 
-	client->Message(Chat::White, "Autoskill settings:");
+	std::vector<EQ::skills::SkillType> shared_cooldown_skills;
+	std::vector<EQ::skills::SkillType> secondary_cooldown_skills;
 
 	for (const auto skill : applicable_skills) {
-		const auto *definition = EQ::skills::autoskill::GetSkillDefinition(skill);
-		if (!definition) {
+		if (UsesSecondaryCombatAbilityCooldown(client, skill)) {
+			secondary_cooldown_skills.push_back(skill);
 			continue;
 		}
 
-		const bool enabled = client->IsAutoSkillEnabled(skill);
-		const auto toggle_link = Saylink::Silent(
-			fmt::format(
-				"#autoskill {} {}",
-				definition->command_name,
-				enabled ? "off" : "on"
-			),
-			enabled ? "[Turn Off]" : "[Turn On]"
-		);
-
-		client->Message(
-			Chat::White,
-			fmt::format(
-				"{}: {} {}",
-				definition->name,
-				enabled ? "On" : "Off",
-				toggle_link
-			).c_str()
-		);
+		shared_cooldown_skills.push_back(skill);
 	}
+
+	client->Message(Chat::White, "Autoskill settings:");
+	client->Message(Chat::White, "Skills grouped together share a cooldown. In a shared group, the first enabled skill listed has priority.");
+
+	ShowAutoSkillMenuGroup(client, "Shared Combat Ability Cooldown:", shared_cooldown_skills);
+	ShowAutoSkillMenuGroup(client, "Secondary Combat Ability Cooldown:", secondary_cooldown_skills);
 }
 
 } // namespace

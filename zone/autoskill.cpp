@@ -2,6 +2,7 @@
 
 #include "common/auto_skill.h"
 #include "common/classes.h"
+#include "common/features.h"
 #include "common/item_data.h"
 #include "common/item_instance.h"
 #include "common/rulesys.h"
@@ -92,6 +93,56 @@ pTimerType GetAutoSkillTimer(const Client *client, EQ::skills::SkillType skill)
 	}
 
 	return pTimerCombatAbility;
+}
+
+uint32 GetVisibleAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill, int reuse_time)
+{
+	reuse_time -= client->GetSkillReuseTime(skill);
+
+	if (reuse_time <= 0) {
+		return 0;
+	}
+
+	return static_cast<uint32>(reuse_time);
+}
+
+uint32 GetMinimumAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill)
+{
+	switch (skill) {
+		case EQ::skills::SkillBackstab:
+			return GetVisibleAutoSkillReuseTime(client, skill, BackstabReuseTime - 1);
+		case EQ::skills::SkillFrenzy:
+			return GetVisibleAutoSkillReuseTime(client, skill, FrenzyReuseTime - 1);
+		case EQ::skills::SkillFlyingKick:
+			return GetVisibleAutoSkillReuseTime(client, skill, FlyingKickReuseTime - 1);
+		case EQ::skills::SkillDragonPunch:
+			return GetVisibleAutoSkillReuseTime(client, skill, TailRakeReuseTime - 1);
+		case EQ::skills::SkillEagleStrike:
+			return GetVisibleAutoSkillReuseTime(client, skill, EagleStrikeReuseTime - 1);
+		case EQ::skills::SkillTigerClaw:
+			return GetVisibleAutoSkillReuseTime(client, skill, TigerClawReuseTime - 1);
+		case EQ::skills::SkillRoundKick:
+			return GetVisibleAutoSkillReuseTime(client, skill, RoundKickReuseTime - 1);
+		case EQ::skills::SkillKick:
+			return GetVisibleAutoSkillReuseTime(client, skill, KickReuseTime + 3);
+		case EQ::skills::SkillBash:
+			return GetVisibleAutoSkillReuseTime(client, skill, BashReuseTime + 3);
+		default:
+			return 0;
+	}
+}
+
+void ConstrainAutoSkillTimer(Client *client, pTimerType timer, EQ::skills::SkillType skill)
+{
+	const auto minimum_reuse_time = GetMinimumAutoSkillReuseTime(client, skill);
+	if (minimum_reuse_time == 0) {
+		return;
+	}
+
+	const auto remaining_time = client->GetPTimers().GetRemainingTime(timer);
+	if (remaining_time > 0 && remaining_time < minimum_reuse_time) {
+		client->GetPTimers().Start(timer, minimum_reuse_time);
+	}
 }
 
 bool IsValidAutoSkillTarget(Client *client, Mob *target)
@@ -245,6 +296,7 @@ void Client::ProcessAutoSkills()
 		combat_ability.m_skill = skill;
 
 		OPCombatAbility(&combat_ability);
+		ConstrainAutoSkillTimer(this, timer, skill);
 
 		if (GetTarget() != target || target->GetHP() <= -10) {
 			return;
