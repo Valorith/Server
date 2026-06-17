@@ -438,6 +438,11 @@ bool Client::Process() {
 		}
 
 		Mob *auto_attack_target = GetTarget();
+		if (auto_attack && auto_attack_target != nullptr && may_use_attacks) {
+			ProcessAutoSkills();
+			auto_attack_target = GetTarget();
+		}
+
 		if (auto_attack && auto_attack_target != nullptr && may_use_attacks && attack_timer.Check()) {
 			//check if change
 			//only check on primary attack.. sorry offhand you gotta wait!

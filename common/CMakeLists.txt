@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 set(common_sources
+    auto_skill.cpp
     base_packet.cpp
     bazaar.cpp
     bodytypes.cpp

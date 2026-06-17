@@ -1487,6 +1487,7 @@ void Client::Handle_Connect_OP_ZoneEntry(const EQApplicationPacket *app)
 	// Load Data Buckets
 	ClearDataBucketCache();
 	LoadDataBucketsCache();
+	LoadAutoSkillSettings();
 
 	// Max Level for Character:PerCharacterQglobalMaxLevel and Character:PerCharacterBucketMaxLevel
 	uint8 client_max_level = 0;
