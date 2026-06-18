@@ -212,16 +212,6 @@ bool IsCombatDamageObserverTextPacket(const CombatDamage_Struct *damage_packet)
 	return !(damage_packet->type == DamageTypeSpell && IsValidSpell(damage_packet->spellid) && damage == 0);
 }
 
-bool CombatLogClientWithinRange(Client *client, Mob *mob, float distance)
-{
-	if (!client || !mob) {
-		return false;
-	}
-
-	const float distance_squared = distance * distance;
-	return DistanceSquared(client->GetPosition(), mob->GetPosition()) < distance_squared;
-}
-
 bool CombatLogQueueCloseDamageCoversClient(
 	EntityList *entities,
 	Client *client,
@@ -231,6 +221,8 @@ bool CombatLogQueueCloseDamageCoversClient(
 	float distance
 )
 {
+	(void) distance;
+
 	if (!client || !app || app->GetOpcode() != OP_Damage || app->size != sizeof(CombatDamage_Struct)) {
 		return true;
 	}
@@ -247,15 +239,7 @@ bool CombatLogQueueCloseDamageCoversClient(
 		return false;
 	}
 
-	if (source && !CombatLogClientWithinRange(client, source, distance)) {
-		return false;
-	}
-
-	if (target && !CombatLogClientWithinRange(client, target, distance)) {
-		return false;
-	}
-
-	return source || target;
+	return true;
 }
 
 bool CombatLogBystanderMessageFilterAllowsClient(Client *client, eqFilterType filter)
