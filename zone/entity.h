@@ -445,9 +445,13 @@ public:
 	// proximity_covers_all_in_range is true when the paired proximity send
 	// scans every client (FilteredMessageCloseString) and false when it only
 	// reaches the sender's close-mob cache (QueueCloseClients and the
-	// FilteredMessageCombatClose proximity pass) - cache misses inside range
-	// must still get the observer copy, full scans must not double-deliver
-	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<void(Client*)>& fn);
+	// FilteredMessageCombatClose proximity pass). proximity_filter_allows_client
+	// mirrors the paired proximity send's client filter; if normal proximity
+	// reached but filtered out a grouped observer, parity should still deliver.
+	// proximity_covers_client can further refine whether the paired proximity
+	// send was actually visible for packet types such as OP_Damage, where the
+	// source and target may differ from sender.
+	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<bool(Client*)>& proximity_covers_client, const std::function<bool(Client*)>& proximity_filter_allows_client, const std::function<void(Client*)>& fn);
 	void	QueueCombatClients(Mob* sender, Mob* other, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
 	void	FilteredMessageCombatString(
 		Mob* sender,

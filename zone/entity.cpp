@@ -45,6 +45,361 @@ extern volatile bool is_zone_loaded;
 extern WorldServer worldserver;
 extern uint32 numclients;
 
+namespace {
+
+const char *GetCombatDamageVerb(uint8 damage_type)
+{
+	switch (damage_type) {
+	case 0:
+		return "crushes";
+	case 1:
+		return "slashes";
+	case 7:
+		return "shoots";
+	case 8:
+		return "backstabs";
+	case 10:
+		return "bashes";
+	case 21:
+	case 23:
+		return "strikes";
+	case 30:
+		return "kicks";
+	case 36:
+		return "pierces";
+	case 51:
+		return "throws at";
+	case 74:
+		return "frenzies on";
+	default:
+		return "hits";
+	}
+}
+
+const char *GetCombatDamageAttemptVerb(uint8 damage_type)
+{
+	switch (damage_type) {
+	case 0:
+		return "crush";
+	case 1:
+		return "slash";
+	case 7:
+		return "shoot";
+	case 8:
+		return "backstab";
+	case 10:
+		return "bash";
+	case 21:
+	case 23:
+		return "strike";
+	case 30:
+		return "kick";
+	case 36:
+		return "pierce";
+	case 51:
+		return "throw at";
+	case 74:
+		return "frenzy on";
+	default:
+		return "hit";
+	}
+}
+
+bool IsCombatDamageShieldType(uint8 damage_type)
+{
+	return damage_type >= DS_DECAY && damage_type <= DS_THORNS;
+}
+
+bool CombatLogFilterGroupMatchesMob(Client *client, Mob *mob)
+{
+	if (!client || !mob) {
+		return false;
+	}
+
+	if (client == mob) {
+		return true;
+	}
+
+	auto group = client->GetGroup();
+	if (group && group->IsGroupMember(mob)) {
+		return true;
+	}
+
+	auto raid = client->GetRaid();
+	if (raid && mob->IsClient()) {
+		const auto client_group = raid->GetGroup(client);
+		const auto mob_group = raid->GetGroup(mob->CastToClient());
+		return client_group != RAID_GROUPLESS && client_group == mob_group;
+	}
+
+	return false;
+}
+
+bool CombatLogFilterAllowsClient(Client *client, EntityList *entities, Mob *sender, Mob *other, eqFilterType filter)
+{
+	if (!client) {
+		return false;
+	}
+
+	if (filter == FilterNone) {
+		return true;
+	}
+
+	const eqFilterMode client_filter = client->GetFilter(filter);
+	if (client_filter == FilterShow) {
+		return true;
+	}
+
+	if (client_filter == FilterHide) {
+		return false;
+	}
+
+	if (client_filter == FilterShowSelfOnly) {
+		return client == sender || client == other;
+	}
+
+	if (client_filter == FilterShowGroupOnly) {
+		Mob *sender_anchor = entities ? entities->ResolveCombatLogAnchor(sender) : nullptr;
+		Mob *other_anchor  = entities ? entities->ResolveCombatLogAnchor(other) : nullptr;
+		return CombatLogFilterGroupMatchesMob(client, sender) ||
+			CombatLogFilterGroupMatchesMob(client, other) ||
+			(sender_anchor && sender_anchor != sender && CombatLogFilterGroupMatchesMob(client, sender_anchor)) ||
+			(other_anchor && other_anchor != other && CombatLogFilterGroupMatchesMob(client, other_anchor));
+	}
+
+	return true;
+}
+
+bool CombatLogQueueCloseFilterAllowsClient(Client *client, Mob *sender, eqFilterType filter)
+{
+	if (!client) {
+		return false;
+	}
+
+	if (filter == FilterNone) {
+		return true;
+	}
+
+	const eqFilterMode client_filter = client->GetFilter(filter);
+	if (client_filter == FilterShow) {
+		return true;
+	}
+
+	if (client_filter == FilterHide) {
+		return false;
+	}
+
+	if (client_filter == FilterShowGroupOnly) {
+		return sender == client || (client->GetGroup() && client->GetGroup()->IsGroupMember(sender));
+	}
+
+	if (client_filter == FilterShowSelfOnly) {
+		return client == sender;
+	}
+
+	return true;
+}
+
+Mob *GetCombatDamagePacketMob(EntityList *entities, uint16 id, Mob *first_hint, Mob *second_hint);
+
+bool IsCombatDamageObserverTextPacket(const CombatDamage_Struct *damage_packet)
+{
+	if (!damage_packet) {
+		return false;
+	}
+
+	const int32 damage = static_cast<int32>(damage_packet->damage);
+	return !(damage_packet->type == DamageTypeSpell && IsValidSpell(damage_packet->spellid) && damage == 0);
+}
+
+bool CombatLogClientWithinRange(Client *client, Mob *mob, float distance)
+{
+	if (!client || !mob) {
+		return false;
+	}
+
+	const float distance_squared = distance * distance;
+	return DistanceSquared(client->GetPosition(), mob->GetPosition()) < distance_squared;
+}
+
+bool CombatLogQueueCloseDamageCoversClient(
+	EntityList *entities,
+	Client *client,
+	Mob *sender,
+	Mob *other,
+	const EQApplicationPacket *app,
+	float distance
+)
+{
+	if (!client || !app || app->GetOpcode() != OP_Damage || app->size != sizeof(CombatDamage_Struct)) {
+		return true;
+	}
+
+	const auto *damage_packet = reinterpret_cast<const CombatDamage_Struct *>(app->pBuffer);
+	if (!IsCombatDamageObserverTextPacket(damage_packet)) {
+		return true;
+	}
+
+	Mob *source = GetCombatDamagePacketMob(entities, damage_packet->source, sender, other);
+	Mob *target = GetCombatDamagePacketMob(entities, damage_packet->target, sender, other);
+
+	if ((damage_packet->source && !source) || (damage_packet->target && !target)) {
+		return false;
+	}
+
+	if (source && !CombatLogClientWithinRange(client, source, distance)) {
+		return false;
+	}
+
+	if (target && !CombatLogClientWithinRange(client, target, distance)) {
+		return false;
+	}
+
+	return source || target;
+}
+
+bool CombatLogBystanderMessageFilterAllowsClient(Client *client, eqFilterType filter)
+{
+	return client && (filter == FilterNone || client->GetFilter(filter) != FilterHide);
+}
+
+Mob *GetCombatDamagePacketMob(EntityList *entities, uint16 id, Mob *first_hint, Mob *second_hint)
+{
+	if (first_hint && first_hint->GetID() == id) {
+		return first_hint;
+	}
+
+	if (second_hint && second_hint->GetID() == id) {
+		return second_hint;
+	}
+
+	return entities ? entities->GetMob(id) : nullptr;
+}
+
+uint32 GetCombatDamageChatType(uint8 damage_type, int32 damage, eqFilterType filter)
+{
+	if (filter == FilterDamageShields || IsCombatDamageShieldType(damage_type)) {
+		return Chat::DamageShield;
+	}
+
+	if (damage_type == DamageTypeSpell) {
+		return Chat::NonMelee;
+	}
+
+	return damage > 0 ? Chat::OtherHitOther : Chat::OtherMissOther;
+}
+
+bool SendCombatDamageObserverMessage(
+	EntityList *entities,
+	Client *client,
+	Mob *sender,
+	Mob *other,
+	const EQApplicationPacket *app,
+	eqFilterType filter
+)
+{
+	if (!client || !app || app->GetOpcode() != OP_Damage || app->size != sizeof(CombatDamage_Struct)) {
+		return false;
+	}
+
+	const auto *damage_packet = reinterpret_cast<const CombatDamage_Struct *>(app->pBuffer);
+	Mob *source = GetCombatDamagePacketMob(entities, damage_packet->source, sender, other);
+	Mob *target = GetCombatDamagePacketMob(entities, damage_packet->target, sender, other);
+	const int32 damage = static_cast<int32>(damage_packet->damage);
+	if (!IsCombatDamageObserverTextPacket(damage_packet)) {
+		return false;
+	}
+
+	if (!CombatLogFilterAllowsClient(client, entities, sender, other, filter)) {
+		return true;
+	}
+
+	if (
+		source &&
+		source->IsOfClientBot() &&
+		damage_packet->type == DamageTypeSpell &&
+		IsValidSpell(damage_packet->spellid)
+	) {
+		return true;
+	}
+
+	if (IsCombatDamageShieldType(damage_packet->type) && client->GetFilter(FilterDamageShields) == FilterHide) {
+		return true;
+	}
+
+	if (!target && !source) {
+		return false;
+	}
+
+	const char *source_name = source ? source->GetCleanName() : "Someone";
+	const char *target_name = target ? target->GetCleanName() : "someone";
+	const uint32 chat_type = GetCombatDamageChatType(damage_packet->type, damage, filter);
+	const int32 amount = damage < 0 ? -damage : damage;
+	const char *point_text = amount == 1 ? "point" : "points";
+
+	if (damage_packet->type == DamageTypeFalling && target) {
+		client->Message(chat_type, "%s fell for %d %s of damage.", target_name, amount, point_text);
+		return true;
+	}
+
+	if (IsCombatDamageShieldType(damage_packet->type)) {
+		client->Message(
+			chat_type,
+			"%s was hit by non-melee for %d %s of damage.",
+			target_name,
+			amount,
+			point_text
+		);
+		return true;
+	}
+
+	if (damage > 0) {
+		if (damage_packet->type == DamageTypeSpell) {
+			client->Message(chat_type, "%s hit %s for %d %s of non-melee damage.", source_name, target_name, amount, point_text);
+		} else {
+			client->Message(
+				chat_type,
+				"%s %s %s for %d %s of damage.",
+				source_name,
+				GetCombatDamageVerb(damage_packet->type),
+				target_name,
+				amount,
+				point_text
+			);
+		}
+		return true;
+	}
+
+	const char *attempt_verb = GetCombatDamageAttemptVerb(damage_packet->type);
+	switch (damage) {
+	case DMG_BLOCKED:
+		client->Message(chat_type, "%s tries to %s %s, but %s blocks!", source_name, attempt_verb, target_name, target_name);
+		break;
+	case DMG_PARRIED:
+		client->Message(chat_type, "%s tries to %s %s, but %s parries!", source_name, attempt_verb, target_name, target_name);
+		break;
+	case DMG_RIPOSTED:
+		client->Message(chat_type, "%s tries to %s %s, but %s ripostes!", source_name, attempt_verb, target_name, target_name);
+		break;
+	case DMG_DODGED:
+		client->Message(chat_type, "%s tries to %s %s, but %s dodges!", source_name, attempt_verb, target_name, target_name);
+		break;
+	case DMG_INVULNERABLE:
+		client->Message(chat_type, "%s tries to %s %s, but %s is invulnerable!", source_name, attempt_verb, target_name, target_name);
+		break;
+	case DMG_RUNE:
+		client->Message(chat_type, "%s tries to %s %s, but %s absorbs the damage!", source_name, attempt_verb, target_name, target_name);
+		break;
+	default:
+		client->Message(chat_type, "%s tries to %s %s, but misses!", source_name, attempt_verb, target_name);
+		break;
+	}
+
+	return true;
+}
+
+}
+
 Entity::Entity()
 {
 	id              = 0;
@@ -1824,6 +2179,8 @@ void EntityList::ForEachCombatLogObserver(
 	bool proximity_covers_all_in_range,
 	bool ignore_sender,
 	Mob *skipped_mob,
+	const std::function<bool(Client *)> &proximity_covers_client,
+	const std::function<bool(Client *)> &proximity_filter_allows_client,
 	const std::function<void(Client *)> &fn
 )
 {
@@ -1915,12 +2272,27 @@ void EntityList::ForEachCombatLogObserver(
 		}
 
 		float dist_sq = DistanceSquared(candidate->GetPosition(), sender->GetPosition());
-		if ((proximity_inclusive ? dist_sq <= proximity_sq : dist_sq < proximity_sq) &&
-			(!sender_close_mobs || sender_close_mobs->count(candidate->GetID()))) {
-			return; // the proximity send already covered (or filtered) them
+		float parity_dist_sq = dist_sq;
+		if (other && other != sender) {
+			float other_dist_sq = DistanceSquared(candidate->GetPosition(), other->GetPosition());
+			if (other_dist_sq < parity_dist_sq) {
+				parity_dist_sq = other_dist_sq;
+			}
 		}
 
-		if (parity_range > 0 && dist_sq > parity_sq) {
+		const bool reached_by_proximity =
+			(proximity_inclusive ? dist_sq <= proximity_sq : dist_sq < proximity_sq) &&
+			(!sender_close_mobs || sender_close_mobs->count(candidate->GetID()));
+		const bool covered_by_proximity =
+			reached_by_proximity &&
+			(!proximity_covers_client || proximity_covers_client(candidate));
+		const bool proximity_filter_allows =
+			!proximity_filter_allows_client || proximity_filter_allows_client(candidate);
+		if (covered_by_proximity && proximity_filter_allows) {
+			return; // the proximity send already delivered them
+		}
+
+		if (parity_range > 0 && parity_dist_sq > parity_sq) {
 			return;
 		}
 
@@ -1972,18 +2344,34 @@ void EntityList::QueueCombatClients(
 	}
 
 	// QueueCloseClients delivers strictly inside range, via the close-mob cache
-	ForEachCombatLogObserver(sender, other, distance, false, false, ignore_sender, skipped_mob, [&](Client *client) {
-		// same filter predicate QueueCloseClients applies to in-range clients
-		eqFilterMode client_filter = client->GetFilter(filter);
-		if (
-			filter == FilterNone || client_filter == FilterShow ||
-			(client_filter == FilterShowGroupOnly &&
-			 (sender == client || (client->GetGroup() && client->GetGroup()->IsGroupMember(sender)))) ||
-			(client_filter == FilterShowSelfOnly && client == sender)
-			) {
-			client->QueuePacket(app, is_ack_required, Client::CLIENT_CONNECTED);
+	ForEachCombatLogObserver(
+		sender,
+		other,
+		distance,
+		false,
+		false,
+		ignore_sender,
+		skipped_mob,
+		[&](Client *client) {
+			return CombatLogQueueCloseDamageCoversClient(this, client, sender, other, app, distance);
+		},
+		[&](Client *client) {
+			return CombatLogQueueCloseFilterAllowsClient(client, sender, filter);
+		},
+		[&](Client *client) {
+			const bool observer_message_sent = SendCombatDamageObserverMessage(this, client, sender, other, app, filter);
+			if (observer_message_sent) {
+				return;
+			}
+
+			// same filter predicate QueueCloseClients applies to in-range clients,
+			// but include the paired combat party for group-only/self-only filters
+			const bool filter_allows = CombatLogFilterAllowsClient(client, this, sender, other, filter);
+			if (filter_allows) {
+				client->QueuePacket(app, is_ack_required, Client::CLIENT_CONNECTED);
+			}
 		}
-	});
+	);
 }
 
 void EntityList::FilteredMessageCombatString(
@@ -2013,14 +2401,27 @@ void EntityList::FilteredMessageCombatString(
 	);
 
 	// FilteredMessageCloseString scans every client in the zone at <= range
-	ForEachCombatLogObserver(sender, other, dist, true, true, skipsender, skip, [&](Client *client) {
-		// FilteredMessageString checks the client's filter before allocating
-		client->FilteredMessageString(
-			sender, type, filter, string_id,
-			message1, message2, message3, message4, message5,
-			message6, message7, message8, message9
-		);
-	});
+	ForEachCombatLogObserver(
+		sender,
+		other,
+		dist,
+		true,
+		true,
+		skipsender,
+		skip,
+		nullptr,
+		[&](Client *client) {
+			return client && client->FilteredMessageCheck(sender, filter);
+		},
+		[&](Client *client) {
+			// FilteredMessageString checks the client's filter before allocating
+			client->FilteredMessageString(
+				sender, type, filter, string_id,
+				message1, message2, message3, message4, message5,
+				message6, message7, message8, message9
+			);
+		}
+	);
 }
 
 void EntityList::FilteredMessageCombatClose(
@@ -2061,14 +2462,31 @@ void EntityList::FilteredMessageCombatClose(
 		}
 
 		if (DistanceSquared(client->GetPosition(), sender->GetPosition()) <= dist2) {
-			client->FilteredMessage(sender, type, filter, buffer);
+			if (CombatLogBystanderMessageFilterAllowsClient(client, filter)) {
+				client->Message(type, "%s", buffer);
+			}
 		}
 	}
 
 	// the proximity pass above iterates the close-mob cache at <= range
-	ForEachCombatLogObserver(sender, other, dist, true, false, skipsender, skipped_mob, [&](Client *client) {
-		client->FilteredMessage(sender, type, filter, buffer);
-	});
+	ForEachCombatLogObserver(
+		sender,
+		other,
+		dist,
+		true,
+		false,
+		skipsender,
+		skipped_mob,
+		nullptr,
+		[&](Client *client) {
+			return CombatLogBystanderMessageFilterAllowsClient(client, filter);
+		},
+		[&](Client *client) {
+			if (CombatLogBystanderMessageFilterAllowsClient(client, filter)) {
+				client->Message(type, "%s", buffer);
+			}
+		}
+	);
 }
 
 //sender can be null
