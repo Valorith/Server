@@ -242,9 +242,9 @@ bool CombatLogQueueCloseDamageCoversClient(
 	return true;
 }
 
-bool CombatLogBystanderMessageFilterAllowsClient(Client *client, eqFilterType filter)
+bool CombatLogBystanderMessageFilterAllowsClient(Client *client, Mob *sender, eqFilterType filter)
 {
-	return client && (filter == FilterNone || client->GetFilter(filter) != FilterHide);
+	return client && (filter == FilterNone || client->FilteredMessageCheck(sender, filter));
 }
 
 Mob *GetCombatDamagePacketMob(EntityList *entities, uint16 id, Mob *first_hint, Mob *second_hint)
@@ -2137,6 +2137,10 @@ void EntityList::QueueCloseClients(
 // swarm pets; plain NPCs have no anchor
 Mob *EntityList::ResolveCombatLogAnchor(Mob *mob)
 {
+	if (!mob) {
+		return nullptr;
+	}
+
 	if (mob->IsOfClientBotMerc()) {
 		return mob;
 	}
@@ -2446,7 +2450,7 @@ void EntityList::FilteredMessageCombatClose(
 		}
 
 		if (DistanceSquared(client->GetPosition(), sender->GetPosition()) <= dist2) {
-			if (CombatLogBystanderMessageFilterAllowsClient(client, filter)) {
+			if (CombatLogBystanderMessageFilterAllowsClient(client, sender, filter)) {
 				client->Message(type, "%s", buffer);
 			}
 		}
@@ -2463,10 +2467,10 @@ void EntityList::FilteredMessageCombatClose(
 		skipped_mob,
 		nullptr,
 		[&](Client *client) {
-			return CombatLogBystanderMessageFilterAllowsClient(client, filter);
+			return CombatLogBystanderMessageFilterAllowsClient(client, sender, filter);
 		},
 		[&](Client *client) {
-			if (CombatLogBystanderMessageFilterAllowsClient(client, filter)) {
+			if (CombatLogBystanderMessageFilterAllowsClient(client, sender, filter)) {
 				client->Message(type, "%s", buffer);
 			}
 		}
