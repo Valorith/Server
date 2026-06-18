@@ -110,6 +110,11 @@ bool IsCombatDamageShieldType(uint8 damage_type)
 	return damage_type >= DS_DECAY && damage_type <= DS_THORNS;
 }
 
+enum class CombatDamageObserverResult {
+	QueuePacket,
+	Stop
+};
+
 bool CombatLogFilterGroupMatchesMob(Client *client, Mob *mob)
 {
 	if (!client || !mob) {
@@ -247,6 +252,62 @@ bool CombatLogBystanderMessageFilterAllowsClient(Client *client, Mob *sender, eq
 	return client && (filter == FilterNone || client->FilteredMessageCheck(sender, filter));
 }
 
+void SendCombatLogObserverMessageString(
+	Client *client,
+	uint32 type,
+	uint32 string_id,
+	const char *message1,
+	const char *message2,
+	const char *message3,
+	const char *message4,
+	const char *message5,
+	const char *message6,
+	const char *message7,
+	const char *message8,
+	const char *message9
+)
+{
+	if (!client) {
+		return;
+	}
+
+	if (type == Chat::Emote) {
+		type = 4;
+	}
+
+	if (!message1) {
+		auto outapp = std::make_unique<EQApplicationPacket>(OP_SimpleMessage, 12);
+		auto *sms = reinterpret_cast<SimpleMessage_Struct *>(outapp->pBuffer);
+		sms->color = type;
+		sms->string_id = string_id;
+		sms->unknown8 = 0;
+		client->QueuePacket(outapp.get());
+		return;
+	}
+
+	const char *message_arg[] = {
+		message1, message2, message3, message4, message5,
+		message6, message7, message8, message9
+	};
+
+	SerializeBuffer buf(20);
+	buf.WriteInt32(0);
+	buf.WriteInt32(string_id);
+	buf.WriteInt32(type);
+	for (auto &m : message_arg) {
+		if (!m) {
+			break;
+		}
+
+		buf.WriteString(m);
+	}
+
+	buf.WriteInt8(0);
+
+	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, buf);
+	client->QueuePacket(outapp.get());
+}
+
 Mob *GetCombatDamagePacketMob(EntityList *entities, uint16 id, Mob *first_hint, Mob *second_hint)
 {
 	if (first_hint && first_hint->GetID() == id) {
@@ -273,7 +334,7 @@ uint32 GetCombatDamageChatType(uint8 damage_type, int32 damage, eqFilterType fil
 	return damage > 0 ? Chat::OtherHitOther : Chat::OtherMissOther;
 }
 
-bool SendCombatDamageObserverMessage(
+CombatDamageObserverResult SendCombatDamageObserverMessage(
 	EntityList *entities,
 	Client *client,
 	Mob *sender,
@@ -283,7 +344,7 @@ bool SendCombatDamageObserverMessage(
 )
 {
 	if (!client || !app || app->GetOpcode() != OP_Damage || app->size != sizeof(CombatDamage_Struct)) {
-		return false;
+		return CombatDamageObserverResult::QueuePacket;
 	}
 
 	const auto *damage_packet = reinterpret_cast<const CombatDamage_Struct *>(app->pBuffer);
@@ -291,11 +352,11 @@ bool SendCombatDamageObserverMessage(
 	Mob *target = GetCombatDamagePacketMob(entities, damage_packet->target, sender, other);
 	const int32 damage = static_cast<int32>(damage_packet->damage);
 	if (!IsCombatDamageObserverTextPacket(damage_packet)) {
-		return false;
+		return CombatDamageObserverResult::QueuePacket;
 	}
 
 	if (!CombatLogFilterAllowsClient(client, entities, sender, other, filter)) {
-		return true;
+		return CombatDamageObserverResult::Stop;
 	}
 
 	if (
@@ -304,15 +365,15 @@ bool SendCombatDamageObserverMessage(
 		damage_packet->type == DamageTypeSpell &&
 		IsValidSpell(damage_packet->spellid)
 	) {
-		return true;
+		return CombatDamageObserverResult::QueuePacket;
 	}
 
 	if (IsCombatDamageShieldType(damage_packet->type) && client->GetFilter(FilterDamageShields) == FilterHide) {
-		return true;
+		return CombatDamageObserverResult::Stop;
 	}
 
 	if (!target && !source) {
-		return false;
+		return CombatDamageObserverResult::QueuePacket;
 	}
 
 	const char *source_name = source ? source->GetCleanName() : "Someone";
@@ -323,7 +384,7 @@ bool SendCombatDamageObserverMessage(
 
 	if (damage_packet->type == DamageTypeFalling && target) {
 		client->Message(chat_type, "%s fell for %d %s of damage.", target_name, amount, point_text);
-		return true;
+		return CombatDamageObserverResult::Stop;
 	}
 
 	if (IsCombatDamageShieldType(damage_packet->type)) {
@@ -334,7 +395,7 @@ bool SendCombatDamageObserverMessage(
 			amount,
 			point_text
 		);
-		return true;
+		return CombatDamageObserverResult::Stop;
 	}
 
 	if (damage > 0) {
@@ -351,7 +412,7 @@ bool SendCombatDamageObserverMessage(
 				point_text
 			);
 		}
-		return true;
+		return CombatDamageObserverResult::Stop;
 	}
 
 	const char *attempt_verb = GetCombatDamageAttemptVerb(damage_packet->type);
@@ -379,7 +440,7 @@ bool SendCombatDamageObserverMessage(
 		break;
 	}
 
-	return true;
+	return CombatDamageObserverResult::Stop;
 }
 
 }
@@ -2347,8 +2408,7 @@ void EntityList::QueueCombatClients(
 			return CombatLogQueueCloseFilterAllowsClient(client, sender, filter);
 		},
 		[&](Client *client) {
-			const bool observer_message_sent = SendCombatDamageObserverMessage(this, client, sender, other, app, filter);
-			if (observer_message_sent) {
+			if (SendCombatDamageObserverMessage(this, client, sender, other, app, filter) == CombatDamageObserverResult::Stop) {
 				return;
 			}
 
@@ -2402,9 +2462,12 @@ void EntityList::FilteredMessageCombatString(
 			return client && client->FilteredMessageCheck(sender, filter);
 		},
 		[&](Client *client) {
-			// FilteredMessageString checks the client's filter before allocating
-			client->FilteredMessageString(
-				sender, type, filter, string_id,
+			if (!CombatLogFilterAllowsClient(client, this, sender, other, filter)) {
+				return;
+			}
+
+			SendCombatLogObserverMessageString(
+				client, type, string_id,
 				message1, message2, message3, message4, message5,
 				message6, message7, message8, message9
 			);
@@ -2470,7 +2533,7 @@ void EntityList::FilteredMessageCombatClose(
 			return CombatLogBystanderMessageFilterAllowsClient(client, sender, filter);
 		},
 		[&](Client *client) {
-			if (CombatLogBystanderMessageFilterAllowsClient(client, sender, filter)) {
+			if (CombatLogFilterAllowsClient(client, this, sender, other, filter)) {
 				client->Message(type, "%s", buffer);
 			}
 		}
