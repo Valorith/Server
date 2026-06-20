@@ -2542,7 +2542,7 @@ void Client::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 	ns->spawn.anon      = m_pp.anon;
 	ns->spawn.gm        = GetGM() ? 1 : 0;
 	ns->spawn.guildID   = GuildID();
-	ns->spawn.trader    = IsTrader() && !IsOffline();
+	ns->spawn.trader    = IsTrader();
 	ns->spawn.buyer     = IsBuyer();
 	ns->spawn.offline   = IsOffline();
 //	ns->spawn.linkdead	= IsLD() ? 1 : 0;
@@ -2551,14 +2551,6 @@ void Client::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 
 	strcpy(ns->spawn.title, m_pp.title);
 	strcpy(ns->spawn.suffix, m_pp.suffix);
-
-	if (IsTrader()) {
-		strn0cpy(
-			ns->spawn.title,
-			IsOffline() ? "Offline Trader" : "Trader",
-			sizeof(ns->spawn.title)
-		);
-	}
 
 	if (IsBecomeNPC() == true)
 		ns->spawn.NPC = 1;
