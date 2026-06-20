@@ -309,6 +309,48 @@ public:
 		return UpdateOne(db, e);
 	}
 
+	static bool StartActiveTransaction(Database &db, uint64 id, const std::string &item_unique_id)
+	{
+		if (!id || item_unique_id.empty()) {
+			return false;
+		}
+
+		auto results = db.QueryDatabase(fmt::format(
+			"UPDATE {} SET `active_transaction` = 1, `listing_date` = FROM_UNIXTIME({}) "
+			"WHERE `id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = 0",
+			TableName(),
+			time(nullptr),
+			id,
+			Strings::Escape(item_unique_id)
+		));
+
+		return results.Success() && results.RowsAffected() == 1;
+	}
+
+	static std::string GetActiveTransactionWhereFilter(uint64 id, const std::string &item_unique_id)
+	{
+		return fmt::format(
+			"`id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = 1",
+			id,
+			Strings::Escape(item_unique_id)
+		);
+	}
+
+	static Trader GetActiveTransaction(Database &db, uint64 id, const std::string &item_unique_id)
+	{
+		Trader e{};
+		const auto trader_item = GetWhere(
+			db,
+			fmt::format("{} LIMIT 1", GetActiveTransactionWhereFilter(id, item_unique_id))
+		);
+
+		if (trader_item.empty()) {
+			return e;
+		}
+
+		return trader_item.at(0);
+	}
+
 	static int DeleteMany(Database &db, const std::vector<Trader> &entries)
 	{
 		std::vector<std::string> delete_ids;

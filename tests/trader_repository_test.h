@@ -27,6 +27,7 @@ public:
 	{
 		TEST_ADD(TraderRepositoryTest::BuildBazaarTraderDetailsQueryIncludesItemFiltersAndLimit);
 		TEST_ADD(TraderRepositoryTest::BuildBazaarTraderDetailsQueryOmitsLimitWhenUnlimited);
+		TEST_ADD(TraderRepositoryTest::BuildsActiveTransactionFilter);
 	}
 
 	~TraderRepositoryTest()
@@ -65,5 +66,12 @@ private:
 		TEST_ASSERT(query.find("INNER JOIN items ON trader.item_id = items.id") != std::string::npos);
 		TEST_ASSERT(query.find("items.`name` LIKE '%%'") != std::string::npos);
 		TEST_ASSERT(query.find(" LIMIT ") == std::string::npos);
+	}
+
+	void BuildsActiveTransactionFilter()
+	{
+		auto filter = TraderRepository::GetActiveTransactionWhereFilter(123, "Unique'Item");
+
+		TEST_ASSERT(filter == "`id` = 123 AND `item_unique_id` = 'Unique\\'Item' AND `active_transaction` = 1");
 	}
 };

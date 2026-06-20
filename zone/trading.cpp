@@ -2975,7 +2975,16 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::UpdateActiveTransaction(database, trader_item.id, true);
+	if (!TraderRepository::StartActiveTransaction(database, trader_item.id, in->item_unique_id)) {
+		LogTrading(
+			"Rejecting bazaar parcel purchase for item unique_id [{}] because the listing is already in an active transaction",
+			in->item_unique_id
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = TransactionInProgress;
+		TradeRequestFailed(app);
+		return;
+	}
 
 	int16 charges   = 1;
 	if (trader_item.item_charges > 0 || item->Stackable || item->MaxCharges > 0) {
