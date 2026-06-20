@@ -7574,6 +7574,18 @@ ALTER TABLE `character_offline_transactions`
 	ADD INDEX `idx_item_id` (`item_id`);
 )"
 	},
+	ManifestEntry{
+		.version = 9351,
+		.description = "2026_06_20_trader_audit_item_id.sql",
+		.check = "SHOW COLUMNS FROM `trader_audit` LIKE 'item_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `trader_audit`
+	ADD COLUMN `item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `buyer`,
+	ADD INDEX `idx_trader_audit_item_id` (`item_id`);
+)"
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,
