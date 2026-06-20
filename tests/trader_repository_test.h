@@ -28,6 +28,7 @@ public:
 		TEST_ADD(TraderRepositoryTest::BuildBazaarTraderDetailsQueryIncludesItemFiltersAndLimit);
 		TEST_ADD(TraderRepositoryTest::BuildBazaarTraderDetailsQueryOmitsLimitWhenUnlimited);
 		TEST_ADD(TraderRepositoryTest::BuildsActiveTransactionFilter);
+		TEST_ADD(TraderRepositoryTest::BuildsCompleteActiveTransactionQuery);
 	}
 
 	~TraderRepositoryTest()
@@ -73,5 +74,12 @@ private:
 		auto filter = TraderRepository::GetActiveTransactionWhereFilter(123, "Unique'Item");
 
 		TEST_ASSERT(filter == "`id` = 123 AND `item_unique_id` = 'Unique\\'Item' AND `active_transaction` <> 0");
+	}
+
+	void BuildsCompleteActiveTransactionQuery()
+	{
+		auto query = TraderRepository::BuildCompleteActiveTransactionQuery(123, "Unique'Item", 101);
+
+		TEST_ASSERT(query == "UPDATE trader SET `active_transaction` = 0, `listing_date` = FROM_UNIXTIME(101) WHERE `id` = 123 AND `item_unique_id` = 'Unique\\'Item' AND `active_transaction` <> 0");
 	}
 };

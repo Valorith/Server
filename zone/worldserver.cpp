@@ -4094,7 +4094,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					buyer->ReturnTraderReq(&outapp, in->item_quantity, in->trader_buy_struct.item_id);
-					TraderRepository::UpdateActiveTransaction(database, in->id, false);
+					TraderRepository::CompleteActiveTransaction(database, in->id, in->trader_buy_struct.item_unique_id);
 					LogTradingDetail("Step 8:Bazaar Purchase. Purchase complete. Sending update packet to buyer.");
 
 					break;

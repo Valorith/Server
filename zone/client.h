@@ -2153,7 +2153,7 @@ private:
 	bool ingame;
 	uint32 mercid; // current merc
 	uint8 mercSlot; // selected merc slot
-	time_t                                                         m_trader_transaction_date;
+	time_t                                                         m_trader_transaction_date{};
 	uint32                                                         m_trader_count{};
 	std::map<int16, std::tuple<uint32, int32, std::string>>        m_trader_merchant_list{};  // itemid, qty, item_unique_id
 	uint32                                                         m_buyer_id;
