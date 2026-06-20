@@ -2536,8 +2536,13 @@ void Client::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 {
 	Mob::FillSpawnStruct(ns, ForWho);
 
-	if (IsOffline() && IsTrader()) {
-		snprintf(ns->spawn.name, sizeof(ns->spawn.name), "Offline-%s", GetName());
+	if (IsTrader()) {
+		snprintf(
+			ns->spawn.name,
+			sizeof(ns->spawn.name),
+			IsOffline() ? "Offline Trader %s" : "Trader %s",
+			GetName()
+		);
 	}
 
 	// Populate client-specific spawn information
