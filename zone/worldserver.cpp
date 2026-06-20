@@ -3960,7 +3960,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					}
 
 					in->transaction_status = BazaarPurchaseSuccess;
-					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					worldserver.SendPacket(pack);
 
 					LogTradingDetail("Step 6:Bazaar Purchase. Purchase checks complete for trader.  Send Success to buyer via world.");
@@ -3976,6 +3975,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							zone->GetZoneID(),
 							zone->GetInstanceID()
 						);
+						TraderRepository::UpdateActiveTransaction(database, in->id, false);
 						return;
 					}
 
@@ -4094,6 +4094,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					buyer->ReturnTraderReq(&outapp, in->item_quantity, in->trader_buy_struct.item_id);
+					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					LogTradingDetail("Step 8:Bazaar Purchase. Purchase complete. Sending update packet to buyer.");
 
 					break;
