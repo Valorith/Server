@@ -3890,6 +3890,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					trader_pc->AddMoneyToPP(total_cost,	true);
 
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							trader_pc->GetCleanName(),
+							in->trader_buy_struct.buyer_name,
+							item->GetID(),
+							in->trader_buy_struct.item_name,
+							in->item_quantity,
+							total_cost,
+							0
+						);
+					}
+
 					//Update the trader to indicate the sale has completed
 					EQApplicationPacket outapp(OP_Trader, sizeof(TraderBuy_Struct));
 					auto                data = reinterpret_cast<TraderBuy_Struct *>(outapp.pBuffer);

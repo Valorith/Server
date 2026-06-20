@@ -3007,19 +3007,6 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		item->MaxCharges > 0 ? fmt::format(" with charges of [{}]", charges) : std::string("")
 	);
 
-	if (RuleB(Bazaar, AuditTrail)) {
-		Bazaar::RecordAuditTrail(
-			database,
-			in->seller_name,
-			GetCleanName(),
-			item->ID,
-			in->item_name,
-			quantity,
-			total_cost,
-			0
-		);
-	}
-
 	auto out_server = std::make_unique<ServerPacket>(ServerOP_BazaarPurchase, sizeof(BazaarPurchaseMessaging_Struct));
 	auto out_data   = reinterpret_cast<BazaarPurchaseMessaging_Struct *>(out_server->pBuffer);
 
