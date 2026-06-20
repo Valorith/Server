@@ -1328,6 +1328,7 @@ void Client::TradeRequestFailed(const EQApplicationPacket *app)
 	auto outtbs = (TraderBuy_Struct *) outapp->pBuffer;
 
 	memcpy(outtbs, tbs, app->size);
+	outtbs->sub_action   = Bazaar::ResolvePurchaseFailureSubAction(tbs->sub_action);
 	outtbs->already_sold = 0xFFFFFFFF;
 	outtbs->trader_id    = 0xFFFFFFFF;
 

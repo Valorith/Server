@@ -34,6 +34,8 @@ public:
 		TEST_ADD(BazaarTest::RejectsZeroListedPrice);
 		TEST_ADD(BazaarTest::RejectsMismatchedPrice);
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
+		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
+		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
 	}
 
 	~BazaarTest()
@@ -102,5 +104,15 @@ private:
 	void AcceptsMatchingListedPrice()
 	{
 		TEST_ASSERT(Bazaar::ValidatePurchasePrice(100, 100));
+	}
+
+	void FailureSubActionRewritesSuccess()
+	{
+		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(Success) == Failed);
+	}
+
+	void FailureSubActionPreservesSpecificFailure()
+	{
+		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
 	}
 };
