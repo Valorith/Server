@@ -14,9 +14,11 @@ CREATE TABLE `trader_audit` (
   `time` datetime NOT NULL,
   `seller` varchar(64) NOT NULL,
   `buyer` varchar(64) NOT NULL,
+  `item_id` int(10) unsigned NOT NULL default '0',
   `itemname` varchar(64) NOT NULL,
   `quantity` int(11) NOT NULL,
-  `totalcost` int(11) NOT NULL
+  `totalcost` int(11) NOT NULL,
+  KEY `idx_trader_audit_item_id` (`item_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 UPDATE doors set opentype=155 where opentype=154 and zone='bazaar';

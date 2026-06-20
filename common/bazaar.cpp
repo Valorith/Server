@@ -2,6 +2,7 @@
 
 #include "common/item_instance.h"
 #include "common/repositories/trader_repository.h"
+#include "common/strings.h"
 
 #include <limits>
 #include <memory>
@@ -41,6 +42,36 @@ Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 {
 	return listed_price > 0 && requested_price == listed_price;
+}
+
+void Bazaar::RecordAuditTrail(
+	Database &db,
+	const std::string &seller,
+	const std::string &buyer,
+	uint32 item_id,
+	const std::string &item_name,
+	uint32 quantity,
+	uint64 total_cost,
+	int transaction_type
+)
+{
+	auto query = fmt::format(
+		"INSERT INTO `trader_audit` "
+		"(`time`, `seller`, `buyer`, `item_id`, `itemname`, `quantity`, `totalcost`, `trantype`) "
+		"VALUES (NOW(), '{}', '{}', {}, '{}', {}, {}, {})",
+		Strings::Escape(seller),
+		Strings::Escape(buyer),
+		item_id,
+		Strings::Escape(item_name),
+		quantity,
+		total_cost,
+		transaction_type
+	);
+
+	auto results = db.QueryDatabase(query);
+	if (!results.Success()) {
+		LogTrading("Audit write error: {} : {}", query, results.ErrorMessage());
+	}
 }
 
 uint32 Bazaar::ResolvePurchaseFailureSubAction(uint32 sub_action)

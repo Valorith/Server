@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "worldserver.h"
 
+#include "common/bazaar.h"
 #include "common/eq_packet_structs.h"
 #include "common/events/player_event_logs.h"
 #include "common/misc_functions.h"
@@ -3889,6 +3890,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					trader_pc->AddMoneyToPP(total_cost,	true);
 
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							trader_pc->GetCleanName(),
+							in->trader_buy_struct.buyer_name,
+							item->GetID(),
+							in->trader_buy_struct.item_name,
+							in->item_quantity,
+							total_cost,
+							0
+						);
+					}
+
 					//Update the trader to indicate the sale has completed
 					EQApplicationPacket outapp(OP_Trader, sizeof(TraderBuy_Struct));
 					auto                data = reinterpret_cast<TraderBuy_Struct *>(outapp.pBuffer);
@@ -3921,8 +3935,9 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (trader_pc->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = trader_pc->CharacterID();
+						e.item_id      = item->GetID();
 						e.item_name    = in->trader_buy_struct.item_name;
-						e.price        = in->trader_buy_struct.price * in->trader_buy_struct.quantity;
+						e.price        = total_cost;
 						e.quantity     = in->trader_buy_struct.quantity;
 						e.type         = TRADER_TRANSACTION;
 						e.buyer_name   = in->trader_buy_struct.buyer_name;
@@ -4327,10 +4342,11 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (buyer->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = buyer->CharacterID();
+						e.item_id      = sell_line.item_id;
 						e.item_name    = sell_line.item_name;
 						e.price        = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
 						e.quantity     = sell_line.seller_quantity;
-						e.type         = BUYER_TRANSACTION;
+						e.type         = BARTER_TRANSACTION;
 						e.buyer_name   = sell_line.seller_name;
 
 						CharacterOfflineTransactionsRepository::InsertOne(database, e);
@@ -4377,6 +4393,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						Barter_Success,
 						Barter_Success
 					);
+
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							seller->GetCleanName(),
+							sell_line.buyer_name,
+							sell_line.item_id,
+							sell_line.item_name,
+							sell_line.seller_quantity,
+							total_cost,
+							1
+						);
+					}
 
 					if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 						PlayerEvent::BarterTransaction e{};

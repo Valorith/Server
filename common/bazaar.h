@@ -20,6 +20,17 @@ public:
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
 
+	static void RecordAuditTrail(
+		Database &db,
+		const std::string &seller,
+		const std::string &buyer,
+		uint32 item_id,
+		const std::string &item_name,
+		uint32 quantity,
+		uint64 total_cost,
+		int transaction_type
+	);
+
 	static uint32 ResolvePurchaseFailureSubAction(uint32 sub_action);
 
 	static std::vector<BazaarSearchResultsFromDB_Struct>

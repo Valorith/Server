@@ -818,8 +818,14 @@ void Client::CompleteConnect()
 		}
 	}
 
+	const auto offline_trader_transaction_filter = fmt::format(
+		"`character_id` = {} AND `type` = {}",
+		CharacterID(),
+		TRADER_TRANSACTION
+	);
+
 	auto offline_transactions_trader = CharacterOfflineTransactionsRepository::GetWhere(
-		database, fmt::format("`character_id` = {} AND `type` = {}", CharacterID(), TRADER_TRANSACTION)
+		database, offline_trader_transaction_filter
 	);
 	if (offline_transactions_trader.size() > 0) {
 		Message(Chat::Yellow, "You sold the following items while in offline trader mode:");
@@ -838,12 +844,19 @@ void Client::CompleteConnect()
 		}
 
 		CharacterOfflineTransactionsRepository::DeleteWhere(
-			database, fmt::format("`character_id` = '{}' AND `type` = '{}'", CharacterID(), TRADER_TRANSACTION)
+			database, offline_trader_transaction_filter
 		);
 	}
 
+	const auto offline_buyer_transaction_filter = fmt::format(
+		"`character_id` = {} AND `type` IN ({}, {})",
+		CharacterID(),
+		BUYER_TRANSACTION,
+		BARTER_TRANSACTION
+	);
+
 	auto offline_transactions_buyer = CharacterOfflineTransactionsRepository::GetWhere(
-		database, fmt::format("`character_id` = {} AND `type` = {}", CharacterID(), BUYER_TRANSACTION)
+		database, offline_buyer_transaction_filter
 	);
 	if (offline_transactions_buyer.size() > 0) {
 		Message(Chat::Yellow, "You bought the following items while in offline buyer mode:");
@@ -862,7 +875,7 @@ void Client::CompleteConnect()
 		}
 
 		CharacterOfflineTransactionsRepository::DeleteWhere(
-			database, fmt::format("`character_id` = {} AND `type` = {}", CharacterID(), BUYER_TRANSACTION)
+			database, offline_buyer_transaction_filter
 		);
 	}
 

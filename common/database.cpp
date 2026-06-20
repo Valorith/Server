@@ -2636,6 +2636,7 @@ static bool ValidateItemUniqueIdMigrationSchema(Database &db, bool verbose)
 		{"character_parcels_containers", "item_unique_id"},
 		{"inventory_snapshots", "item_unique_id"},
 		{"account", "offline"},
+		{"character_offline_transactions", "item_id"},
 	};
 
 	const std::vector<std::string> required_tables = {

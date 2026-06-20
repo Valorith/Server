@@ -1494,6 +1494,19 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		buy_inst->GetUniqueID()
 	);
 
+	if (RuleB(Bazaar, AuditTrail)) {
+		Bazaar::RecordAuditTrail(
+			database,
+			trader->GetCleanName(),
+			GetCleanName(),
+			buy_inst->GetID(),
+			buy_inst->GetItem()->Name,
+			quantity,
+			total_cost,
+			0
+		);
+	}
+
 	if (merchant_quantity > quantity) {
 		std::unique_ptr<EQ::ItemInstance> vendor_inst(buy_inst ? buy_inst->Clone() : nullptr);
 		vendor_inst->SetMerchantCount(merchant_quantity - quantity);
@@ -1571,6 +1584,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		if (trader->IsOffline()) {
 			auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 			e.character_id = trader->CharacterID();
+			e.item_id      = buy_inst->GetID();
 			e.item_name    = buy_inst->GetItem()->Name;
 			e.price        = total_cost;
 			e.quantity     = quantity;
@@ -2041,6 +2055,19 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				AddMoneyToPP(total_cost, false);
 				buyer->TakeMoneyFromPP(total_cost, false);
 
+				if (RuleB(Bazaar, AuditTrail)) {
+					Bazaar::RecordAuditTrail(
+						database,
+						GetCleanName(),
+						buyer->GetCleanName(),
+						sell_line.item_id,
+						sell_line.item_name,
+						sell_line.seller_quantity,
+						total_cost,
+						1
+					);
+				}
+
 				if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 					PlayerEvent::BarterTransaction e{};
 					e.status        = "Successful Barter Transaction";
@@ -2060,10 +2087,11 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				if (buyer->IsOffline()) {
 					auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 					e.character_id = buyer->CharacterID();
+					e.item_id      = sell_line.item_id;
 					e.item_name    = sell_line.item_name;
 					e.price        = total_cost;
 					e.quantity     = sell_line.seller_quantity;
-					e.type         = BUYER_TRANSACTION;
+					e.type         = BARTER_TRANSACTION;
 					e.buyer_name   = GetCleanName();
 
 					CharacterOfflineTransactionsRepository::InsertOne(database, e);
