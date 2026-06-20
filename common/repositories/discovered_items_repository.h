@@ -80,6 +80,7 @@ public:
 		);
 
 		if (!results.Success()) {
+			LogWarning("Failed to load discovered item IDs: {}", results.ErrorMessage());
 			return item_ids;
 		}
 
