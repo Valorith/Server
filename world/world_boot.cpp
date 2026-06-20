@@ -290,11 +290,7 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 	database.ClearGuildOnlineStatus();
 	LogInfo("Clearing inventory snapshots");
 	database.ClearInvSnapshots();
-	LogInfo("Loading items");
-	LogInfo("Clearing trader table details");
-	database.ClearTraderDetails();
-	database.ClearBuyerDetails();
-	LogInfo("Clearing buyer table details");
+	database.ClearOfflineTradingState();
 
 	if (RuleB(Bots, Enabled)) {
 		LogInfo("Clearing [bot_pet_buffs] table of stale entries");
@@ -303,6 +299,7 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 		);
 	}
 
+	LogInfo("Loading items");
 	if (!content_db.LoadItems(hotfix_name)) {
 		LogError("Error: Could not load item data. But ignoring");
 	}

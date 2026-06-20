@@ -74,6 +74,11 @@ void Bazaar::RecordAuditTrail(
 	}
 }
 
+uint32 Bazaar::ResolvePurchaseFailureSubAction(uint32 sub_action)
+{
+	return sub_action == Success ? Failed : sub_action;
+}
+
 std::vector<BazaarSearchResultsFromDB_Struct>
 Bazaar::GetSearchResults(
 	Database &db,
