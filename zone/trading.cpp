@@ -41,9 +41,6 @@ class QueryServ;
 extern WorldServer worldserver;
 extern QueryServ* QServ;
 
-// The maximum amount of a single bazaar/barter transaction expressed in copper.
-// Equivalent to 2 Million plat
-constexpr auto MAX_TRANSACTION_VALUE = 2000000000;
 // ##########################################
 // Trade implementation
 // ##########################################
@@ -1413,7 +1410,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	if (in->price * quantity <= 0) {
+	if (in->price == 0 || quantity == 0) {
         Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         trader->Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         LogError(
@@ -1430,18 +1427,18 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
         return;
     }
 
-	uint64 total_transaction_value = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_transaction_value > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
+	if (total_cost > max_transaction_value) {
 		Message(
 			Chat::Red,
 			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
+			static_cast<uint32>(max_transaction_value / 1000)
 		);
 		TradeRequestFailed(app);
 		return;
 	}
 
-	uint64 total_cost = in->price * quantity;
 	if (!TakeMoneyFromPP(total_cost)) {
 		MessageString(Chat::Red, INSUFFICIENT_FUNDS);
         TradeRequestFailed(app);
@@ -2875,6 +2872,47 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
+	auto item = database.GetItem(trader_item.item_id);
+	if (!item) {
+		LogTrading("Unable to find item id [{}] item unique_id [{}] for bazaar purchase", trader_item.item_id, in->item_unique_id);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	auto quantity_validation = Bazaar::ValidatePurchaseQuantity(in->quantity, item->Stackable, trader_item.item_charges);
+	if (!quantity_validation.is_valid) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid quantity [{}] for item [{}]",
+			in->quantity,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 quantity = quantity_validation.quantity;
+	in->quantity = quantity;
+
+	if (!Bazaar::ValidatePurchasePrice(in->price, trader_item.item_cost)) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid price [{}] listed price [{}] for item [{}]",
+			in->price,
+			trader_item.item_cost,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 price = trader_item.item_cost;
+	in->price = price;
+
 	auto next_slot = FindNextFreeParcelSlot(CharacterID());
 	if (next_slot == INVALID_INDEX) {
 		LogTrading(
@@ -2892,9 +2930,6 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 
 	TraderRepository::UpdateActiveTransaction(database, trader_item.id, true);
 
-	uint32 quantity = in->quantity;
-	auto   item     = database.GetItem(trader_item.item_id);
-
 	int16 charges   = 1;
 	if (trader_item.item_charges > 0 || item->Stackable || item->MaxCharges > 0) {
 		charges = trader_item.item_charges;
@@ -2909,12 +2944,13 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		in->item_unique_id
 	);
 
-	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_cost > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+	uint64 total_cost = static_cast<uint64>(price) * static_cast<uint64>(quantity);
+	if (total_cost > max_transaction_value) {
 		Message(
 			Chat::Red,
 			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
+			static_cast<uint32>(max_transaction_value / 1000)
 		);
 		TraderRepository::UpdateActiveTransaction(database, trader_item.id, false);
 		TradeRequestFailed(app);
@@ -2950,8 +2986,8 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	out_data->trader_buy_struct.method       = in->method;
 	out_data->trader_buy_struct.already_sold = in->already_sold;
 	out_data->trader_buy_struct.item_id      = item->ID;
-	out_data->trader_buy_struct.price        = in->price;
-	out_data->trader_buy_struct.quantity     = in->quantity;
+	out_data->trader_buy_struct.price        = price;
+	out_data->trader_buy_struct.quantity     = quantity;
 	out_data->trader_buy_struct.sub_action   = in->sub_action;
 	out_data->trader_buy_struct.trader_id    = trader_item.character_id;
 	out_data->buyer_id                       = CharacterID();
