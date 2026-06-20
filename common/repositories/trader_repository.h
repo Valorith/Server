@@ -351,31 +351,6 @@ public:
 		return results.Success() && results.RowsAffected() == 1;
 	}
 
-	static bool CompleteActiveTransaction(Database &db, uint64 id, const std::string &item_unique_id)
-	{
-		if (!id || item_unique_id.empty()) {
-			return false;
-		}
-
-		auto results = db.QueryDatabase(BuildCompleteActiveTransactionQuery(id, item_unique_id, time(nullptr) + 1));
-
-		return results.Success() && results.RowsAffected() == 1;
-	}
-
-	static std::string BuildCompleteActiveTransactionQuery(uint64 id, const std::string &item_unique_id, time_t listing_date)
-	{
-		return fmt::format(
-			"UPDATE {} SET `active_transaction` = {}, `listing_date` = FROM_UNIXTIME({}) "
-			"WHERE `id` = {} AND `item_unique_id` = '{}' AND `active_transaction` <> {}",
-			TableName(),
-			ACTIVE_TRANSACTION_NONE,
-			listing_date,
-			id,
-			Strings::Escape(item_unique_id),
-			ACTIVE_TRANSACTION_NONE
-		);
-	}
-
 	static std::string GetActiveTransactionWhereFilter(uint64 id, const std::string &item_unique_id)
 	{
 		return fmt::format(
