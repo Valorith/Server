@@ -92,7 +92,7 @@ bool HasActiveTraderTransaction(uint32 character_id)
 
 	const auto active_entries = TraderRepository::GetWhere(
 		database,
-		fmt::format("`character_id` = {} AND `active_transaction` = 1 LIMIT 1", character_id)
+		fmt::format("`character_id` = {} AND `active_transaction` <> 0 LIMIT 1", character_id)
 	);
 
 	return !active_entries.empty();
@@ -3826,14 +3826,13 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						return;
 					}
 
-					auto active_transaction = TraderRepository::GetActiveTransaction(
+					if (!TraderRepository::StartActiveTransactionProcessing(
 						database,
 						in->id,
 						in->trader_buy_struct.item_unique_id
-					);
-					if (!active_transaction.id) {
+					)) {
 						LogTrading(
-							"Ignoring stale bazaar parcel purchase message for trader_id [{}] item unique_id [{}] buyer [{}]",
+							"Ignoring duplicate or stale bazaar parcel purchase message for trader_id [{}] item unique_id [{}] buyer [{}]",
 							in->trader_buy_struct.trader_id,
 							in->trader_buy_struct.item_unique_id,
 							in->buyer_id

@@ -72,6 +72,6 @@ private:
 	{
 		auto filter = TraderRepository::GetActiveTransactionWhereFilter(123, "Unique'Item");
 
-		TEST_ASSERT(filter == "`id` = 123 AND `item_unique_id` = 'Unique\\'Item' AND `active_transaction` = 1");
+		TEST_ASSERT(filter == "`id` = 123 AND `item_unique_id` = 'Unique\\'Item' AND `active_transaction` <> 0");
 	}
 };

@@ -14,6 +14,9 @@
 class TraderRepository : public BaseTraderRepository {
 public:
 	static constexpr uint32 TRADER_CONVERT_ID = 4000000000;
+	static constexpr uint8 ACTIVE_TRANSACTION_NONE = 0;
+	static constexpr uint8 ACTIVE_TRANSACTION_PENDING = 1;
+	static constexpr uint8 ACTIVE_TRANSACTION_PROCESSING = 2;
 
 	struct DistinctTraders_Struct {
 		uint32      trader_id;
@@ -303,7 +306,7 @@ public:
 			return 0;
 		}
 
-		e.active_transaction = status == true ? 1 : 0;
+		e.active_transaction = status == true ? ACTIVE_TRANSACTION_PENDING : ACTIVE_TRANSACTION_NONE;
 		e.listing_date       = time(nullptr);
 
 		return UpdateOne(db, e);
@@ -316,12 +319,33 @@ public:
 		}
 
 		auto results = db.QueryDatabase(fmt::format(
-			"UPDATE {} SET `active_transaction` = 1, `listing_date` = FROM_UNIXTIME({}) "
-			"WHERE `id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = 0",
+			"UPDATE {} SET `active_transaction` = {}, `listing_date` = FROM_UNIXTIME({}) "
+			"WHERE `id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = {}",
 			TableName(),
+			ACTIVE_TRANSACTION_PENDING,
 			time(nullptr),
 			id,
-			Strings::Escape(item_unique_id)
+			Strings::Escape(item_unique_id),
+			ACTIVE_TRANSACTION_NONE
+		));
+
+		return results.Success() && results.RowsAffected() == 1;
+	}
+
+	static bool StartActiveTransactionProcessing(Database &db, uint64 id, const std::string &item_unique_id)
+	{
+		if (!id || item_unique_id.empty()) {
+			return false;
+		}
+
+		auto results = db.QueryDatabase(fmt::format(
+			"UPDATE {} SET `active_transaction` = {} "
+			"WHERE `id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = {}",
+			TableName(),
+			ACTIVE_TRANSACTION_PROCESSING,
+			id,
+			Strings::Escape(item_unique_id),
+			ACTIVE_TRANSACTION_PENDING
 		));
 
 		return results.Success() && results.RowsAffected() == 1;
@@ -330,9 +354,10 @@ public:
 	static std::string GetActiveTransactionWhereFilter(uint64 id, const std::string &item_unique_id)
 	{
 		return fmt::format(
-			"`id` = {} AND `item_unique_id` = '{}' AND `active_transaction` = 1",
+			"`id` = {} AND `item_unique_id` = '{}' AND `active_transaction` <> {}",
 			id,
-			Strings::Escape(item_unique_id)
+			Strings::Escape(item_unique_id),
+			ACTIVE_TRANSACTION_NONE
 		);
 	}
 
