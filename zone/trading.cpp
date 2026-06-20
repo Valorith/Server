@@ -26,6 +26,7 @@
 #include "common/repositories/buyer_buy_lines_repository.h"
 #include "common/repositories/buyer_repository.h"
 #include "common/repositories/character_offline_transactions_repository.h"
+#include "common/repositories/discovered_items_repository.h"
 #include "common/repositories/trader_repository.h"
 #include "common/rulesys.h"
 #include "common/strings.h"
@@ -35,6 +36,7 @@
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
 #include <numeric>
+#include <unordered_set>
 
 class QueryServ;
 
@@ -2437,15 +2439,26 @@ void Client::BuyerItemSearch(const EQApplicationPacket *app)
 	uint32             it    = 0;
 
 	BuyerItemSearchResults_Struct bisr{};
+	const std::string             search_string = Strings::ToLower(bis->search_string);
+	const bool                    filter_discovered_items = RuleB(Character, EnableDiscoveredItems);
+
+	std::unordered_set<uint32_t> discovered_item_ids;
+	if (filter_discovered_items) {
+		discovered_item_ids = DiscoveredItemsRepository::GetAllItemIDs(database);
+	}
 
 	while ((item = database.IterateItems(&it)) && bisr.results.size() < RuleI(Bazaar, MaxBuyerInventorySearchResults)) {
 		if (!item->NoDrop) {
 			continue;
 		}
 
+		if (filter_discovered_items && !discovered_item_ids.contains(item->ID)) {
+			continue;
+		}
+
 		auto item_name_match = std::strstr(
 			Strings::ToLower(item->Name).c_str(),
-			Strings::ToLower(bis->search_string).c_str()
+			search_string.c_str()
 		);
 
 		if (item_name_match) {
