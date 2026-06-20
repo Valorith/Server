@@ -170,7 +170,7 @@ EQ::ItemInstance::ItemInstance(const ItemInstance& copy)
 	m_timers         = copy.m_timers;
 
 	if (copy.GetUniqueID().empty()) {
-		LogInfo("Creating unique item ID as part of clone process for item id {}", copy.GetID());
+		LogInventoryDetail("Creating unique item ID as part of clone process for item id {}", copy.GetID());
 		CreateUniqueID();
 	}
 	else {

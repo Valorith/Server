@@ -892,7 +892,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 	// This refreshes the Trader window to display the End Trader button
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
-		LogInfo(
+		LogTrading(
 			"Sending TraderAck2 to client [{}] account [{}] character [{}] zone [{}] instance [{}] entity [{}]",
 			GetCleanName(),
 			AccountID(),
@@ -1591,7 +1591,7 @@ void Client::SendBazaarWelcome()
 	data->traders            = results.count_of_traders;
 	data->items              = results.count_of_items;
 
-	LogInfo(
+	LogTrading(
 		"Sending BazaarWelcome to client [{}] account [{}] character [{}] traders [{}] items [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -2495,7 +2495,7 @@ void Client::SendBecomeTrader(BazaarTraderBarterActions action, uint32 entity_id
 	data->zone_instance_id = trader->GetInstanceID();
 	strn0cpy(data->trader_name, trader->GetCleanName(), sizeof(data->trader_name));
 
-	LogInfo(
+	LogTrading(
 		"Sending OP_BecomeTrader to client [{}] account [{}] character [{}] action [{}] trader_entity [{}] trader_character [{}] trader_zone [{}] trader_instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -2519,7 +2519,7 @@ void Client::SendTraderMode(BazaarTraderBarterActions status)
 	data->action    = status;
 	data->entity_id = GetID();
 
-	LogInfo(
+	LogTrading(
 		"Sending OP_Trader mode packet to client [{}] account [{}] character [{}] status [{}] entity [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -2740,7 +2740,7 @@ void Client::DoBazaarInspect(BazaarInspect_Struct &in)
 	);
 
 	if (items.empty()) {
-		LogInfo("Failed to find item with serial number [{}]", in.item_unique_id);
+		LogTrading("Failed to find item with serial number [{}]", in.item_unique_id);
 		return;
 	}
 

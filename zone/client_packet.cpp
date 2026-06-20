@@ -779,7 +779,7 @@ void Client::CompleteConnect()
 				}
 
 				const bool trader_rows_refreshed = TraderRepository::ReplaceMany(database, trader_items);
-				LogInfo(
+				LogTrading(
 					"Restoring trader mode on zone entry for client [{}] account [{}] character [{}] zone [{}] instance [{}]. trader_rows [{}] previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
 					GetCleanName(),
 					AccountID(),
@@ -3913,7 +3913,7 @@ void Client::Handle_OP_BazaarSearch(const EQApplicationPacket *app)
 {
 	uint32 action = *(uint32 *) app->pBuffer;
 
-	LogInfo(
+	LogTrading(
 		"Handle_OP_BazaarSearch client [{}] account [{}] character [{}] action [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -15458,7 +15458,7 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 	// I don't know what they are for (yet), but it doesn't seem to matter that we ignore them.
 	auto action = *(uint32 *)app->pBuffer;
 
-	LogInfo(
+	LogTrading(
 		"Handle_OP_Trader client [{}] account [{}] character [{}] action [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -15711,7 +15711,7 @@ void Client::Handle_OP_TradeRequestAck(const EQApplicationPacket *app)
 void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 {
 	auto in = (TraderClick_Struct *) app->pBuffer;
-	LogInfo(
+	LogTrading(
 		"Handle_OP_TraderShop client [{}] account [{}] character [{}] code [{}] trader_id [{}] unknown008 [{}] approval [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -17473,7 +17473,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 {
 	const auto mode = IsBuyer() ? std::string("buyer") : std::string("trader");
 
-	LogInfo(
+	LogTrading(
 		"Handling OP_Offline for client [{}] account [{}] character [{}] mode [{}] zone [{}] instance [{}] entity [{}] customer [{}] trader [{}] buyer [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -17490,7 +17490,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	if (IsThereACustomer()) {
 		auto customer = entity_list.GetClientByID(GetCustomerID());
 		if (customer) {
-			LogInfo(
+			LogTrading(
 				"Ending active customer session for client [{}] before offline {} activation. customer_entity_id [{}]",
 				GetCleanName(),
 				mode,
@@ -17518,7 +17518,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	const auto previous_entity_id = GetID();
 	const auto next_entity_id     = offline_client->GetID();
 
-	LogInfo(
+	LogTrading(
 		"Prepared offline {} clone for client [{}] account [{}] character [{}]. previous_entity_id [{}] next_entity_id [{}]",
 		mode,
 		GetCleanName(),
@@ -17533,7 +17533,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	if (IsBuyer()) {
 		offline_client->SetBuyerID(offline_client->CharacterID());
 		session_ready = BuyerRepository::UpdateBuyerEntityID(database, CharacterID(), previous_entity_id, next_entity_id);
-		LogInfo(
+		LogTrading(
 			"Offline buyer entity handoff for client [{}] character [{}] previous_entity_id [{}] next_entity_id [{}] success [{}]",
 			GetCleanName(),
 			CharacterID(),
@@ -17545,7 +17545,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	else {
 		offline_client->SetTrader(true);
 		session_ready = TraderRepository::UpdateEntityId(database, CharacterID(), previous_entity_id, next_entity_id);
-		LogInfo(
+		LogTrading(
 			"Offline trader entity handoff for client [{}] character [{}] previous_entity_id [{}] next_entity_id [{}] success [{}]",
 			GetCleanName(),
 			CharacterID(),
@@ -17565,7 +17565,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 			GetInstanceID(),
 			next_entity_id
 		);
-		LogInfo(
+		LogTrading(
 			"Offline session upsert for client [{}] account [{}] character [{}] mode [{}] zone [{}] instance [{}] entity [{}] success [{}]",
 			GetCleanName(),
 			AccountID(),
@@ -17580,7 +17580,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 
 	if (session_ready) {
 		AccountRepository::SetOfflineStatus(database, AccountID(), true);
-		LogInfo(
+		LogTrading(
 			"Marked account [{}] offline in transaction for client [{}] prior to offline {} commit",
 			AccountID(),
 			GetCleanName(),
@@ -17614,7 +17614,7 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 		return;
 	}
 
-	LogInfo(
+	LogTrading(
 		"Offline {} activation committed for client [{}] account [{}] character [{}]. live_entity_id [{}] offline_entity_id [{}]",
 		mode,
 		GetCleanName(),
@@ -17625,15 +17625,21 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	);
 
 	SetOffline(true);
-	OnDisconnect(true, "offline_mode");
 
 	auto outapp = new EQApplicationPacket();
+	CreateDespawnPacket(outapp, false);
+	entity_list.QueueClients(this, outapp, true);
+	safe_delete(outapp);
+
+	OnDisconnect(true, "offline_mode");
+
+	outapp = new EQApplicationPacket();
 	offline_client->CreateSpawnPacket(outapp);
-	entity_list.QueueClients(nullptr, outapp, false);
+	entity_list.QueueClients(this, outapp, true);
 	safe_delete(outapp);
 
 	offline_client->UpdateWho(3);
-	LogInfo(
+	LogTrading(
 		"Completed offline {} activation for client [{}] account [{}] character [{}]",
 		mode,
 		GetCleanName(),

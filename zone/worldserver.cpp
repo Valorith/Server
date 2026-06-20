@@ -4408,7 +4408,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			auto in = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
 			auto client = FindOfflineReclaimClient(*in);
 			if (!client) {
-				LogInfo(
+				LogTrading(
 					"Offline reclaim request [{}] for account [{}] character [{}] found no matching zone entity; reporting stale",
 					in->request_id,
 					in->account_id,
@@ -4452,7 +4452,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			const bool has_customer = client->IsThereACustomer();
 			const bool has_active_trader_transaction = client->IsTrader() && HasActiveTraderTransaction(client->CharacterID());
 			if (has_customer || has_active_trader_transaction) {
-				LogInfo(
+				LogTrading(
 					"Offline reclaim request [{}] for client [{}] is busy; customer [{}] trader_transaction [{}]",
 					in->request_id,
 					client->GetCleanName(),
@@ -4463,7 +4463,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
-			LogInfo(
+			LogTrading(
 				"Reclaiming offline {} [{}] for account [{}] character [{}]",
 				client->IsBuyer() ? "buyer" : "trader",
 				client->GetCleanName(),
