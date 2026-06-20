@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "worldserver.h"
 
+#include "common/bazaar.h"
 #include "common/eq_packet_structs.h"
 #include "common/events/player_event_logs.h"
 #include "common/misc_functions.h"
@@ -3896,6 +3897,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					trader_pc->QueuePacket(&outapp);
 
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							trader_pc->GetCleanName(),
+							in->trader_buy_struct.buyer_name,
+							item->GetID(),
+							in->trader_buy_struct.item_name,
+							in->item_quantity,
+							total_cost,
+							0
+						);
+					}
+
 					if (item && PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::TRADER_SELL)) {
 						auto e = PlayerEvent::TraderSellEvent{
 							.item_id              = item->GetID(),
@@ -4379,6 +4393,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						Barter_Success,
 						Barter_Success
 					);
+
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							seller->GetCleanName(),
+							sell_line.buyer_name,
+							sell_line.item_id,
+							sell_line.item_name,
+							sell_line.seller_quantity,
+							total_cost,
+							1
+						);
+					}
 
 					if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 						PlayerEvent::BarterTransaction e{};

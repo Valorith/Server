@@ -1493,6 +1493,19 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		buy_inst->GetUniqueID()
 	);
 
+	if (RuleB(Bazaar, AuditTrail)) {
+		Bazaar::RecordAuditTrail(
+			database,
+			trader->GetCleanName(),
+			GetCleanName(),
+			buy_inst->GetID(),
+			buy_inst->GetItem()->Name,
+			quantity,
+			total_cost,
+			0
+		);
+	}
+
 	if (merchant_quantity > quantity) {
 		std::unique_ptr<EQ::ItemInstance> vendor_inst(buy_inst ? buy_inst->Clone() : nullptr);
 		vendor_inst->SetMerchantCount(merchant_quantity - quantity);
@@ -2040,6 +2053,19 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
 				AddMoneyToPP(total_cost, false);
 				buyer->TakeMoneyFromPP(total_cost, false);
+
+				if (RuleB(Bazaar, AuditTrail)) {
+					Bazaar::RecordAuditTrail(
+						database,
+						GetCleanName(),
+						buyer->GetCleanName(),
+						sell_line.item_id,
+						sell_line.item_name,
+						sell_line.seller_quantity,
+						total_cost,
+						1
+					);
+				}
 
 				if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 					PlayerEvent::BarterTransaction e{};
