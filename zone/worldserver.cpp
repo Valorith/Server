@@ -92,7 +92,7 @@ bool HasActiveTraderTransaction(uint32 character_id)
 
 	const auto active_entries = TraderRepository::GetWhere(
 		database,
-		fmt::format("`character_id` = {} AND `active_transaction` = 1 LIMIT 1", character_id)
+		fmt::format("`character_id` = {} AND `active_transaction` <> 0 LIMIT 1", character_id)
 	);
 
 	return !active_entries.empty();
@@ -3826,6 +3826,20 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						return;
 					}
 
+					if (!TraderRepository::StartActiveTransactionProcessing(
+						database,
+						in->id,
+						in->trader_buy_struct.item_unique_id
+					)) {
+						LogTrading(
+							"Ignoring duplicate or stale bazaar parcel purchase message for trader_id [{}] item unique_id [{}] buyer [{}]",
+							in->trader_buy_struct.trader_id,
+							in->trader_buy_struct.item_unique_id,
+							in->buyer_id
+						);
+						break;
+					}
+
 					auto item = trader_pc->FindTraderItemByUniqueID(in->trader_buy_struct.item_unique_id);
 					if (!item) {
 						in->transaction_status = BazaarPurchaseTraderFailed;
@@ -3946,7 +3960,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					}
 
 					in->transaction_status = BazaarPurchaseSuccess;
-					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					worldserver.SendPacket(pack);
 
 					LogTradingDetail("Step 6:Bazaar Purchase. Purchase checks complete for trader.  Send Success to buyer via world.");
@@ -3962,6 +3975,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							zone->GetZoneID(),
 							zone->GetInstanceID()
 						);
+						TraderRepository::UpdateActiveTransaction(database, in->id, false);
 						return;
 					}
 
@@ -4080,6 +4094,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					buyer->ReturnTraderReq(&outapp, in->item_quantity, in->trader_buy_struct.item_id);
+					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					LogTradingDetail("Step 8:Bazaar Purchase. Purchase complete. Sending update packet to buyer.");
 
 					break;

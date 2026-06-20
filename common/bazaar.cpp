@@ -39,6 +39,11 @@ Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 	return {true, quantity};
 }
 
+bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity)
+{
+	return requested_quantity > 0 && requested_quantity <= listed_quantity;
+}
+
 bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 {
 	return listed_price > 0 && requested_price == listed_price;

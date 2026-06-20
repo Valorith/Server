@@ -1939,6 +1939,24 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 
 		sell_line.seller_name = GetCleanName();
 
+		if (!Bazaar::ValidateBarterSellQuantity(sell_line.seller_quantity, sell_line.item_quantity)) {
+			LogTrading(
+				"Rejecting buyer sale with invalid quantity [{}] for buy line quantity [{}] item [{}] seller [{}] buyer [{}]",
+				sell_line.seller_quantity,
+				sell_line.item_quantity,
+				sell_line.item_name,
+				GetCleanName(),
+				sell_line.buyer_name
+			);
+			SendBarterBuyerClientMessage(
+				sell_line,
+				Barter_SellerTransactionComplete,
+				Barter_Failure,
+				Barter_Failure
+			);
+			return;
+		}
+
 		switch (sell_line.purchase_method) {
 			case BarterInBazaar:
 			case BarterByVendor: {
@@ -2970,7 +2988,16 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::UpdateActiveTransaction(database, trader_item.id, true);
+	if (!TraderRepository::StartActiveTransaction(database, trader_item.id, in->item_unique_id)) {
+		LogTrading(
+			"Rejecting bazaar parcel purchase for item unique_id [{}] because the listing is already in an active transaction",
+			in->item_unique_id
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = TransactionInProgress;
+		TradeRequestFailed(app);
+		return;
+	}
 
 	int16 charges   = 1;
 	if (trader_item.item_charges > 0 || item->Stackable || item->MaxCharges > 0) {
