@@ -1570,6 +1570,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		if (trader->IsOffline()) {
 			auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 			e.character_id = trader->CharacterID();
+			e.item_id      = buy_inst->GetID();
 			e.item_name    = buy_inst->GetItem()->Name;
 			e.price        = total_cost;
 			e.quantity     = quantity;
@@ -2059,6 +2060,7 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				if (buyer->IsOffline()) {
 					auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 					e.character_id = buyer->CharacterID();
+					e.item_id      = sell_line.item_id;
 					e.item_name    = sell_line.item_name;
 					e.price        = total_cost;
 					e.quantity     = sell_line.seller_quantity;

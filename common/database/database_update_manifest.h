@@ -7353,12 +7353,14 @@ CREATE TABLE IF NOT EXISTS `character_offline_transactions` (
 	`id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`character_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`type` INT(10) UNSIGNED NULL DEFAULT '0',
+	`item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`item_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
 	`quantity` INT(11) NULL DEFAULT '0',
 	`price` BIGINT(20) UNSIGNED NULL DEFAULT '0',
 	`buyer_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
 	PRIMARY KEY (`id`) USING BTREE,
-	INDEX `idx_character_id` (`character_id`)
+	INDEX `idx_character_id` (`character_id`),
+	INDEX `idx_item_id` (`item_id`)
 ) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
 )",
 		.content_schema_update = false
@@ -7558,6 +7560,18 @@ SET dz.`min_level` = dzt.`min_level`,
 WHERE dz.`type` = 1
 	AND dz.`min_level` = 0
 	AND dz.`max_level` = 0;
+)"
+	},
+	ManifestEntry{
+		.version = 9350,
+		.description = "2026_06_20_character_offline_transactions_item_id.sql",
+		.check = "SHOW COLUMNS FROM `character_offline_transactions` LIKE 'item_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_offline_transactions`
+	ADD COLUMN `item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `type`,
+	ADD INDEX `idx_item_id` (`item_id`);
 )"
 	},
 // -- template; copy/paste this when you need to create a new entry

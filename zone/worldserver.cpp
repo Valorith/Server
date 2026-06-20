@@ -3921,6 +3921,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (trader_pc->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = trader_pc->CharacterID();
+						e.item_id      = item->GetID();
 						e.item_name    = in->trader_buy_struct.item_name;
 						e.price        = in->trader_buy_struct.price * in->trader_buy_struct.quantity;
 						e.quantity     = in->trader_buy_struct.quantity;
@@ -4327,6 +4328,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (buyer->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = buyer->CharacterID();
+						e.item_id      = sell_line.item_id;
 						e.item_name    = sell_line.item_name;
 						e.price        = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
 						e.quantity     = sell_line.seller_quantity;
