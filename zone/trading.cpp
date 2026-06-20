@@ -2445,6 +2445,11 @@ void Client::BuyerItemSearch(const EQApplicationPacket *app)
 	std::unordered_set<uint32_t> discovered_item_ids;
 	if (filter_discovered_items) {
 		discovered_item_ids = DiscoveredItemsRepository::GetAllItemIDs(database);
+		for (const auto &[_, inst] : GetInv().GetPersonal()) {
+			if (inst && inst->GetItem()) {
+				discovered_item_ids.insert(inst->GetID());
+			}
+		}
 	}
 
 	while ((item = database.IterateItems(&it)) && bisr.results.size() < RuleI(Bazaar, MaxBuyerInventorySearchResults)) {
