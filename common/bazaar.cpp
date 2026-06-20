@@ -43,6 +43,11 @@ bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 	return listed_price > 0 && requested_price == listed_price;
 }
 
+uint32 Bazaar::ResolvePurchaseFailureSubAction(uint32 sub_action)
+{
+	return sub_action == Success ? Failed : sub_action;
+}
+
 std::vector<BazaarSearchResultsFromDB_Struct>
 Bazaar::GetSearchResults(
 	Database &db,
