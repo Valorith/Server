@@ -2897,6 +2897,22 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	uint32 quantity = quantity_validation.quantity;
 	in->quantity = quantity;
 
+	if (!Bazaar::ValidatePurchasePrice(in->price, trader_item.item_cost)) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid price [{}] listed price [{}] for item [{}]",
+			in->price,
+			trader_item.item_cost,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 price = trader_item.item_cost;
+	in->price = price;
+
 	auto next_slot = FindNextFreeParcelSlot(CharacterID());
 	if (next_slot == INVALID_INDEX) {
 		LogTrading(
@@ -2929,7 +2945,7 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	);
 
 	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
-	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
+	uint64 total_cost = static_cast<uint64>(price) * static_cast<uint64>(quantity);
 	if (total_cost > max_transaction_value) {
 		Message(
 			Chat::Red,
@@ -2970,7 +2986,7 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	out_data->trader_buy_struct.method       = in->method;
 	out_data->trader_buy_struct.already_sold = in->already_sold;
 	out_data->trader_buy_struct.item_id      = item->ID;
-	out_data->trader_buy_struct.price        = in->price;
+	out_data->trader_buy_struct.price        = price;
 	out_data->trader_buy_struct.quantity     = quantity;
 	out_data->trader_buy_struct.sub_action   = in->sub_action;
 	out_data->trader_buy_struct.trader_id    = trader_item.character_id;

@@ -31,6 +31,9 @@ public:
 		TEST_ADD(BazaarTest::ClampsStackableQuantityToListedCharges);
 		TEST_ADD(BazaarTest::AcceptsPositiveNonStackableQuantity);
 		TEST_ADD(BazaarTest::RejectsNonStackableQuantityAboveOne);
+		TEST_ADD(BazaarTest::RejectsZeroListedPrice);
+		TEST_ADD(BazaarTest::RejectsMismatchedPrice);
+		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 	}
 
 	~BazaarTest()
@@ -84,5 +87,20 @@ private:
 
 		TEST_ASSERT(!result.is_valid);
 		TEST_ASSERT(result.quantity == 0);
+	}
+
+	void RejectsZeroListedPrice()
+	{
+		TEST_ASSERT(!Bazaar::ValidatePurchasePrice(0, 0));
+	}
+
+	void RejectsMismatchedPrice()
+	{
+		TEST_ASSERT(!Bazaar::ValidatePurchasePrice(1, 100));
+	}
+
+	void AcceptsMatchingListedPrice()
+	{
+		TEST_ASSERT(Bazaar::ValidatePurchasePrice(100, 100));
 	}
 };

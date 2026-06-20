@@ -38,6 +38,11 @@ Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 	return {true, quantity};
 }
 
+bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
+{
+	return listed_price > 0 && requested_price == listed_price;
+}
+
 std::vector<BazaarSearchResultsFromDB_Struct>
 Bazaar::GetSearchResults(
 	Database &db,
