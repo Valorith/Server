@@ -3923,7 +3923,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						e.character_id = trader_pc->CharacterID();
 						e.item_id      = item->GetID();
 						e.item_name    = in->trader_buy_struct.item_name;
-						e.price        = in->trader_buy_struct.price * in->trader_buy_struct.quantity;
+						e.price        = total_cost;
 						e.quantity     = in->trader_buy_struct.quantity;
 						e.type         = TRADER_TRANSACTION;
 						e.buyer_name   = in->trader_buy_struct.buyer_name;
