@@ -18,6 +18,8 @@ public:
 		int16 listed_charges
 	);
 
+	static bool ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity);
+
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
 
 	static void RecordAuditTrail(

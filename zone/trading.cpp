@@ -1937,6 +1937,24 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 
 		sell_line.seller_name = GetCleanName();
 
+		if (!Bazaar::ValidateBarterSellQuantity(sell_line.seller_quantity, sell_line.item_quantity)) {
+			LogTrading(
+				"Rejecting buyer sale with invalid quantity [{}] for buy line quantity [{}] item [{}] seller [{}] buyer [{}]",
+				sell_line.seller_quantity,
+				sell_line.item_quantity,
+				sell_line.item_name,
+				GetCleanName(),
+				sell_line.buyer_name
+			);
+			SendBarterBuyerClientMessage(
+				sell_line,
+				Barter_SellerTransactionComplete,
+				Barter_Failure,
+				Barter_Failure
+			);
+			return;
+		}
+
 		switch (sell_line.purchase_method) {
 			case BarterInBazaar:
 			case BarterByVendor: {
