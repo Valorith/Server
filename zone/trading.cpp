@@ -2872,6 +2872,31 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
+	auto item = database.GetItem(trader_item.item_id);
+	if (!item) {
+		LogTrading("Unable to find item id [{}] item unique_id [{}] for bazaar purchase", trader_item.item_id, in->item_unique_id);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	auto quantity_validation = Bazaar::ValidatePurchaseQuantity(in->quantity, item->Stackable, trader_item.item_charges);
+	if (!quantity_validation.is_valid) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid quantity [{}] for item [{}]",
+			in->quantity,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 quantity = quantity_validation.quantity;
+	in->quantity = quantity;
+
 	auto next_slot = FindNextFreeParcelSlot(CharacterID());
 	if (next_slot == INVALID_INDEX) {
 		LogTrading(
@@ -2888,9 +2913,6 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	}
 
 	TraderRepository::UpdateActiveTransaction(database, trader_item.id, true);
-
-	uint32 quantity = in->quantity;
-	auto   item     = database.GetItem(trader_item.item_id);
 
 	int16 charges   = 1;
 	if (trader_item.item_charges > 0 || item->Stackable || item->MaxCharges > 0) {
@@ -2949,7 +2971,7 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	out_data->trader_buy_struct.already_sold = in->already_sold;
 	out_data->trader_buy_struct.item_id      = item->ID;
 	out_data->trader_buy_struct.price        = in->price;
-	out_data->trader_buy_struct.quantity     = in->quantity;
+	out_data->trader_buy_struct.quantity     = quantity;
 	out_data->trader_buy_struct.sub_action   = in->sub_action;
 	out_data->trader_buy_struct.trader_id    = trader_item.character_id;
 	out_data->buyer_id                       = CharacterID();

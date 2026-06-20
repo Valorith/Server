@@ -8,6 +8,7 @@ set(tests_sources
 
 set(tests_headers
 	atobool_test.h
+	bazaar_test.h
 	buyer_buy_lines_repository_test.h
 	crash_report_endpoint_test.h
 	data_verification_test.h

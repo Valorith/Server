@@ -3,7 +3,40 @@
 #include "common/item_instance.h"
 #include "common/repositories/trader_repository.h"
 
+#include <limits>
 #include <memory>
+
+Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
+	uint32 requested_quantity,
+	bool is_stackable,
+	int16 listed_charges
+)
+{
+	const uint32 max_signed_quantity = static_cast<uint32>(std::numeric_limits<int32>::max());
+	if (requested_quantity == 0 || requested_quantity > max_signed_quantity) {
+		return {false, 0};
+	}
+
+	uint32 quantity = requested_quantity;
+	if (!is_stackable) {
+		if (quantity != 1) {
+			return {false, 0};
+		}
+
+		return {true, quantity};
+	}
+
+	if (listed_charges <= 0) {
+		return {false, 0};
+	}
+
+	const uint32 available_quantity = static_cast<uint32>(listed_charges);
+	if (quantity > available_quantity) {
+		quantity = available_quantity;
+	}
+
+	return {true, quantity};
+}
 
 std::vector<BazaarSearchResultsFromDB_Struct>
 Bazaar::GetSearchResults(

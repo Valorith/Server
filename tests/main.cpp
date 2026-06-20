@@ -17,6 +17,7 @@
 */
 
 #include "tests/atobool_test.h"
+#include "tests/bazaar_test.h"
 #include "tests/buyer_buy_lines_repository_test.h"
 #include "tests/crash_report_endpoint_test.h"
 #include "tests/data_verification_test.h"
@@ -59,6 +60,7 @@ int main()
 		tests.add(new FixedMemoryVariableHashTest());
 		tests.add(new ExpeditionSchemaTest());
 		tests.add(new atoboolTest());
+		tests.add(new BazaarTest());
 		tests.add(new BuyerBuyLinesRepositoryTest());
 		tests.add(new CrashReportEndpointTest());
 		tests.add(new hextoi_32_64_Test());
