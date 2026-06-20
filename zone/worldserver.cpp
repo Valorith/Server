@@ -3897,19 +3897,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					trader_pc->QueuePacket(&outapp);
 
-					if (RuleB(Bazaar, AuditTrail)) {
-						Bazaar::RecordAuditTrail(
-							database,
-							trader_pc->GetCleanName(),
-							in->trader_buy_struct.buyer_name,
-							item->GetID(),
-							in->trader_buy_struct.item_name,
-							in->item_quantity,
-							total_cost,
-							0
-						);
-					}
-
 					if (item && PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::TRADER_SELL)) {
 						auto e = PlayerEvent::TraderSellEvent{
 							.item_id              = item->GetID(),
