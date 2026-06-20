@@ -291,10 +291,10 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 	LogInfo("Clearing inventory snapshots");
 	database.ClearInvSnapshots();
 	LogInfo("Loading items");
-	LogInfo("Clearing trader table details");
+	LogTrading("Clearing trader table details");
 	database.ClearTraderDetails();
 	database.ClearBuyerDetails();
-	LogInfo("Clearing buyer table details");
+	LogTrading("Clearing buyer table details");
 
 	if (RuleB(Bots, Enabled)) {
 		LogInfo("Clearing [bot_pet_buffs] table of stale entries");

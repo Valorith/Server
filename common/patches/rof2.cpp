@@ -6157,7 +6157,7 @@ namespace RoF2
 	{
 		auto action = *(uint32 *)__packet->pBuffer;
 
-		LogInfo(
+		LogTrading(
 			"(RoF2) DECODE(OP_Trader) action [{}] size [{}]",
 			action,
 			__packet->size
@@ -6260,7 +6260,7 @@ namespace RoF2
 	{
 		uint32 action = *(uint32 *)__packet->pBuffer;
 
-		LogInfo(
+		LogTrading(
 			"(RoF2) DECODE(OP_TraderShop) action [{}] size [{}]",
 			action,
 			__packet->size
