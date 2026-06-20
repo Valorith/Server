@@ -2091,7 +2091,7 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 					e.item_name    = sell_line.item_name;
 					e.price        = total_cost;
 					e.quantity     = sell_line.seller_quantity;
-					e.type         = BUYER_TRANSACTION;
+					e.type         = BARTER_TRANSACTION;
 					e.buyer_name   = GetCleanName();
 
 					CharacterOfflineTransactionsRepository::InsertOne(database, e);

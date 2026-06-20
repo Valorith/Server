@@ -4333,7 +4333,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						e.item_name    = sell_line.item_name;
 						e.price        = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
 						e.quantity     = sell_line.seller_quantity;
-						e.type         = BUYER_TRANSACTION;
+						e.type         = BARTER_TRANSACTION;
 						e.buyer_name   = sell_line.seller_name;
 
 						CharacterOfflineTransactionsRepository::InsertOne(database, e);

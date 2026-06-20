@@ -5,12 +5,12 @@
 #include "../strings.h"
 #include "base/base_character_offline_transactions_repository.h"
 
+constexpr int TRADER_TRANSACTION = 1;
+constexpr int BUYER_TRANSACTION  = 2;
+constexpr int BARTER_TRANSACTION = 3;
+
 class CharacterOfflineTransactionsRepository: public BaseCharacterOfflineTransactionsRepository {
 public:
-
-#define TRADER_TRANSACTION 1
-#define BUYER_TRANSACTION  2
-
     /**
      * This file was auto generated and can be modified and extended upon
      *
