@@ -779,7 +779,7 @@ void Client::CompleteConnect()
 				}
 
 				const bool trader_rows_refreshed = TraderRepository::ReplaceMany(database, trader_items);
-				LogInfo(
+				LogTrading(
 					"Restoring trader mode on zone entry for client [{}] account [{}] character [{}] zone [{}] instance [{}]. trader_rows [{}] previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
 					GetCleanName(),
 					AccountID(),
