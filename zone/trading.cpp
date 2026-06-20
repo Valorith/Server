@@ -1431,11 +1431,11 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
 	if (total_cost > max_transaction_value) {
-		const auto max_transaction_platinum = Strings::Commify(max_transaction_value / 1000);
+		const auto max_transaction_amount = Strings::Money(max_transaction_value / 1000);
 		Message(
 			Chat::Red,
-			"That would exceed the single transaction limit of %s platinum.",
-			max_transaction_platinum.c_str()
+			"That would exceed the single transaction limit of %s.",
+			max_transaction_amount.c_str()
 		);
 		TradeRequestFailed(app);
 		return;
@@ -2949,11 +2949,11 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 	uint64 total_cost = static_cast<uint64>(price) * static_cast<uint64>(quantity);
 	if (total_cost > max_transaction_value) {
-		const auto max_transaction_platinum = Strings::Commify(max_transaction_value / 1000);
+		const auto max_transaction_amount = Strings::Money(max_transaction_value / 1000);
 		Message(
 			Chat::Red,
-			"That would exceed the single transaction limit of %s platinum.",
-			max_transaction_platinum.c_str()
+			"That would exceed the single transaction limit of %s.",
+			max_transaction_amount.c_str()
 		);
 		TraderRepository::UpdateActiveTransaction(database, trader_item.id, false);
 		TradeRequestFailed(app);
