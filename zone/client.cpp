@@ -2536,6 +2536,10 @@ void Client::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 {
 	Mob::FillSpawnStruct(ns, ForWho);
 
+	if (IsOffline() && IsTrader()) {
+		snprintf(ns->spawn.name, sizeof(ns->spawn.name), "Offline-%s", GetName());
+	}
+
 	// Populate client-specific spawn information
 	ns->spawn.afk       = m_is_afk;
 	ns->spawn.lfg       = LFG; // afk and lfg are cleared on zoning on live
