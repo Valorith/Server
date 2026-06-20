@@ -41,9 +41,6 @@ class QueryServ;
 extern WorldServer worldserver;
 extern QueryServ* QServ;
 
-// The maximum amount of a single bazaar/barter transaction expressed in copper.
-// Equivalent to 2 Million plat
-constexpr auto MAX_TRANSACTION_VALUE = 2000000000;
 // ##########################################
 // Trade implementation
 // ##########################################
@@ -1413,7 +1410,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	if (in->price * quantity <= 0) {
+	if (in->price == 0 || quantity == 0) {
         Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         trader->Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         LogError(
@@ -1430,18 +1427,18 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
         return;
     }
 
-	uint64 total_transaction_value = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_transaction_value > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
+	if (total_cost > max_transaction_value) {
 		Message(
 			Chat::Red,
 			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
+			static_cast<uint32>(max_transaction_value / 1000)
 		);
 		TradeRequestFailed(app);
 		return;
 	}
 
-	uint64 total_cost = in->price * quantity;
 	if (!TakeMoneyFromPP(total_cost)) {
 		MessageString(Chat::Red, INSUFFICIENT_FUNDS);
         TradeRequestFailed(app);
@@ -2909,12 +2906,13 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		in->item_unique_id
 	);
 
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_cost > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
+	if (total_cost > max_transaction_value) {
 		Message(
 			Chat::Red,
 			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
+			static_cast<uint32>(max_transaction_value / 1000)
 		);
 		TraderRepository::UpdateActiveTransaction(database, trader_item.id, false);
 		TradeRequestFailed(app);
