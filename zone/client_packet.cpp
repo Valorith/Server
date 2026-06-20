@@ -17628,14 +17628,14 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 
 	auto outapp = new EQApplicationPacket();
 	CreateDespawnPacket(outapp, false);
-	entity_list.QueueClients(this, outapp, true, false);
+	entity_list.QueueClients(this, outapp, true);
 	safe_delete(outapp);
 
 	OnDisconnect(true, "offline_mode");
 
 	outapp = new EQApplicationPacket();
 	offline_client->CreateSpawnPacket(outapp);
-	entity_list.QueueClients(this, outapp, true, false);
+	entity_list.QueueClients(this, outapp, true);
 	safe_delete(outapp);
 
 	offline_client->UpdateWho(3);
