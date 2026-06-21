@@ -35,6 +35,8 @@ namespace EQ
 	void InitializeDynamicLookups();
 
 	namespace constants {
+		constexpr uint64 BAZAAR_MAX_TRANSACTION_DEFAULT = 2000000000ULL;
+
 		struct LookupEntry {
 			EQ::expansions::Expansion Expansion;
 			uint32 ExpansionBit;
@@ -60,7 +62,7 @@ namespace EQ
 				CharacterCreationLimit(CharacterCreationLimit),
 				SayLinkBodySize(SayLinkBodySize),
 				BazaarTraderLimit(BazaarTraderLimit),
-				BazaarMaxTransaction(BazaarMaxTransaction)
+				BazaarMaxTransaction(BazaarMaxTransaction ? BazaarMaxTransaction : BAZAAR_MAX_TRANSACTION_DEFAULT)
 			{ }
 		};
 

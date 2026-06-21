@@ -24,14 +24,28 @@
 
 // Build variables
 // these get injected during the build pipeline
-#define CURRENT_VERSION "1.2.9-dev" // always append -dev to the current version for custom-builds
+#define CURRENT_VERSION "1.2.11-dev" // always append -dev to the current version for custom-builds
 #define LOGIN_VERSION "0.8.0"
-#define COMPILE_DATE    __DATE__
-#define COMPILE_TIME    __TIME__
+
+#ifndef EQEMU_COMPILE_DATE
+#define EQEMU_COMPILE_DATE __DATE__
+#endif
+
+#ifndef EQEMU_COMPILE_TIME
+#define EQEMU_COMPILE_TIME __TIME__
+#endif
+
+#ifndef EQEMU_COMPILE_TIMESTAMP
+#define EQEMU_COMPILE_TIMESTAMP __TIMESTAMP__
+#endif
+
+#define COMPILE_DATE EQEMU_COMPILE_DATE
+#define COMPILE_TIME EQEMU_COMPILE_TIME
+
 #ifndef WIN32
-#define LAST_MODIFIED    __TIME__
+#define LAST_MODIFIED EQEMU_COMPILE_TIME
 #else
-#define LAST_MODIFIED	__TIMESTAMP__
+#define LAST_MODIFIED EQEMU_COMPILE_TIMESTAMP
 #endif
 
 /**

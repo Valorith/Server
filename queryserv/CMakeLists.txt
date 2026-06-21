@@ -20,6 +20,7 @@ set(qserv_headers
 )
 
 add_executable(queryserv ${qserv_sources} ${qserv_headers})
+eqemu_normalize_unix_binary(queryserv)
 
 install(TARGETS queryserv RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

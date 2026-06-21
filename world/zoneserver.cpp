@@ -1742,7 +1742,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			auto reclaim = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
 			auto client  = ClientList::Instance()->FindByAccountID(reclaim->account_id);
 			if (!client) {
-				LogInfo(
+				LogTrading(
 					"Ignoring offline reclaim response [{}] for account [{}]; world client not found",
 					reclaim->request_id,
 					reclaim->account_id

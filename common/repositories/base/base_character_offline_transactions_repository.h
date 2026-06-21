@@ -22,6 +22,7 @@ public:
 		uint64_t    id;
 		uint32_t    character_id;
 		uint32_t    type;
+		uint32_t    item_id;
 		std::string item_name;
 		int32_t     quantity;
 		uint64_t    price;
@@ -39,6 +40,7 @@ public:
 			"id",
 			"character_id",
 			"type",
+			"item_id",
 			"item_name",
 			"quantity",
 			"price",
@@ -52,6 +54,7 @@ public:
 			"id",
 			"character_id",
 			"type",
+			"item_id",
 			"item_name",
 			"quantity",
 			"price",
@@ -99,6 +102,7 @@ public:
 		e.id           = 0;
 		e.character_id = 0;
 		e.type         = 0;
+		e.item_id      = 0;
 		e.item_name    = "";
 		e.quantity     = 0;
 		e.price        = 0;
@@ -142,10 +146,11 @@ public:
 			e.id           = row[0] ? strtoull(row[0], nullptr, 10) : 0;
 			e.character_id = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
 			e.type         = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.item_name    = row[3] ? row[3] : "";
-			e.quantity     = row[4] ? static_cast<int32_t>(atoi(row[4])) : 0;
-			e.price        = row[5] ? strtoull(row[5], nullptr, 10) : 0;
-			e.buyer_name   = row[6] ? row[6] : "";
+			e.item_id      = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.item_name    = row[4] ? row[4] : "";
+			e.quantity     = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
+			e.price        = row[6] ? strtoull(row[6], nullptr, 10) : 0;
+			e.buyer_name   = row[7] ? row[7] : "";
 
 			return e;
 		}
@@ -181,10 +186,11 @@ public:
 
 		v.push_back(columns[1] + " = " + std::to_string(e.character_id));
 		v.push_back(columns[2] + " = " + std::to_string(e.type));
-		v.push_back(columns[3] + " = '" + Strings::Escape(e.item_name) + "'");
-		v.push_back(columns[4] + " = " + std::to_string(e.quantity));
-		v.push_back(columns[5] + " = " + std::to_string(e.price));
-		v.push_back(columns[6] + " = '" + Strings::Escape(e.buyer_name) + "'");
+		v.push_back(columns[3] + " = " + std::to_string(e.item_id));
+		v.push_back(columns[4] + " = '" + Strings::Escape(e.item_name) + "'");
+		v.push_back(columns[5] + " = " + std::to_string(e.quantity));
+		v.push_back(columns[6] + " = " + std::to_string(e.price));
+		v.push_back(columns[7] + " = '" + Strings::Escape(e.buyer_name) + "'");
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -209,6 +215,7 @@ public:
 		v.push_back(std::to_string(e.id));
 		v.push_back(std::to_string(e.character_id));
 		v.push_back(std::to_string(e.type));
+		v.push_back(std::to_string(e.item_id));
 		v.push_back("'" + Strings::Escape(e.item_name) + "'");
 		v.push_back(std::to_string(e.quantity));
 		v.push_back(std::to_string(e.price));
@@ -245,6 +252,7 @@ public:
 			v.push_back(std::to_string(e.id));
 			v.push_back(std::to_string(e.character_id));
 			v.push_back(std::to_string(e.type));
+			v.push_back(std::to_string(e.item_id));
 			v.push_back("'" + Strings::Escape(e.item_name) + "'");
 			v.push_back(std::to_string(e.quantity));
 			v.push_back(std::to_string(e.price));
@@ -285,10 +293,11 @@ public:
 			e.id           = row[0] ? strtoull(row[0], nullptr, 10) : 0;
 			e.character_id = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
 			e.type         = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.item_name    = row[3] ? row[3] : "";
-			e.quantity     = row[4] ? static_cast<int32_t>(atoi(row[4])) : 0;
-			e.price        = row[5] ? strtoull(row[5], nullptr, 10) : 0;
-			e.buyer_name   = row[6] ? row[6] : "";
+			e.item_id      = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.item_name    = row[4] ? row[4] : "";
+			e.quantity     = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
+			e.price        = row[6] ? strtoull(row[6], nullptr, 10) : 0;
+			e.buyer_name   = row[7] ? row[7] : "";
 
 			all_entries.push_back(e);
 		}
@@ -316,10 +325,11 @@ public:
 			e.id           = row[0] ? strtoull(row[0], nullptr, 10) : 0;
 			e.character_id = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
 			e.type         = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.item_name    = row[3] ? row[3] : "";
-			e.quantity     = row[4] ? static_cast<int32_t>(atoi(row[4])) : 0;
-			e.price        = row[5] ? strtoull(row[5], nullptr, 10) : 0;
-			e.buyer_name   = row[6] ? row[6] : "";
+			e.item_id      = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.item_name    = row[4] ? row[4] : "";
+			e.quantity     = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
+			e.price        = row[6] ? strtoull(row[6], nullptr, 10) : 0;
+			e.buyer_name   = row[7] ? row[7] : "";
 
 			all_entries.push_back(e);
 		}
@@ -397,6 +407,7 @@ public:
 		v.push_back(std::to_string(e.id));
 		v.push_back(std::to_string(e.character_id));
 		v.push_back(std::to_string(e.type));
+		v.push_back(std::to_string(e.item_id));
 		v.push_back("'" + Strings::Escape(e.item_name) + "'");
 		v.push_back(std::to_string(e.quantity));
 		v.push_back(std::to_string(e.price));
@@ -426,6 +437,7 @@ public:
 			v.push_back(std::to_string(e.id));
 			v.push_back(std::to_string(e.character_id));
 			v.push_back(std::to_string(e.type));
+			v.push_back(std::to_string(e.item_id));
 			v.push_back("'" + Strings::Escape(e.item_name) + "'");
 			v.push_back(std::to_string(e.quantity));
 			v.push_back(std::to_string(e.price));

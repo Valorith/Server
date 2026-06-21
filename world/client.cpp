@@ -1169,7 +1169,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		);
 	}
 
-	LogInfo(
+	LogTrading(
 		"Character entry for [{}] account [{}] found offline {} session character_id [{}] zone_id [{}] instance_id [{}] entity_id [{}]",
 		GetCharName(),
 		GetAccountID(),
@@ -1198,7 +1198,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 			return false;
 		}
 
-		LogInfo(
+		LogTrading(
 			"Cleared stale offline {} session locally for account [{}] character [{}] after {} in [{}] ms",
 			OfflineSessionModeName(mode),
 			GetAccountID(),
@@ -1249,7 +1249,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 	reclaim->mode         = mode;
 	reclaim->response     = OfflineSessionReclaimFailed;
 
-	LogInfo(
+	LogTrading(
 		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}]",
 		OfflineSessionModeName(mode),
 		offline_reclaim_request_id,
@@ -1307,7 +1307,7 @@ void Client::ResetOfflineSessionReclaimState()
 void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Struct &response)
 {
 	if (!offline_reclaim_pending) {
-		LogInfo(
+		LogTrading(
 			"Ignoring offline reclaim response [{}] for account [{}] because no reclaim is pending",
 			response.request_id,
 			response.account_id
@@ -1316,7 +1316,7 @@ void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Str
 	}
 
 	if (response.request_id != offline_reclaim_request_id) {
-		LogInfo(
+		LogTrading(
 			"Ignoring stale offline reclaim response [{}] for account [{}]; current request is [{}]",
 			response.request_id,
 			response.account_id,
@@ -1327,7 +1327,7 @@ void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Str
 
 	auto elapsed_ms = Timer::GetCurrentTime() - offline_reclaim_started_at;
 
-	LogInfo(
+	LogTrading(
 		"Received offline {} reclaim response [{}] status [{}] after [{}] ms for account [{}]",
 		OfflineSessionModeName(offline_reclaim_mode),
 		response.request_id,
@@ -1351,7 +1351,7 @@ void Client::HandleOfflineSessionReclaimResponse(const OfflineSessionReclaim_Str
 			"zone confirmed stale session" :
 			"zone confirmed invalid session state";
 		if (ClearStaleOfflineSession(offline_reclaim_character_id, clear_reason)) {
-			LogInfo(
+			LogTrading(
 				"Cleared offline {} session for account [{}] after zone {} confirmation in [{}] ms",
 				OfflineSessionModeName(offline_reclaim_mode),
 				GetAccountID(),

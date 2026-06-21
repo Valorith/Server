@@ -26,6 +26,7 @@
 #include "common/repositories/buyer_buy_lines_repository.h"
 #include "common/repositories/buyer_repository.h"
 #include "common/repositories/character_offline_transactions_repository.h"
+#include "common/repositories/discovered_items_repository.h"
 #include "common/repositories/trader_repository.h"
 #include "common/rulesys.h"
 #include "common/strings.h"
@@ -35,15 +36,13 @@
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
 #include <numeric>
+#include <unordered_set>
 
 class QueryServ;
 
 extern WorldServer worldserver;
 extern QueryServ* QServ;
 
-// The maximum amount of a single bazaar/barter transaction expressed in copper.
-// Equivalent to 2 Million plat
-constexpr auto MAX_TRANSACTION_VALUE = 2000000000;
 // ##########################################
 // Trade implementation
 // ##########################################
@@ -895,7 +894,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 	// This refreshes the Trader window to display the End Trader button
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
-		LogInfo(
+		LogTrading(
 			"Sending TraderAck2 to client [{}] account [{}] character [{}] zone [{}] instance [{}] entity [{}]",
 			GetCleanName(),
 			AccountID(),
@@ -1331,6 +1330,7 @@ void Client::TradeRequestFailed(const EQApplicationPacket *app)
 	auto outtbs = (TraderBuy_Struct *) outapp->pBuffer;
 
 	memcpy(outtbs, tbs, app->size);
+	outtbs->sub_action   = Bazaar::ResolvePurchaseFailureSubAction(tbs->sub_action);
 	outtbs->already_sold = 0xFFFFFFFF;
 	outtbs->trader_id    = 0xFFFFFFFF;
 
@@ -1413,7 +1413,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	if (in->price * quantity <= 0) {
+	if (in->price == 0 || quantity == 0) {
         Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         trader->Message(Chat::Red, "Internal error. Aborting trade. Please report this to the ServerOP. Error code is 1");
         LogError(
@@ -1430,18 +1430,18 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
         return;
     }
 
-	uint64 total_transaction_value = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_transaction_value > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
-		Message(
-			Chat::Red,
-			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
-		);
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
+	if (total_cost > max_transaction_value) {
+		const auto max_transaction_amount = Strings::Money(max_transaction_value / 1000);
+		Message(Chat::Red, fmt::format(
+			"That would exceed the single transaction limit of {}.",
+			max_transaction_amount
+		).c_str());
 		TradeRequestFailed(app);
 		return;
 	}
 
-	uint64 total_cost = in->price * quantity;
 	if (!TakeMoneyFromPP(total_cost)) {
 		MessageString(Chat::Red, INSUFFICIENT_FUNDS);
         TradeRequestFailed(app);
@@ -1495,6 +1495,19 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		buy_inst->GetItem()->MaxCharges > 0 ? fmt::format("with {} charges ", buy_inst->GetCharges()).c_str() : std::string(""),
 		buy_inst->GetUniqueID()
 	);
+
+	if (RuleB(Bazaar, AuditTrail)) {
+		Bazaar::RecordAuditTrail(
+			database,
+			trader->GetCleanName(),
+			GetCleanName(),
+			buy_inst->GetID(),
+			buy_inst->GetItem()->Name,
+			quantity,
+			total_cost,
+			0
+		);
+	}
 
 	if (merchant_quantity > quantity) {
 		std::unique_ptr<EQ::ItemInstance> vendor_inst(buy_inst ? buy_inst->Clone() : nullptr);
@@ -1573,6 +1586,7 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		if (trader->IsOffline()) {
 			auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 			e.character_id = trader->CharacterID();
+			e.item_id      = buy_inst->GetID();
 			e.item_name    = buy_inst->GetItem()->Name;
 			e.price        = total_cost;
 			e.quantity     = quantity;
@@ -1594,7 +1608,7 @@ void Client::SendBazaarWelcome()
 	data->traders            = results.count_of_traders;
 	data->items              = results.count_of_items;
 
-	LogInfo(
+	LogTrading(
 		"Sending BazaarWelcome to client [{}] account [{}] character [{}] traders [{}] items [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -1925,6 +1939,24 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 
 		sell_line.seller_name = GetCleanName();
 
+		if (!Bazaar::ValidateBarterSellQuantity(sell_line.seller_quantity, sell_line.item_quantity)) {
+			LogTrading(
+				"Rejecting buyer sale with invalid quantity [{}] for buy line quantity [{}] item [{}] seller [{}] buyer [{}]",
+				sell_line.seller_quantity,
+				sell_line.item_quantity,
+				sell_line.item_name,
+				GetCleanName(),
+				sell_line.buyer_name
+			);
+			SendBarterBuyerClientMessage(
+				sell_line,
+				Barter_SellerTransactionComplete,
+				Barter_Failure,
+				Barter_Failure
+			);
+			return;
+		}
+
 		switch (sell_line.purchase_method) {
 			case BarterInBazaar:
 			case BarterByVendor: {
@@ -2043,6 +2075,19 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				AddMoneyToPP(total_cost, false);
 				buyer->TakeMoneyFromPP(total_cost, false);
 
+				if (RuleB(Bazaar, AuditTrail)) {
+					Bazaar::RecordAuditTrail(
+						database,
+						GetCleanName(),
+						buyer->GetCleanName(),
+						sell_line.item_id,
+						sell_line.item_name,
+						sell_line.seller_quantity,
+						total_cost,
+						1
+					);
+				}
+
 				if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 					PlayerEvent::BarterTransaction e{};
 					e.status        = "Successful Barter Transaction";
@@ -2062,10 +2107,11 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 				if (buyer->IsOffline()) {
 					auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 					e.character_id = buyer->CharacterID();
+					e.item_id      = sell_line.item_id;
 					e.item_name    = sell_line.item_name;
 					e.price        = total_cost;
 					e.quantity     = sell_line.seller_quantity;
-					e.type         = BUYER_TRANSACTION;
+					e.type         = BARTER_TRANSACTION;
 					e.buyer_name   = GetCleanName();
 
 					CharacterOfflineTransactionsRepository::InsertOne(database, e);
@@ -2411,15 +2457,26 @@ void Client::BuyerItemSearch(const EQApplicationPacket *app)
 	uint32             it    = 0;
 
 	BuyerItemSearchResults_Struct bisr{};
+	const std::string             search_string = Strings::ToLower(bis->search_string);
+	const bool                    filter_discovered_items = RuleB(Character, EnableDiscoveredItems);
+
+	std::unordered_set<uint32_t> discovered_item_ids;
+	if (filter_discovered_items) {
+		discovered_item_ids = DiscoveredItemsRepository::GetAllItemIDs(database);
+	}
 
 	while ((item = database.IterateItems(&it)) && bisr.results.size() < RuleI(Bazaar, MaxBuyerInventorySearchResults)) {
 		if (!item->NoDrop) {
 			continue;
 		}
 
+		if (filter_discovered_items && !discovered_item_ids.contains(item->ID)) {
+			continue;
+		}
+
 		auto item_name_match = std::strstr(
 			Strings::ToLower(item->Name).c_str(),
-			Strings::ToLower(bis->search_string).c_str()
+			search_string.c_str()
 		);
 
 		if (item_name_match) {
@@ -2498,7 +2555,7 @@ void Client::SendBecomeTrader(BazaarTraderBarterActions action, uint32 entity_id
 	data->zone_instance_id = trader->GetInstanceID();
 	strn0cpy(data->trader_name, trader->GetCleanName(), sizeof(data->trader_name));
 
-	LogInfo(
+	LogTrading(
 		"Sending OP_BecomeTrader to client [{}] account [{}] character [{}] action [{}] trader_entity [{}] trader_character [{}] trader_zone [{}] trader_instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -2522,7 +2579,7 @@ void Client::SendTraderMode(BazaarTraderBarterActions status)
 	data->action    = status;
 	data->entity_id = GetID();
 
-	LogInfo(
+	LogTrading(
 		"Sending OP_Trader mode packet to client [{}] account [{}] character [{}] status [{}] entity [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -2743,7 +2800,7 @@ void Client::DoBazaarInspect(BazaarInspect_Struct &in)
 	);
 
 	if (items.empty()) {
-		LogInfo("Failed to find item with serial number [{}]", in.item_unique_id);
+		LogTrading("Failed to find item with serial number [{}]", in.item_unique_id);
 		return;
 	}
 
@@ -2875,6 +2932,47 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
+	auto item = database.GetItem(trader_item.item_id);
+	if (!item) {
+		LogTrading("Unable to find item id [{}] item unique_id [{}] for bazaar purchase", trader_item.item_id, in->item_unique_id);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	auto quantity_validation = Bazaar::ValidatePurchaseQuantity(in->quantity, item->Stackable, trader_item.item_charges);
+	if (!quantity_validation.is_valid) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid quantity [{}] for item [{}]",
+			in->quantity,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 quantity = quantity_validation.quantity;
+	in->quantity = quantity;
+
+	if (!Bazaar::ValidatePurchasePrice(in->price, trader_item.item_cost)) {
+		LogTrading(
+			"Rejecting bazaar purchase with invalid price [{}] listed price [{}] for item [{}]",
+			in->price,
+			trader_item.item_cost,
+			item->Name
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = Failed;
+		TradeRequestFailed(app);
+		return;
+	}
+
+	uint32 price = trader_item.item_cost;
+	in->price = price;
+
 	auto next_slot = FindNextFreeParcelSlot(CharacterID());
 	if (next_slot == INVALID_INDEX) {
 		LogTrading(
@@ -2890,10 +2988,16 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::UpdateActiveTransaction(database, trader_item.id, true);
-
-	uint32 quantity = in->quantity;
-	auto   item     = database.GetItem(trader_item.item_id);
+	if (!TraderRepository::StartActiveTransaction(database, trader_item.id, in->item_unique_id)) {
+		LogTrading(
+			"Rejecting bazaar parcel purchase for item unique_id [{}] because the listing is already in an active transaction",
+			in->item_unique_id
+		);
+		in->method     = BazaarByParcel;
+		in->sub_action = TransactionInProgress;
+		TradeRequestFailed(app);
+		return;
+	}
 
 	int16 charges   = 1;
 	if (trader_item.item_charges > 0 || item->Stackable || item->MaxCharges > 0) {
@@ -2909,13 +3013,14 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 		in->item_unique_id
 	);
 
-	uint64 total_cost = static_cast<uint64>(in->price) * static_cast<uint64>(quantity);
-	if (total_cost > EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction) {
-		Message(
-			Chat::Red,
-			"That would exceed the single transaction limit of %u platinum.",
-			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction / 1000
-		);
+	const uint64 max_transaction_value = EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+	uint64 total_cost = static_cast<uint64>(price) * static_cast<uint64>(quantity);
+	if (total_cost > max_transaction_value) {
+		const auto max_transaction_amount = Strings::Money(max_transaction_value / 1000);
+		Message(Chat::Red, fmt::format(
+			"That would exceed the single transaction limit of {}.",
+			max_transaction_amount
+		).c_str());
 		TraderRepository::UpdateActiveTransaction(database, trader_item.id, false);
 		TradeRequestFailed(app);
 		return;
@@ -2950,8 +3055,8 @@ void Client::BuyTraderItemFromBazaarWindow(const EQApplicationPacket *app)
 	out_data->trader_buy_struct.method       = in->method;
 	out_data->trader_buy_struct.already_sold = in->already_sold;
 	out_data->trader_buy_struct.item_id      = item->ID;
-	out_data->trader_buy_struct.price        = in->price;
-	out_data->trader_buy_struct.quantity     = in->quantity;
+	out_data->trader_buy_struct.price        = price;
+	out_data->trader_buy_struct.quantity     = quantity;
 	out_data->trader_buy_struct.sub_action   = in->sub_action;
 	out_data->trader_buy_struct.trader_id    = trader_item.character_id;
 	out_data->buyer_id                       = CharacterID();

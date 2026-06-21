@@ -93,6 +93,7 @@ set(world_headers
 source_group("cli" REGULAR_EXPRESSION "cli/.*")
 
 add_executable(world ${world_sources} ${world_headers})
+eqemu_normalize_unix_binary(world)
 
 target_compile_definitions(world PRIVATE WORLD)
 

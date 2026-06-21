@@ -9,9 +9,11 @@ set(tests_sources
 set(tests_headers
 	atobool_test.h
 	autoskill_util_test.h
+	bazaar_test.h
 	buyer_buy_lines_repository_test.h
 	crash_report_endpoint_test.h
 	data_verification_test.h
+	eq_limits_test.h
 	expedition_schema_test.h
 	fixed_memory_test.h
 	fixed_memory_variable_test.h
@@ -26,6 +28,7 @@ set(tests_headers
 )
 
 add_executable(tests ${tests_sources} ${tests_headers})
+eqemu_normalize_unix_binary(tests)
 
 target_link_libraries(tests common cppunit)
 target_include_directories(tests PRIVATE ..)

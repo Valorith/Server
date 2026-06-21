@@ -18,6 +18,7 @@ set(ucs_headers
 )
 
 add_executable(ucs ${ucs_sources} ${ucs_headers})
+eqemu_normalize_unix_binary(ucs)
 
 install(TARGETS ucs RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

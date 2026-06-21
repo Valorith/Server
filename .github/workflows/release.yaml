@@ -179,6 +179,12 @@ jobs:
     container:
       image: akkadius/eqemu-server:v16
       options: --user 0
+    env:
+      EQEMU_RELEASE_VCPKG_CACHE: /home/eqemu/.cache/vcpkg/archives
+      EQEMU_RELEASE_DEPS_SOURCE: /home/eqemu/code
+      EQEMU_RELEASE_DEPS_BUILD: /home/eqemu/code/build
+      EQEMU_RELEASE_SOURCE_ROOT: /home/eqemu/.codex-builds/master/repo
+      EQEMU_RELEASE_BUILD_ROOT: /home/eqemu/.codex-builds/master/build-ninja
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v5
@@ -191,63 +197,109 @@ jobs:
         shell: bash
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-release-ccache-${{ hashFiles('CMakeLists.txt', '.github/workflows/release.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-release-ccache-
-
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: .vcpkg-binary-cache
-          key: ${{ runner.os }}-release-vcpkg-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
+          path: /home/eqemu/.cache/vcpkg/archives
+          key: ${{ runner.os }}-release-vcpkg-canonical-v1-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
           restore-keys: |
-            ${{ runner.os }}-release-vcpkg-
-            ${{ runner.os }}-vcpkg-
+            ${{ runner.os }}-release-vcpkg-canonical-v1-
 
       - name: Configure vcpkg binary cache
         shell: bash
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/.vcpkg-binary-cache"
-          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/.vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
+          mkdir -p "$EQEMU_RELEASE_VCPKG_CACHE"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$EQEMU_RELEASE_VCPKG_CACHE,readwrite" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         shell: bash
         run: |
           apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build ccache uuid-dev zip unzip python3 patchelf
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential ninja-build uuid-dev zip unzip python3 rsync
 
-      - name: Configure
+      - name: Prepare canonical Linux source trees
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja \
+          set -euo pipefail
+          rm -rf "$EQEMU_RELEASE_DEPS_SOURCE" "$EQEMU_RELEASE_DEPS_BUILD" "$EQEMU_RELEASE_SOURCE_ROOT" "$EQEMU_RELEASE_BUILD_ROOT"
+          mkdir -p "$EQEMU_RELEASE_DEPS_SOURCE" "$EQEMU_RELEASE_SOURCE_ROOT"
+          rsync -a --delete \
+            --exclude build/ \
+            --exclude 'build-*/' \
+            --exclude dist/ \
+            --exclude .codex/ \
+            --exclude submodules/vcpkg/buildtrees/ \
+            --exclude submodules/vcpkg/downloads/ \
+            --exclude submodules/vcpkg/packages/ \
+            "$GITHUB_WORKSPACE"/ "$EQEMU_RELEASE_DEPS_SOURCE"/
+          rsync -a --delete \
+            --exclude build/ \
+            --exclude 'build-*/' \
+            --exclude dist/ \
+            --exclude .codex/ \
+            --exclude submodules/vcpkg/buildtrees/ \
+            --exclude submodules/vcpkg/downloads/ \
+            --exclude submodules/vcpkg/packages/ \
+            "$GITHUB_WORKSPACE"/ "$EQEMU_RELEASE_SOURCE_ROOT"/
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$EQEMU_RELEASE_DEPS_SOURCE"
+          git config --global --add safe.directory "$EQEMU_RELEASE_SOURCE_ROOT"
+
+      - name: Prime canonical vcpkg cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(find "$EQEMU_RELEASE_VCPKG_CACHE" -type f -name '*.zip' -print -quit)" ]; then
+            echo "Canonical vcpkg binary cache is already populated."
+            exit 0
+          fi
+
+          cmake -S "$EQEMU_RELEASE_DEPS_SOURCE" -B "$EQEMU_RELEASE_DEPS_BUILD" -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DEQEMU_BUILD_TESTS=ON \
             -DEQEMU_BUILD_LOGIN=ON \
             -DEQEMU_BUILD_LUA=ON \
             -DEQEMU_BUILD_PERL=ON \
-            -DEQEMU_BUILD_CLIENT_FILES=ON
+            -DEQEMU_DETERMINISTIC_BUILD=ON
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S "$EQEMU_RELEASE_SOURCE_ROOT" -B "$EQEMU_RELEASE_BUILD_ROOT" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DEQEMU_BUILD_TESTS=ON \
+            -DEQEMU_BUILD_LOGIN=ON \
+            -DEQEMU_BUILD_LUA=ON \
+            -DEQEMU_BUILD_PERL=ON \
+            -DEQEMU_DETERMINISTIC_BUILD=ON
 
       - name: Build
         shell: bash
-        run: cmake --build build --parallel
+        run: cmake --build "$EQEMU_RELEASE_BUILD_ROOT" --parallel
 
       - name: Test
         shell: bash
-        working-directory: build
+        working-directory: ${{ env.EQEMU_RELEASE_BUILD_ROOT }}
         run: ./bin/tests
 
       - name: Package binaries
         shell: bash
         run: |
-          bash utils/scripts/release/package-linux.sh \
+          EQEMU_RELEASE_BIN_DIR="$EQEMU_RELEASE_BUILD_ROOT/bin" \
+          EQEMU_RELEASE_DIST_DIR="$GITHUB_WORKSPACE/dist" \
+          bash "$EQEMU_RELEASE_SOURCE_ROOT/utils/scripts/release/package-linux.sh" \
             "${{ needs.prepare-release.outputs.version }}" \
             "${{ needs.prepare-release.outputs.tag }}" \
             "${{ needs.prepare-release.outputs.release_sha }}"
+
+      - name: Verify packaged binaries match build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="dist/eqemu-server-linux-x64-${{ needs.prepare-release.outputs.tag }}"
+          for binary in world zone ucs queryserv eqlaunch shared_memory loginserver import_client_files export_client_files; do
+            cmp "$EQEMU_RELEASE_BUILD_ROOT/bin/${binary}" "${package_dir}/${binary}"
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -259,7 +311,7 @@ jobs:
   build-windows:
     name: Build Windows
     needs: prepare-release
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v5
@@ -271,10 +323,56 @@ jobs:
       - name: Enable long paths
         run: git config --global core.longpaths true
 
+      - name: Install canonical MSVC toolset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $toolsetVersion = "14.39.33519"
+          $componentId = "Microsoft.VisualStudio.Component.VC.14.39.17.9.x86.x64"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $setup = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\setup.exe"
+
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw "vswhere was not found at $vswhere."
+          }
+          if (-not (Test-Path -LiteralPath $setup)) {
+            throw "Visual Studio setup.exe was not found at $setup."
+          }
+
+          $installPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($installPath)) {
+            throw "No Visual Studio 2022 C++ installation was found."
+          }
+
+          $toolsetPath = Join-Path $installPath "VC\Tools\MSVC\$toolsetVersion"
+          if (-not (Test-Path -LiteralPath $toolsetPath)) {
+            Write-Host "Installing $componentId into $installPath"
+            $argumentLine = 'modify --installPath "{0}" --add {1} --quiet --norestart --nocache' -f $installPath, $componentId
+            $process = Start-Process -FilePath $setup -ArgumentList $argumentLine -Wait -PassThru
+            if ($process.ExitCode -notin @(0, 3010)) {
+              throw "Visual Studio modify failed with exit code $($process.ExitCode)."
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $toolsetPath)) {
+            throw "Expected MSVC toolset directory was not installed: $toolsetPath"
+          }
+          Write-Host "Using canonical MSVC toolset at $toolsetPath"
+
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+          toolset: 14.39.33519
+
+      - name: Verify local MSVC toolset
+        shell: pwsh
+        run: |
+          $output = & cl 2>&1 | Out-String
+          Write-Host $output
+          if ($output -notmatch "Version 19\.39\.33523") {
+            throw "Expected the local canonical MSVC 19.39.33523 toolset."
+          }
 
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
@@ -292,50 +390,50 @@ jobs:
           New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
           "VCPKG_BINARY_SOURCES=clear;files,$cachePath,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Install officially-supported Strawberry Perl (5.24)
+      - name: Install local-compatible Strawberry Perl (5.24)
         shell: pwsh
         run: |
           $version = "5.24.4.1"
           $url = "https://strawberryperl.com/download/$version/strawberry-perl-$version-64bit-portable.zip"
           $zip = Join-Path $env:RUNNER_TEMP "strawberry-$version.zip"
-          $dest = "C:\Strawberry-5.24"
-          Write-Host "Installing Strawberry Perl $version (the supported EQEmu Windows Perl)"
+          $dest = "C:\Strawberry"
+          Write-Host "Installing Strawberry Perl $version at the local canonical path"
           Invoke-WebRequest -Uri $url -OutFile $zip
+          if (Test-Path $dest) {
+            Remove-Item -LiteralPath $dest -Recurse -Force
+          }
           Expand-Archive -Path $zip -DestinationPath $dest -Force
           # perl.exe's MinGW runtime (e.g. libgcc_s_seh-1.dll) can live in c\bin; copy it
-          # next to perl.exe so FindPerl can run perl during configure WITHOUT putting the
-          # MinGW toolchain (gcc/g++) on PATH, which would derail the MSVC/Ninja build.
+          # next to perl.exe so FindPerl can run perl during configure without putting the
+          # MinGW toolchain (gcc/g++) on PATH.
           foreach ($d in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll') {
             if (Test-Path "$dest\c\bin\$d") { Copy-Item "$dest\c\bin\$d" "$dest\perl\bin\" -Force }
           }
-          # Put 5.24 ahead of the runner's default Strawberry so FindPerl links perl524.dll.
+          # Put 5.24 ahead of the runner's default Strawberry so FindPerl matches local builds.
           "$dest\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "$dest\perl\bin"      | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $perlExe = "$dest\perl\bin\perl.exe".Replace('\', '/')
-          "PERL_524_EXE=$perlExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           & "$dest\perl\bin\perl.exe" -e "printf qq{Linking against Strawberry Perl %vd\n}, $^V"
 
       - name: Configure
         shell: pwsh
         run: |
-          cmake -S . -B build -G Ninja `
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
-            -DPERL_EXECUTABLE="$env:PERL_524_EXE" `
+          cmake -S . -B build-codex -G "Visual Studio 17 2022" -A x64 `
             -DEQEMU_BUILD_TESTS=ON `
-            -DEQEMU_BUILD_LOGIN=ON `
-            -DEQEMU_BUILD_LUA=ON `
-            -DEQEMU_BUILD_ZLIB=ON `
-            -DEQEMU_BUILD_PERL=ON `
-            -DEQEMU_BUILD_CLIENT_FILES=ON
+            -DEQEMU_BUILD_LOGIN=ON
 
       - name: Build
         shell: pwsh
-        run: cmake --build build --parallel
-
-      - name: Test
-        shell: pwsh
-        working-directory: build
-        run: ./bin/tests.exe
+        run: |
+          cmake --build build-codex --config Release --target `
+            shared_memory `
+            world `
+            zone `
+            ucs `
+            queryserv `
+            loginserver `
+            eqlaunch `
+            import_client_files `
+            export_client_files
 
       - name: Package binaries
         shell: pwsh
@@ -343,15 +441,39 @@ jobs:
           ./utils/scripts/release/package-windows.ps1 `
             -Version "${{ needs.prepare-release.outputs.version }}" `
             -Tag "${{ needs.prepare-release.outputs.tag }}" `
-            -CommitSha "${{ needs.prepare-release.outputs.release_sha }}"
+            -CommitSha "${{ needs.prepare-release.outputs.release_sha }}" `
+            -BuildBinDir "build-codex\bin\Release"
+
+      - name: Verify packaged binaries match build outputs
+        shell: pwsh
+        run: |
+          $packageDir = "dist\eqemu-server-windows-x64-${{ needs.prepare-release.outputs.tag }}"
+          $binaries = @(
+            "shared_memory.exe",
+            "world.exe",
+            "zone.exe",
+            "ucs.exe",
+            "queryserv.exe",
+            "loginserver.exe",
+            "eqlaunch.exe",
+            "import_client_files.exe",
+            "export_client_files.exe"
+          )
+          foreach ($binary in $binaries) {
+            $built = Get-FileHash -LiteralPath (Join-Path "build-codex\bin\Release" $binary) -Algorithm SHA256
+            $packaged = Get-FileHash -LiteralPath (Join-Path $packageDir $binary) -Algorithm SHA256
+            if ($built.Hash -ne $packaged.Hash) {
+              throw "Packaged binary [$binary] does not match the build output."
+            }
+          }
 
       - name: Smoke test drop-in package
         shell: pwsh
         run: |
           ./utils/scripts/release/smoke-windows-dropin.ps1 `
             -PackageZip "dist/eqemu-server-windows-x64-${{ needs.prepare-release.outputs.tag }}.zip" `
-            -PerlBinDir "C:\Strawberry-5.24\perl\bin" `
-            -MariaDbPluginRoot "build\vcpkg_installed"
+            -PerlBinDir "C:\Strawberry\perl\bin" `
+            -MariaDbPluginRoot "build-codex\vcpkg_installed"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

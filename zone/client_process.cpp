@@ -616,6 +616,10 @@ bool Client::Process() {
 	}
 
 	if (client_state == DISCONNECTED) {
+		if (IsOffline()) {
+			return false;
+		}
+
 		OnDisconnect(true);
 		std::cout << "Client disconnected (cs=d): " << GetName() << std::endl;
 		RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = "/MQInstantCamp: Possible instant camp disconnect"});
@@ -669,6 +673,10 @@ bool Client::Process() {
 
 	if (eqs && client_state != CLIENT_LINKDEAD && (client_state == CLIENT_ERROR || client_state == DISCONNECTED || client_state == CLIENT_KICKED || !eqs->CheckState(ESTABLISHED)))
 	{
+		if (IsOffline()) {
+			return false;
+		}
+
 		//client logged out or errored out
 		//ResetTrade();
 		if (client_state != CLIENT_KICKED && !bZoning && !instalog) {
