@@ -95,10 +95,27 @@ pTimerType GetAutoSkillTimer(const Client *client, EQ::skills::SkillType skill)
 	return pTimerCombatAbility;
 }
 
-uint32 GetVisibleAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill, int reuse_time)
+int GetAutoSkillHasteModifier(Client *client)
 {
+	const int haste = client->GetHaste();
+
+	if (haste >= 0) {
+		return 10000 / (100 + haste);
+	}
+
+	return 100 - haste;
+}
+
+uint32 GetAdjustedAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill, int reuse_time)
+{
+	reuse_time -= 1;
 	reuse_time -= client->GetSkillReuseTime(skill);
 
+	if (reuse_time <= 0) {
+		return 0;
+	}
+
+	reuse_time = (reuse_time * GetAutoSkillHasteModifier(client)) / 100;
 	if (reuse_time <= 0) {
 		return 0;
 	}
@@ -110,23 +127,23 @@ uint32 GetMinimumAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill)
 {
 	switch (skill) {
 		case EQ::skills::SkillBackstab:
-			return GetVisibleAutoSkillReuseTime(client, skill, BackstabReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, BackstabReuseTime);
 		case EQ::skills::SkillFrenzy:
-			return GetVisibleAutoSkillReuseTime(client, skill, FrenzyReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, FrenzyReuseTime);
 		case EQ::skills::SkillFlyingKick:
-			return GetVisibleAutoSkillReuseTime(client, skill, FlyingKickReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, FlyingKickReuseTime);
 		case EQ::skills::SkillDragonPunch:
-			return GetVisibleAutoSkillReuseTime(client, skill, TailRakeReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, TailRakeReuseTime);
 		case EQ::skills::SkillEagleStrike:
-			return GetVisibleAutoSkillReuseTime(client, skill, EagleStrikeReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, EagleStrikeReuseTime);
 		case EQ::skills::SkillTigerClaw:
-			return GetVisibleAutoSkillReuseTime(client, skill, TigerClawReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, TigerClawReuseTime);
 		case EQ::skills::SkillRoundKick:
-			return GetVisibleAutoSkillReuseTime(client, skill, RoundKickReuseTime - 1);
+			return GetAdjustedAutoSkillReuseTime(client, skill, RoundKickReuseTime);
 		case EQ::skills::SkillKick:
-			return GetVisibleAutoSkillReuseTime(client, skill, KickReuseTime + 3);
+			return GetAdjustedAutoSkillReuseTime(client, skill, KickReuseTime);
 		case EQ::skills::SkillBash:
-			return GetVisibleAutoSkillReuseTime(client, skill, BashReuseTime + 3);
+			return GetAdjustedAutoSkillReuseTime(client, skill, BashReuseTime);
 		default:
 			return 0;
 	}
@@ -281,7 +298,7 @@ void Client::ProcessAutoSkills()
 			continue;
 		}
 
-		if (!IsValidAutoSkillTarget(this, target)) {
+		if (GetTarget() != target) {
 			return;
 		}
 
