@@ -96,10 +96,14 @@ uint32 EQ::skills::autoskill::SetEnabled(uint32 enabled_mask, EQ::skills::SkillT
 
 uint32 EQ::skills::autoskill::SanitizeMask(uint32 enabled_mask)
 {
-	uint32 supported_mask = 0;
-	for (const auto &definition : GetSkillDefinitions()) {
-		supported_mask |= definition.mask;
-	}
+	static const uint32 supported_mask = []() {
+		uint32 mask = 0;
+		for (const auto &definition : GetSkillDefinitions()) {
+			mask |= definition.mask;
+		}
+
+		return mask;
+	}();
 
 	return enabled_mask & supported_mask;
 }
