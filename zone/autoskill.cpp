@@ -99,11 +99,12 @@ int GetAutoSkillHasteModifier(Client *client)
 {
 	const int haste = client->GetHaste();
 
-	if (haste >= 0) {
-		return 10000 / (100 + haste);
+	if (haste <= 0) {
+		return 100;
 	}
 
-	return 100 - haste;
+	// Client haste is 100-based: 100 is unmodified speed.
+	return 10000 / haste;
 }
 
 uint32 GetAdjustedAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill, int reuse_time)
