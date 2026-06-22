@@ -49,12 +49,13 @@
 #endif
 
 /**
- * Every time a Database SQL is added to Github increment CURRENT_BINARY_DATABASE_VERSION
- * number and make sure you update the manifest
+ * Every time a Database SQL is added to Github, keep the binary database
+ * version aligned with the manifest. Release automation syncs the server and
+ * bots values from the manifest files via utils/scripts/release/release_version.py.
  *
  * Manifest: https://github.com/EQEmu/Server/blob/master/utils/sql/db_update_manifest.txt
  */
 
-#define CURRENT_BINARY_DATABASE_VERSION 9349
+#define CURRENT_BINARY_DATABASE_VERSION 9351
 #define CURRENT_BINARY_BOTS_DATABASE_VERSION 9054
 #define CUSTOM_BINARY_DATABASE_VERSION 0

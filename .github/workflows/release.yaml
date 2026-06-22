@@ -97,6 +97,7 @@ jobs:
           fi
 
           python3 utils/scripts/release/release_version.py set --version "$version" --channel release
+          python3 utils/scripts/release/release_version.py check-db-versions
 
           echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"

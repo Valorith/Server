@@ -6,6 +6,16 @@ on:
   pull_request:
 
 jobs:
+  metadata:
+    name: Metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Check binary database versions
+        run: python3 utils/scripts/release/release_version.py check-db-versions
+
   # Check if we should skip this workflow run (e.g., if the same code already built successfully)
   pre_job:
     runs-on: ubuntu-latest
