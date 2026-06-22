@@ -24,7 +24,7 @@
 
 // Build variables
 // these get injected during the build pipeline
-#define CURRENT_VERSION "1.2.12" // always append -dev to the current version for custom-builds
+#define CURRENT_VERSION "1.2.12-dev" // always append -dev to the current version for custom-builds
 #define LOGIN_VERSION "0.8.0"
 
 #ifndef EQEMU_COMPILE_DATE
