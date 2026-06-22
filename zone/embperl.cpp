@@ -81,9 +81,10 @@ void Embperl::DoInit()
 	//a little routine we use a lot.
 	eval_pv("sub my_eval { eval $_[0];}", TRUE);    //dies on error
 	
-	//ruin the perl exit and command:
+	//ruin the perl exit, sleep, and filesystem ownership commands:
 	eval_pv("sub my_exit {}", TRUE);
 	eval_pv("sub my_sleep {}", TRUE);
+	eval_pv("sub my_chown { return 0; }", TRUE);
 	if (gv_stashpv("CORE::GLOBAL", FALSE)) {
 		GV* exitgp = gv_fetchpv("CORE::GLOBAL::exit", TRUE, SVt_PVCV);
 		GvCV_set(exitgp, perl_get_cv("my_exit", TRUE));    //dies on error
@@ -91,6 +92,9 @@ void Embperl::DoInit()
 		GV* sleepgp = gv_fetchpv("CORE::GLOBAL::sleep", TRUE, SVt_PVCV);
 		GvCV_set(sleepgp, perl_get_cv("my_sleep", TRUE));    //dies on error
 		GvIMPORTED_CV_on(sleepgp);
+		GV* chowngp = gv_fetchpv("CORE::GLOBAL::chown", TRUE, SVt_PVCV);
+		GvCV_set(chowngp, perl_get_cv("my_chown", TRUE));    //dies on error
+		GvIMPORTED_CV_on(chowngp);
 	}
 	
 	//declare our file eval routine.
