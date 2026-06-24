@@ -842,17 +842,21 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return item_unique_id.empty() || item_unique_id == "0000000000000000";
 	};
 
-	auto unique_ids_match = [&is_placeholder_unique_id](const std::string &left, const std::string &right) {
-		return left == right || (is_placeholder_unique_id(left) && is_placeholder_unique_id(right));
-	};
-
 	std::vector<TraderSatchelItem> satchel_items{};
 	satchel_items.reserve(max_items);
 
 	for (int16 i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		if (satchel_items.size() >= max_items) {
+			break;
+		}
+
 		auto item = GetInv().GetItem(i);
 		if (item && item->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) {
 			for (int x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
+				if (satchel_items.size() >= max_items) {
+					break;
+				}
+
 				const int16 slot_id = EQ::InventoryProfile::CalcSlotId(i, x);
 				auto        inst    = GetInv().GetItem(slot_id);
 				if (inst) {
@@ -970,9 +974,17 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return true;
 	};
 
-	auto find_satchel_item_by_unique_id = [&satchel_items, &unique_ids_match](const std::string &item_unique_id) -> TraderSatchelItem* {
+	auto find_satchel_item = [&satchel_items, &is_placeholder_unique_id](const BazaarTraderDetails &trader_item) -> TraderSatchelItem* {
+		if (is_placeholder_unique_id(trader_item.unique_id)) {
+			if (trader_item.serial_number < satchel_items.size()) {
+				return &satchel_items[trader_item.serial_number];
+			}
+
+			return nullptr;
+		}
+
 		for (auto &item: satchel_items) {
-			if (item.inst && unique_ids_match(item.inst->GetUniqueID(), item_unique_id)) {
+			if (item.inst && item.inst->GetUniqueID() == trader_item.unique_id) {
 				return &item;
 			}
 		}
@@ -981,7 +993,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	};
 
 	for (auto &i: in.items) {
-		auto item = find_satchel_item_by_unique_id(i.unique_id);
+		auto item = find_satchel_item(i);
 		if (!item || !item->inst) {
 			trade_items_valid = false;
 			break;
@@ -1029,8 +1041,44 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {};", CharacterID()));
-	TraderRepository::ReplaceMany(database, trader_items);
+	database.TransactionBegin();
+	const auto delete_result = database.QueryDatabase(
+		fmt::format(
+			"DELETE FROM {} WHERE `character_id` = {}",
+			TraderRepository::TableName(),
+			CharacterID()
+		)
+	);
+	const auto replaced_rows = delete_result.Success() ? TraderRepository::ReplaceMany(database, trader_items) : 0;
+
+	if (!delete_result.Success() || replaced_rows == 0) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to rebuild trader rows while starting trader mode for client [{}] character [{}]: delete_success [{}] replaced_rows [{}] error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			delete_result.Success(),
+			replaced_rows,
+			delete_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
+
+	const auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to commit trader row rebuild while starting trader mode for client [{}] character [{}]: error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			commit_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
 
 	// This refreshes the Trader window to display the End Trader button
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
