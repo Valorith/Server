@@ -825,6 +825,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	bool                                  trade_items_valid = true;
 	std::vector<TraderRepository::Trader> trader_items{};
 	ClickTraderNew_Struct                 in;
+	const auto                            max_items = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
 
 	EQ::Util::MemoryStreamReader ss(reinterpret_cast<char *>(app->pBuffer), app->size);
 	cereal::BinaryInputArchive   ar(ss);
@@ -846,7 +847,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	};
 
 	std::vector<TraderSatchelItem> satchel_items{};
-	satchel_items.reserve(GetInv().GetLookup()->InventoryTypeSize.Bazaar);
+	satchel_items.reserve(max_items);
 
 	for (int16 i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
 		auto item = GetInv().GetItem(i);
@@ -916,8 +917,12 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return true;
 	};
 
-	auto add_trader_item = [this, &trader_items, &listed_slots, &ensure_unique_id](TraderSatchelItem &item, uint32 cost) {
+	auto add_trader_item = [this, max_items, &trader_items, &listed_slots, &ensure_unique_id](TraderSatchelItem &item, uint32 cost) {
 		if (!item.inst || listed_slots.contains(item.slot_id)) {
+			return true;
+		}
+
+		if (trader_items.size() >= max_items) {
 			return true;
 		}
 
