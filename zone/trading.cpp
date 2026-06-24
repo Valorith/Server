@@ -931,13 +931,11 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		}
 
 		if (item.inst->GetItem() && item.inst->GetItem()->NoDrop == 0) {
-			Message(
-				Chat::Red,
-				fmt::format(
-					"Item: {} is NODROP and found in a Trader's Satchel. Please remove and restart trader mode",
-					item.inst->GetItem()->Name
-				).c_str()
+			const auto message = fmt::format(
+				"Item: {} is NODROP and found in a Trader's Satchel. Please remove and restart trader mode",
+				item.inst->GetItem()->Name
 			);
+			Message(Chat::Red, "%s", message.c_str());
 			TraderEndTrader();
 			return false;
 		}
