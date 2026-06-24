@@ -1,0 +1,24 @@
+language: "en-US"
+tone_instructions: "Be concise and direct. Prioritize correctness, crashes, security, data loss, protocol/db compatibility, and maintainability. Avoid style-only comments unless they hide real risk."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  path_instructions:
+    - path: "zone/**"
+      instructions: |
+        Apply the root AGENTS.md review guidance. Focus on gameplay correctness, crash risk, packet/protocol compatibility, quest API/binding compatibility, entity lifetime, and regressions to existing zone behavior.
+    - path: "world/**"
+      instructions: |
+        Apply the root AGENTS.md review guidance. Focus on login/session flow, cross-zone state, character/account data integrity, concurrency, and operational regressions.
+    - path: "common/**"
+      instructions: |
+        Apply the root AGENTS.md review guidance. Treat shared helpers, repositories, networking, and database code as high blast-radius. Flag ownership/lifetime, SQL safety, serialization, and API compatibility issues.
+    - path: "utils/sql/**"
+      instructions: |
+        Apply the root AGENTS.md review guidance. Check schema/data changes for backward compatibility, migration ordering, rollout safety, generated repository consistency, and existing-install data integrity.
+    - path: "tests/**"
+      instructions: |
+        Apply the root AGENTS.md review guidance. Look for missing edge cases, regression coverage, and assertions that prove behavior instead of only exercising code.
