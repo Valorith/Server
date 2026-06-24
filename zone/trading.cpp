@@ -1041,7 +1041,19 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return;
 	}
 
-	database.TransactionBegin();
+	const auto begin_result = database.TransactionBegin();
+	if (!begin_result.Success()) {
+		LogError(
+			"Failed to begin trader row rebuild transaction while starting trader mode for client [{}] character [{}]: error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			begin_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
+
 	const auto delete_result = database.QueryDatabase(
 		fmt::format(
 			"DELETE FROM {} WHERE `character_id` = {}",
