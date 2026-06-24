@@ -13274,6 +13274,11 @@ void Client::BroadcastPositionUpdate()
 	spu->delta_heading = FloatToEQ10(0);
 	spu->animation     = 0;
 
+	if (IsOffline()) {
+		entity_list.QueueClients(this, &outapp, true);
+		return;
+	}
+
 	entity_list.QueueCloseClients(this, &outapp, true, zone->GetClientUpdateRange());
 
 	Group *g = GetGroup();

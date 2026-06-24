@@ -17651,6 +17651,8 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 	entity_list.QueueClients(this, outapp, true);
 	safe_delete(outapp);
 
+	offline_client->BroadcastPositionUpdate();
+
 	offline_client->UpdateWho(3);
 	LogTrading(
 		"Completed offline {} activation for client [{}] account [{}] character [{}]",

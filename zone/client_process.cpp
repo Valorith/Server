@@ -157,7 +157,7 @@ bool Client::Process() {
 		}
 
 		/* I haven't naturally updated my position in 10 seconds, updating manually */
-		if (!IsOffline() && !IsMoving() && m_position_update_timer.Check()) {
+		if (!IsMoving() && m_position_update_timer.Check()) {
 			BroadcastPositionUpdate();
 		}
 
