@@ -867,9 +867,13 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	}
 
 	std::unordered_map<std::string, uint32> explicit_prices_by_unique_id{};
+	std::unordered_map<int16, uint32>       explicit_prices_by_slot_id{};
 	for (auto const &i: in.items) {
 		if (!is_placeholder_unique_id(i.unique_id)) {
 			explicit_prices_by_unique_id[i.unique_id] = static_cast<uint32>(i.cost);
+		}
+		else if (i.serial_number < satchel_items.size()) {
+			explicit_prices_by_slot_id[satchel_items[i.serial_number].slot_id] = static_cast<uint32>(i.cost);
 		}
 	}
 
@@ -1017,7 +1021,10 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 			const auto current_unique_id = candidate.inst->GetUniqueID();
 			uint32     cost              = static_cast<uint32>(i.cost);
-			if (!is_placeholder_unique_id(current_unique_id) && explicit_prices_by_unique_id.contains(current_unique_id)) {
+			if (explicit_prices_by_slot_id.contains(candidate.slot_id)) {
+				cost = explicit_prices_by_slot_id[candidate.slot_id];
+			}
+			else if (!is_placeholder_unique_id(current_unique_id) && explicit_prices_by_unique_id.contains(current_unique_id)) {
 				cost = explicit_prices_by_unique_id[current_unique_id];
 			}
 
@@ -1061,14 +1068,15 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	);
 	const auto replaced_rows = delete_result.Success() ? TraderRepository::ReplaceMany(database, trader_items) : 0;
 
-	if (!delete_result.Success() || replaced_rows == 0) {
+	if (!delete_result.Success() || static_cast<size_t>(replaced_rows) < trader_items.size()) {
 		database.TransactionRollback();
 		LogError(
-			"Failed to rebuild trader rows while starting trader mode for client [{}] character [{}]: delete_success [{}] replaced_rows [{}] error [{}]",
+			"Failed to rebuild trader rows while starting trader mode for client [{}] character [{}]: delete_success [{}] replaced_rows [{}] expected_rows [{}] error [{}]",
 			GetCleanName(),
 			CharacterID(),
 			delete_result.Success(),
 			replaced_rows,
+			trader_items.size(),
 			delete_result.ErrorMessage()
 		);
 		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
