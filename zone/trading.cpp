@@ -836,10 +836,19 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	struct TraderSatchelItem {
 		int16             slot_id;
 		EQ::ItemInstance *inst;
+		std::string       container_name;
 	};
 
 	auto is_placeholder_unique_id = [](const std::string &item_unique_id) {
 		return item_unique_id.empty() || item_unique_id == "0000000000000000";
+	};
+
+	auto get_trader_container_name = [](EQ::ItemInstance *item) {
+		if (item && item->GetItem() && item->GetItem()->Name[0]) {
+			return std::string(item->GetItem()->Name);
+		}
+
+		return std::string("a trader container");
 	};
 
 	std::vector<TraderSatchelItem> satchel_items{};
@@ -852,6 +861,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 		auto item = GetInv().GetItem(i);
 		if (item && item->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) {
+			const auto container_name = get_trader_container_name(item);
 			for (int x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
 				if (satchel_items.size() >= max_items) {
 					break;
@@ -860,7 +870,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 				const int16 slot_id = EQ::InventoryProfile::CalcSlotId(i, x);
 				auto        inst    = GetInv().GetItem(slot_id);
 				if (inst) {
-					satchel_items.push_back({ slot_id, inst });
+					satchel_items.push_back({ slot_id, inst, container_name });
 				}
 			}
 		}
@@ -936,8 +946,9 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 		if (item.inst->GetItem() && item.inst->GetItem()->NoDrop == 0) {
 			const auto message = fmt::format(
-				"Item: {} is NODROP and found in a Trader's Satchel. Please remove and restart trader mode",
-				item.inst->GetItem()->Name
+				"Item: {} is NODROP and found in {}. Please remove and restart trader mode",
+				item.inst->GetItem()->Name,
+				item.container_name
 			);
 			Message(Chat::Red, "%s", message.c_str());
 			TraderEndTrader();
