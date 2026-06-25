@@ -759,9 +759,6 @@ void Client::TraderShowItems()
 	cereal::BinaryOutputArchive ar(ss);
 
 	auto trader_items = TraderRepository::GetWhere(database, fmt::format("`character_id` = {}", CharacterID()));
-	if (trader_items.empty()) {
-		return;
-	}
 
 	TraderClientMessaging_Struct tcm{};
 	tcm.action = ListTraderItems;
@@ -3216,6 +3213,62 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		);
 	}
 
+	std::unordered_map<std::string, int16> customer_merchant_slots_by_unique_id{};
+	if (customer) {
+		auto list = customer->GetTraderMerchantList();
+		std::unordered_set<int16> reserved_merchant_slots{};
+		for (auto const &[slot_id, merchant_data]: *list) {
+			const auto [item_id, quantity, item_unique_id] = merchant_data;
+			if (item_id) {
+				reserved_merchant_slots.insert(slot_id);
+			}
+		}
+
+		auto next_merchant_slot = [customer, list, &reserved_merchant_slots]() -> int16 {
+			for (auto const &[slot_id, merchant_data]: *list) {
+				const auto [item_id, quantity, item_unique_id] = merchant_data;
+				if (!item_id && !reserved_merchant_slots.contains(slot_id)) {
+					reserved_merchant_slots.insert(slot_id);
+					return slot_id;
+				}
+			}
+
+			const auto max_items = customer->GetInv().GetLookup()->InventoryTypeSize.Bazaar;
+			for (int16 slot_id = 1; slot_id <= max_items; slot_id++) {
+				if (!list->contains(slot_id) && !reserved_merchant_slots.contains(slot_id)) {
+					reserved_merchant_slots.insert(slot_id);
+					return slot_id;
+				}
+			}
+
+			return INVALID_INDEX;
+		};
+
+		for (auto const &entry: queue) {
+			auto [slot_id, merchant_data] = customer->GetDataFromMerchantListByItemUniqueId(entry.item_unique_id);
+			if (slot_id == INVALID_INDEX) {
+				slot_id = next_merchant_slot();
+			}
+			else {
+				reserved_merchant_slots.insert(slot_id);
+			}
+
+			if (slot_id == INVALID_INDEX) {
+				LogError(
+					"Trader {} could not allocate a customer merchant slot while updating price for item {} unique_id {}",
+					CharacterID(),
+					entry.item_id,
+					entry.item_unique_id
+				);
+				in->sub_action = BazaarPriceChange_Fail;
+				QueuePacket(app);
+				return;
+			}
+
+			customer_merchant_slots_by_unique_id[entry.item_unique_id] = slot_id;
+		}
+	}
+
 	const auto begin_result = database.TransactionBegin();
 	if (!begin_result.Success()) {
 		LogError(
@@ -3291,20 +3344,24 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 				continue;
 			}
 
-			auto [slot_id, merchant_data] = customer->GetDataFromMerchantListByItemUniqueId(i.item_unique_id);
-			if (slot_id == INVALID_INDEX) {
-				slot_id = customer->GetNextFreeSlotFromMerchantList();
-				if (slot_id == INVALID_INDEX) {
-					continue;
-				}
-
-				auto list = customer->GetTraderMerchantList();
-				(*list)[slot_id] = std::make_tuple(
+			auto merchant_slot = customer_merchant_slots_by_unique_id.find(i.item_unique_id);
+			if (merchant_slot == customer_merchant_slots_by_unique_id.end()) {
+				LogError(
+					"Trader {} missing preflighted customer merchant slot for item {} unique_id {}",
+					CharacterID(),
 					i.item_id,
-					source_item->IsStackable() ? i.item_charges : 1,
 					i.item_unique_id
 				);
+				continue;
 			}
+
+			const auto slot_id = merchant_slot->second;
+			auto       list    = customer->GetTraderMerchantList();
+			(*list)[slot_id] = std::make_tuple(
+				i.item_id,
+				source_item->IsStackable() ? i.item_charges : 1,
+				i.item_unique_id
+			);
 
 			std::unique_ptr<EQ::ItemInstance> vendor_inst_copy(source_item->Clone());
 			if (!vendor_inst_copy) {
