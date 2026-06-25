@@ -2865,6 +2865,7 @@ static TraderRepository::Trader BuildTraderItemRow(
 	Client *trader,
 	EQ::ItemInstance *item,
 	uint32 price,
+	uint8 slot_id,
 	const TraderRepository::Trader *existing_entry = nullptr
 )
 {
@@ -2885,6 +2886,7 @@ static TraderRepository::Trader BuildTraderItemRow(
 	entry.item_cost             = price;
 	entry.item_id               = item->GetID();
 	entry.item_unique_id        = item->GetUniqueID();
+	entry.slot_id               = slot_id;
 	entry.listing_date          = time(nullptr);
 	entry.augment_one           = 0;
 	entry.augment_two           = 0;
@@ -2903,6 +2905,38 @@ static TraderRepository::Trader BuildTraderItemRow(
 	}
 
 	return entry;
+}
+
+static bool DeleteTraderRows(
+	Database &db,
+	const std::string &where_filter,
+	size_t expected_rows,
+	std::string &error_message
+)
+{
+	const auto result = db.QueryDatabase(
+		fmt::format(
+			"DELETE FROM {} WHERE {}",
+			TraderRepository::TableName(),
+			where_filter
+		)
+	);
+
+	if (!result.Success()) {
+		error_message = result.ErrorMessage();
+		return false;
+	}
+
+	if (static_cast<size_t>(result.RowsAffected()) != expected_rows) {
+		error_message = fmt::format(
+			"deleted [{}] rows, expected [{}]",
+			result.RowsAffected(),
+			expected_rows
+		);
+		return false;
+	}
+
+	return true;
 }
 
 static EQ::ItemInstance *FindMatchingTraderItem(
@@ -2953,6 +2987,32 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 			Strings::Escape(inst->GetUniqueID())
 		);
 
+	auto existing_entries = TraderRepository::GetWhere(database, where_filter);
+	auto has_active_transaction = std::any_of(
+		existing_entries.begin(),
+		existing_entries.end(),
+		[](const TraderRepository::Trader &entry) {
+			return entry.active_transaction != TraderRepository::ACTIVE_TRANSACTION_NONE;
+		}
+	);
+	if (has_active_transaction) {
+		LogTrading(
+			"Trader {} attempted to update item {} while a matching trader row has an active transaction",
+			CharacterID(),
+			inst->GetID()
+		);
+		Message(Chat::Red, "You cannot change this trader listing while it is part of an active transaction.");
+		in->sub_action = BazaarPriceChange_Fail;
+		QueuePacket(app);
+		return;
+	}
+
+	const auto delete_filter = fmt::format(
+		"({}) AND `active_transaction` = {}",
+		where_filter,
+		TraderRepository::ACTIVE_TRANSACTION_NONE
+	);
+
 	if (new_price == 0) {
 		const auto begin_result = database.TransactionBegin();
 		if (!begin_result.Success()) {
@@ -2967,7 +3027,20 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 			return;
 		}
 
-		TraderRepository::DeleteWhere(database, where_filter);
+		std::string delete_error_message;
+		if (!DeleteTraderRows(database, delete_filter, existing_entries.size(), delete_error_message)) {
+			database.TransactionRollback();
+			LogError(
+				"Trader {} failed to remove trader rows for item {}: {}",
+				CharacterID(),
+				inst->GetID(),
+				delete_error_message
+			);
+			in->sub_action = BazaarPriceChange_Fail;
+			QueuePacket(app);
+			return;
+		}
+
 		const auto commit_result = database.TransactionCommit();
 		if (!commit_result.Success()) {
 			database.TransactionRollback();
@@ -3028,12 +3101,42 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	auto existing_entries = TraderRepository::GetWhere(database, where_filter);
 	std::unordered_map<std::string, TraderRepository::Trader> existing_entries_by_unique_id{};
 	existing_entries_by_unique_id.reserve(existing_entries.size());
 	for (auto const &entry: existing_entries) {
 		existing_entries_by_unique_id[entry.item_unique_id] = entry;
 	}
+
+	const auto all_trader_entries = TraderRepository::GetWhere(
+		database,
+		fmt::format("`character_id` = {}", CharacterID())
+	);
+	std::unordered_set<uint8> used_slot_ids{};
+	for (auto const &entry: all_trader_entries) {
+		if (!entry.slot_id || existing_entries_by_unique_id.contains(entry.item_unique_id)) {
+			continue;
+		}
+
+		used_slot_ids.insert(entry.slot_id);
+	}
+
+	for (auto const &entry: existing_entries) {
+		if (entry.slot_id) {
+			used_slot_ids.insert(entry.slot_id);
+		}
+	}
+
+	auto next_slot_id = [&used_slot_ids, this]() -> uint8 {
+		const auto max_items = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
+		for (uint16 slot_id = 1; slot_id <= max_items && slot_id <= UINT8_MAX; slot_id++) {
+			if (!used_slot_ids.contains(static_cast<uint8>(slot_id))) {
+				used_slot_ids.insert(static_cast<uint8>(slot_id));
+				return static_cast<uint8>(slot_id);
+			}
+		}
+
+		return 0;
+	};
 
 	std::vector<TraderRepository::Trader> queue{};
 	queue.reserve(target_items.size());
@@ -3043,11 +3146,28 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		}
 
 		auto existing_entry = existing_entries_by_unique_id.find(item->GetUniqueID());
+		uint8 slot_id = existing_entry != existing_entries_by_unique_id.end() ? existing_entry->second.slot_id : 0;
+		if (!slot_id) {
+			slot_id = next_slot_id();
+			if (!slot_id) {
+				LogError(
+					"Trader {} could not allocate a trader slot while updating price for item {} unique_id {}",
+					CharacterID(),
+					item->GetID(),
+					item->GetUniqueID()
+				);
+				in->sub_action = BazaarPriceChange_Fail;
+				QueuePacket(app);
+				return;
+			}
+		}
+
 		queue.push_back(
 			BuildTraderItemRow(
 				this,
 				item,
 				new_price,
+				slot_id,
 				existing_entry != existing_entries_by_unique_id.end() ? &existing_entry->second : nullptr
 			)
 		);
@@ -3067,7 +3187,21 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::DeleteWhere(database, where_filter);
+	std::string delete_error_message;
+	if (!DeleteTraderRows(database, delete_filter, existing_entries.size(), delete_error_message)) {
+		database.TransactionRollback();
+		LogError(
+			"Trader {} failed to delete old trader rows for item {} price {}: {}",
+			CharacterID(),
+			inst->GetID(),
+			new_price,
+			delete_error_message
+		);
+		in->sub_action = BazaarPriceChange_Fail;
+		QueuePacket(app);
+		return;
+	}
+
 	if (!queue.empty()) {
 		const int replaced_rows = TraderRepository::ReplaceMany(database, queue);
 		if (replaced_rows < static_cast<int>(queue.size())) {
