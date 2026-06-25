@@ -36,6 +36,7 @@
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
 #include <numeric>
+#include <unordered_map>
 #include <unordered_set>
 
 class QueryServ;
@@ -821,11 +822,10 @@ void Client::Trader_CustomerBrowsing(Client *Customer)
 
 void Client::TraderStartTrader(const EQApplicationPacket *app)
 {
-	uint32                                max_items         = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
-	auto                                  inv               = GetTraderItems();
 	bool                                  trade_items_valid = true;
 	std::vector<TraderRepository::Trader> trader_items{};
 	ClickTraderNew_Struct                 in;
+	const auto                            max_items = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
 
 	EQ::Util::MemoryStreamReader ss(reinterpret_cast<char *>(app->pBuffer), app->size);
 	cereal::BinaryInputArchive   ar(ss);
@@ -833,26 +833,130 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		ar(in);
 	}
 
-	uint32 slot_id = 0;
-	for (auto &i: in.items) {
-		auto const inst = FindTraderItemByUniqueID(i.unique_id);
-		if (!inst) {
-			trade_items_valid = false;
+	struct TraderSatchelItem {
+		int16             slot_id;
+		EQ::ItemInstance *inst;
+		std::string       container_name;
+	};
+
+	auto is_placeholder_unique_id = [](const std::string &item_unique_id) {
+		return item_unique_id.empty() || item_unique_id == "0000000000000000";
+	};
+
+	auto get_trader_container_name = [](EQ::ItemInstance *item) {
+		if (item && item->GetItem() && item->GetItem()->Name[0]) {
+			return std::string(item->GetItem()->Name);
+		}
+
+		return std::string("a trader container");
+	};
+
+	std::vector<TraderSatchelItem> satchel_items{};
+	satchel_items.reserve(max_items);
+
+	for (int16 i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		if (satchel_items.size() >= max_items) {
 			break;
 		}
 
-		if (inst) {
-			if (inst->GetItem() && inst->GetItem()->NoDrop == 0) {
-				Message(
-					Chat::Red,
-					fmt::format(
-						"Item: {} is NODROP and found in a Trader's Satchel. Please remove and restart trader mode",
-						inst->GetItem()->Name)
-						.c_str());
-				TraderEndTrader();
-				safe_delete(inv);
-				return;
+		auto item = GetInv().GetItem(i);
+		if (item && item->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) {
+			const auto container_name = get_trader_container_name(item);
+			for (int x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
+				if (satchel_items.size() >= max_items) {
+					break;
+				}
+
+				const int16 slot_id = EQ::InventoryProfile::CalcSlotId(i, x);
+				auto        inst    = GetInv().GetItem(slot_id);
+				if (inst) {
+					satchel_items.push_back({ slot_id, inst, container_name });
+				}
 			}
+		}
+	}
+
+	std::unordered_map<std::string, uint32> explicit_prices_by_unique_id{};
+	std::unordered_map<int16, uint32>       explicit_prices_by_slot_id{};
+	for (auto const &i: in.items) {
+		if (!is_placeholder_unique_id(i.unique_id)) {
+			explicit_prices_by_unique_id[i.unique_id] = static_cast<uint32>(i.cost);
+		}
+		else if (i.serial_number < satchel_items.size()) {
+			explicit_prices_by_slot_id[satchel_items[i.serial_number].slot_id] = static_cast<uint32>(i.cost);
+		}
+	}
+
+	std::unordered_set<int16>       listed_slots{};
+	std::unordered_set<std::string> listed_unique_ids{};
+	std::unordered_set<uint32>      expanded_non_stackable_item_ids{};
+
+	auto ensure_unique_id = [this, &is_placeholder_unique_id, &listed_unique_ids](TraderSatchelItem &item) {
+		auto item_unique_id = item.inst->GetUniqueID();
+		if (
+			is_placeholder_unique_id(item_unique_id) ||
+			listed_unique_ids.contains(item_unique_id)
+		) {
+			item_unique_id = database.ReserveNewItemUniqueId();
+			if (item_unique_id.empty()) {
+				LogError(
+					"Failed to reserve item_unique_id while starting trader mode for client [{}] character [{}] item [{}]",
+					GetCleanName(),
+					CharacterID(),
+					item.inst->GetID()
+				);
+				return false;
+			}
+
+			item.inst->SetUniqueID(item_unique_id);
+			if (!database.SaveInventory(CharacterID(), item.inst, item.slot_id)) {
+				LogError(
+					"Failed to save generated item_unique_id [{}] while starting trader mode for client [{}] character [{}] slot [{}]",
+					item_unique_id,
+					GetCleanName(),
+					CharacterID(),
+					item.slot_id
+				);
+				return false;
+			}
+		}
+		else if (!database.ReserveItemUniqueId(item_unique_id)) {
+			LogError(
+				"Failed to reserve existing item_unique_id [{}] while starting trader mode for client [{}] character [{}] item [{}]",
+				item_unique_id,
+				GetCleanName(),
+				CharacterID(),
+				item.inst->GetID()
+			);
+			return false;
+		}
+
+		listed_unique_ids.insert(item.inst->GetUniqueID());
+		return true;
+	};
+
+	auto add_trader_item = [this, max_items, &trader_items, &listed_slots, &ensure_unique_id](TraderSatchelItem &item, uint32 cost) {
+		if (!item.inst || listed_slots.contains(item.slot_id)) {
+			return true;
+		}
+
+		if (trader_items.size() >= max_items) {
+			return true;
+		}
+
+		if (item.inst->GetItem() && item.inst->GetItem()->NoDrop == 0) {
+			const auto message = fmt::format(
+				"Item: {} is NODROP and found in {}. Please remove and restart trader mode",
+				item.inst->GetItem()->Name,
+				item.container_name
+			);
+			Message(Chat::Red, "%s", message.c_str());
+			TraderEndTrader();
+			return false;
+		}
+
+		if (!ensure_unique_id(item)) {
+			return false;
 		}
 
 		TraderRepository::Trader trader_item{};
@@ -862,14 +966,14 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		trader_item.character_id          = CharacterID();
 		trader_item.char_zone_id          = GetZoneID();
 		trader_item.char_zone_instance_id = GetInstanceID();
-		trader_item.item_charges          = inst->GetCharges();
-		trader_item.item_cost             = i.cost;
-		trader_item.item_id               = inst->GetID();
-		trader_item.item_unique_id        = i.unique_id;
-		trader_item.slot_id               = slot_id;
+		trader_item.item_charges          = item.inst->GetCharges();
+		trader_item.item_cost             = cost;
+		trader_item.item_id               = item.inst->GetID();
+		trader_item.item_unique_id        = item.inst->GetUniqueID();
+		trader_item.slot_id               = static_cast<uint8>(trader_items.size() + 1);
 		trader_item.listing_date          = time(nullptr);
-		if (inst->IsAugmented()) {
-			auto augs                 = inst->GetAugmentIDs();
+		if (item.inst->IsAugmented()) {
+			auto augs                 = item.inst->GetAugmentIDs();
 			trader_item.augment_one   = augs.at(0);
 			trader_item.augment_two   = augs.at(1);
 			trader_item.augment_three = augs.at(2);
@@ -879,18 +983,131 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		}
 
 		trader_items.emplace_back(trader_item);
+		listed_slots.insert(item.slot_id);
+		return true;
+	};
+
+	auto find_satchel_item = [&satchel_items, &is_placeholder_unique_id](const BazaarTraderDetails &trader_item) -> TraderSatchelItem* {
+		if (is_placeholder_unique_id(trader_item.unique_id)) {
+			if (trader_item.serial_number < satchel_items.size()) {
+				return &satchel_items[trader_item.serial_number];
+			}
+
+			return nullptr;
+		}
+
+		for (auto &item: satchel_items) {
+			if (item.inst && item.inst->GetUniqueID() == trader_item.unique_id) {
+				return &item;
+			}
+		}
+
+		return nullptr;
+	};
+
+	for (auto &i: in.items) {
+		auto item = find_satchel_item(i);
+		if (!item || !item->inst) {
+			trade_items_valid = false;
+			break;
+		}
+
+		if (item->inst->IsStackable()) {
+			trade_items_valid = add_trader_item(*item, static_cast<uint32>(i.cost));
+			if (!trade_items_valid) {
+				break;
+			}
+			continue;
+		}
+
+		const uint32 item_id = item->inst->GetID();
+		if (expanded_non_stackable_item_ids.contains(item_id)) {
+			continue;
+		}
+
+		for (auto &candidate: satchel_items) {
+			if (!candidate.inst || candidate.inst->GetID() != item_id || candidate.inst->IsStackable()) {
+				continue;
+			}
+
+			const auto current_unique_id = candidate.inst->GetUniqueID();
+			uint32     cost              = static_cast<uint32>(i.cost);
+			if (explicit_prices_by_slot_id.contains(candidate.slot_id)) {
+				cost = explicit_prices_by_slot_id[candidate.slot_id];
+			}
+			else if (!is_placeholder_unique_id(current_unique_id) && explicit_prices_by_unique_id.contains(current_unique_id)) {
+				cost = explicit_prices_by_unique_id[current_unique_id];
+			}
+
+			trade_items_valid = add_trader_item(candidate, cost);
+			if (!trade_items_valid) {
+				break;
+			}
+		}
+
+		expanded_non_stackable_item_ids.insert(item_id);
+		if (!trade_items_valid) {
+			break;
+		}
 	}
 
 	if (!trade_items_valid || trader_items.empty()) {
 		Message(Chat::Red, "You are not able to become a trader at this time.  Invalid item found.");
 		TraderEndTrader();
-		safe_delete(inv);
 		return;
 	}
 
-	TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {};", CharacterID()));
-	TraderRepository::ReplaceMany(database, trader_items);
-	safe_delete(inv);
+	const auto begin_result = database.TransactionBegin();
+	if (!begin_result.Success()) {
+		LogError(
+			"Failed to begin trader row rebuild transaction while starting trader mode for client [{}] character [{}]: error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			begin_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
+
+	const auto delete_result = database.QueryDatabase(
+		fmt::format(
+			"DELETE FROM {} WHERE `character_id` = {}",
+			TraderRepository::TableName(),
+			CharacterID()
+		)
+	);
+	const auto replaced_rows = delete_result.Success() ? TraderRepository::ReplaceMany(database, trader_items) : 0;
+
+	if (!delete_result.Success() || static_cast<size_t>(replaced_rows) < trader_items.size()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to rebuild trader rows while starting trader mode for client [{}] character [{}]: delete_success [{}] replaced_rows [{}] expected_rows [{}] error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			delete_result.Success(),
+			replaced_rows,
+			trader_items.size(),
+			delete_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
+
+	const auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed to commit trader row rebuild while starting trader mode for client [{}] character [{}]: error [{}]",
+			GetCleanName(),
+			CharacterID(),
+			commit_result.ErrorMessage()
+		);
+		Message(Chat::Red, "You are not able to become a trader at this time. Trader item save failed.");
+		TraderEndTrader();
+		return;
+	}
 
 	// This refreshes the Trader window to display the End Trader button
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
@@ -923,8 +1140,9 @@ void Client::TraderEndTrader()
 	if (IsThereACustomer()) {
 		auto customer = entity_list.GetClientByID(GetCustomerID());
 		if (customer) {
-			auto end_session = new EQApplicationPacket(OP_ShopEnd);
-			customer->FastQueuePacket(&end_session);
+			customer->CancelTraderTradeWindow();
+			customer->SetTraderID(0);
+			customer->ClearTraderMerchantList();
 		}
 	}
 

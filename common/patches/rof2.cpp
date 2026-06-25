@@ -6178,8 +6178,9 @@ namespace RoF2
 					}
 
 					BazaarTraderDetails btd{};
-					btd.unique_id = eq->item_unique_ids[i].item_unique_id;
-					btd.cost      = eq->item_cost[i];
+					btd.unique_id     = eq->item_unique_ids[i].item_unique_id;
+					btd.cost          = eq->item_cost[i];
+					btd.serial_number = i;
 					out.items.push_back(btd);
 				}
 

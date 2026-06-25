@@ -111,6 +111,27 @@ Client *FindOfflineReclaimClient(const OfflineSessionReclaim_Struct &request)
 
 	return client;
 }
+
+void CloseOfflineTradeCustomer(Client *client)
+{
+	if (!client || !client->IsThereACustomer()) {
+		return;
+	}
+
+	auto customer = entity_list.GetClientByID(client->GetCustomerID());
+	if (customer) {
+		if (client->IsTrader()) {
+			customer->CancelTraderTradeWindow();
+			customer->SetTraderID(0);
+			customer->ClearTraderMerchantList();
+		}
+		else if (client->IsBuyer()) {
+			customer->CancelBuyerTradeWindow();
+		}
+	}
+
+	client->WithCustomer(0);
+}
 }
 
 WorldServer::WorldServer()
@@ -3850,10 +3871,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					//if there is a customer currently browsing, close to ensure no conflict of purchase
 					if (trader_pc->IsThereACustomer()) {
-						auto customer = entity_list.GetClientByID(trader_pc->GetCustomerID());
-						if (customer) {
-							customer->CancelTraderTradeWindow();
-						}
+						CloseOfflineTradeCustomer(trader_pc);
 					}
 
 					//Update the trader's db entries
@@ -4260,10 +4278,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						return;
 					}
 					if (buyer->IsThereACustomer()) {
-						auto customer = entity_list.GetClientByID(buyer->GetCustomerID());
-						if (customer) {
-							customer->CancelBuyerTradeWindow();
-						}
+						CloseOfflineTradeCustomer(buyer);
 					}
 
 					BuyerLineSellItem_Struct sell_line{};
@@ -4493,18 +4508,26 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
-			const bool has_customer = client->IsThereACustomer();
 			const bool has_active_trader_transaction = client->IsTrader() && HasActiveTraderTransaction(client->CharacterID());
-			if (has_customer || has_active_trader_transaction) {
+			if (has_active_trader_transaction) {
 				LogTrading(
-					"Offline reclaim request [{}] for client [{}] is busy; customer [{}] trader_transaction [{}]",
+					"Offline reclaim request [{}] for client [{}] is busy; trader_transaction [{}]",
 					in->request_id,
 					client->GetCleanName(),
-					has_customer,
 					has_active_trader_transaction
 				);
 				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimBusy);
 				break;
+			}
+
+			if (client->IsThereACustomer()) {
+				LogTrading(
+					"Closing passive offline {} browse session for client [{}] during reclaim request [{}]",
+					client->IsBuyer() ? "buyer" : "trader",
+					client->GetCleanName(),
+					in->request_id
+				);
+				CloseOfflineTradeCustomer(client);
 			}
 
 			LogTrading(
