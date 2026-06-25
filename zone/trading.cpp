@@ -3161,7 +3161,7 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 	}
 
 	for (auto const &entry: existing_entries) {
-		if (entry.slot_id) {
+		if (entry.slot_id && target_unique_ids.contains(entry.item_unique_id)) {
 			used_slot_ids.insert(entry.slot_id);
 		}
 	}
@@ -3213,21 +3213,42 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		);
 	}
 
+	std::unordered_set<std::string> queued_unique_ids{};
+	queued_unique_ids.reserve(queue.size());
+	for (auto const &i: queue) {
+		queued_unique_ids.insert(i.item_unique_id);
+	}
+
+	auto is_affected_merchant_slot = [update_matching_items, inst](uint32 item_id, const std::string &item_unique_id) {
+		return (
+			(update_matching_items && item_id == inst->GetID()) ||
+			(!update_matching_items && item_unique_id == inst->GetUniqueID())
+		);
+	};
+
 	std::unordered_map<std::string, int16> customer_merchant_slots_by_unique_id{};
 	if (customer) {
 		auto list = customer->GetTraderMerchantList();
 		std::unordered_set<int16> reserved_merchant_slots{};
+		std::unordered_set<int16> reusable_merchant_slots{};
 		for (auto const &[slot_id, merchant_data]: *list) {
 			const auto [item_id, quantity, item_unique_id] = merchant_data;
-			if (item_id) {
-				reserved_merchant_slots.insert(slot_id);
+			if (!item_id) {
+				continue;
 			}
+
+			if (is_affected_merchant_slot(item_id, item_unique_id) && !queued_unique_ids.contains(item_unique_id)) {
+				reusable_merchant_slots.insert(slot_id);
+				continue;
+			}
+
+			reserved_merchant_slots.insert(slot_id);
 		}
 
-		auto next_merchant_slot = [customer, list, &reserved_merchant_slots]() -> int16 {
+		auto next_merchant_slot = [customer, list, &reserved_merchant_slots, &reusable_merchant_slots]() -> int16 {
 			for (auto const &[slot_id, merchant_data]: *list) {
 				const auto [item_id, quantity, item_unique_id] = merchant_data;
-				if (!item_id && !reserved_merchant_slots.contains(slot_id)) {
+				if ((!item_id || reusable_merchant_slots.contains(slot_id)) && !reserved_merchant_slots.contains(slot_id)) {
 					reserved_merchant_slots.insert(slot_id);
 					return slot_id;
 				}
@@ -3337,12 +3358,6 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		}
 	}
 
-	std::unordered_set<std::string> queued_unique_ids{};
-	queued_unique_ids.reserve(queue.size());
-	for (auto const &i: queue) {
-		queued_unique_ids.insert(i.item_unique_id);
-	}
-
 	if (customer) {
 		auto list       = customer->GetTraderMerchantList();
 		auto del_packet = new EQApplicationPacket(
@@ -3356,10 +3371,7 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 
 		for (auto const &[slot_id, merchant_data]: *list) {
 			const auto [item_id, merchant_quantity, item_unique_id] = merchant_data;
-			const bool affected_slot = (
-				(update_matching_items && item_id == inst->GetID()) ||
-				(!update_matching_items && item_unique_id == inst->GetUniqueID())
-			);
+			const bool affected_slot = is_affected_merchant_slot(item_id, item_unique_id);
 
 			if (affected_slot && !queued_unique_ids.contains(item_unique_id)) {
 				del_data->itemslot = slot_id;
