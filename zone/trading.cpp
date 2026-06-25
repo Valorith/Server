@@ -2814,6 +2814,11 @@ void Client::SendTraderMode(BazaarTraderBarterActions status)
 	safe_delete(outapp);
 }
 
+static bool IsTraderPlaceholderUniqueID(const std::string &item_unique_id)
+{
+	return item_unique_id.empty() || item_unique_id == "0000000000000000";
+}
+
 static std::vector<EQ::ItemInstance *> FindTraderPriceUpdateItems(Client *trader, EQ::ItemInstance *selected_item)
 {
 	std::vector<EQ::ItemInstance *> items{};
@@ -2974,6 +2979,39 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		target_items.push_back(inst);
 	}
 
+	std::unordered_set<std::string> target_unique_ids{};
+	target_unique_ids.reserve(target_items.size());
+	for (auto *item: target_items) {
+		if (!item) {
+			continue;
+		}
+
+		const auto item_unique_id = item->GetUniqueID();
+		if (IsTraderPlaceholderUniqueID(item_unique_id)) {
+			LogError(
+				"Trader {} attempted to update item {} with an invalid unique_id [{}]",
+				CharacterID(),
+				item->GetID(),
+				item_unique_id
+			);
+			in->sub_action = BazaarPriceChange_Fail;
+			QueuePacket(app);
+			return;
+		}
+
+		if (!target_unique_ids.insert(item_unique_id).second) {
+			LogError(
+				"Trader {} attempted to update item {} with duplicate unique_id [{}]",
+				CharacterID(),
+				item->GetID(),
+				item_unique_id
+			);
+			in->sub_action = BazaarPriceChange_Fail;
+			QueuePacket(app);
+			return;
+		}
+	}
+
 	const bool update_matching_items = !inst->IsStackable();
 	const auto where_filter = update_matching_items ?
 		fmt::format(
@@ -3103,8 +3141,13 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 
 	std::unordered_map<std::string, TraderRepository::Trader> existing_entries_by_unique_id{};
 	existing_entries_by_unique_id.reserve(existing_entries.size());
+	std::unordered_set<uint64_t> replacing_entry_ids{};
+	replacing_entry_ids.reserve(existing_entries.size());
 	for (auto const &entry: existing_entries) {
 		existing_entries_by_unique_id[entry.item_unique_id] = entry;
+		if (entry.id) {
+			replacing_entry_ids.insert(entry.id);
+		}
 	}
 
 	const auto all_trader_entries = TraderRepository::GetWhere(
@@ -3113,7 +3156,7 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 	);
 	std::unordered_set<uint8> used_slot_ids{};
 	for (auto const &entry: all_trader_entries) {
-		if (!entry.slot_id || existing_entries_by_unique_id.contains(entry.item_unique_id)) {
+		if (!entry.slot_id || replacing_entry_ids.contains(entry.id)) {
 			continue;
 		}
 
