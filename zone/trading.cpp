@@ -3337,7 +3337,39 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 		}
 	}
 
+	std::unordered_set<std::string> queued_unique_ids{};
+	queued_unique_ids.reserve(queue.size());
+	for (auto const &i: queue) {
+		queued_unique_ids.insert(i.item_unique_id);
+	}
+
 	if (customer) {
+		auto list       = customer->GetTraderMerchantList();
+		auto del_packet = new EQApplicationPacket(
+			OP_ShopDelItem,
+			static_cast<uint32>(sizeof(Merchant_DelItem_Struct))
+		);
+
+		auto del_data      = reinterpret_cast<Merchant_DelItem_Struct *>(del_packet->pBuffer);
+		del_data->npcid    = GetID();
+		del_data->playerid = customer->GetID();
+
+		for (auto const &[slot_id, merchant_data]: *list) {
+			const auto [item_id, merchant_quantity, item_unique_id] = merchant_data;
+			const bool affected_slot = (
+				(update_matching_items && item_id == inst->GetID()) ||
+				(!update_matching_items && item_unique_id == inst->GetUniqueID())
+			);
+
+			if (affected_slot && !queued_unique_ids.contains(item_unique_id)) {
+				del_data->itemslot = slot_id;
+				customer->QueuePacket(del_packet);
+				(*list)[slot_id] = std::make_tuple(0, 0, "0000000000000000");
+			}
+		}
+
+		safe_delete(del_packet);
+
 		for (auto const &i: queue) {
 			auto source_item = FindMatchingTraderItem(target_items, i.item_unique_id);
 			if (!source_item) {
@@ -3356,7 +3388,6 @@ void Client::TraderUpdateItem(const EQApplicationPacket *app)
 			}
 
 			const auto slot_id = merchant_slot->second;
-			auto       list    = customer->GetTraderMerchantList();
 			(*list)[slot_id] = std::make_tuple(
 				i.item_id,
 				source_item->IsStackable() ? i.item_charges : 1,
