@@ -252,8 +252,7 @@ bool CombatLogBystanderMessageFilterAllowsClient(Client *client, Mob *sender, eq
 	return client && (filter == FilterNone || client->FilteredMessageCheck(sender, filter));
 }
 
-void SendCombatLogObserverMessageString(
-	Client *client,
+std::unique_ptr<EQApplicationPacket> MakeCombatLogObserverMessageStringPacket(
 	uint32 type,
 	uint32 string_id,
 	const char *message1,
@@ -267,10 +266,6 @@ void SendCombatLogObserverMessageString(
 	const char *message9
 )
 {
-	if (!client) {
-		return;
-	}
-
 	if (type == Chat::Emote) {
 		type = 4;
 	}
@@ -281,8 +276,7 @@ void SendCombatLogObserverMessageString(
 		sms->color = type;
 		sms->string_id = string_id;
 		sms->unknown8 = 0;
-		client->QueuePacket(outapp.get());
-		return;
+		return outapp;
 	}
 
 	const char *message_arg[] = {
@@ -304,8 +298,7 @@ void SendCombatLogObserverMessageString(
 
 	buf.WriteInt8(0);
 
-	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, buf);
-	client->QueuePacket(outapp.get());
+	return std::make_unique<EQApplicationPacket>(OP_FormattedMessage, buf);
 }
 
 Mob *GetCombatDamagePacketMob(EntityList *entities, uint16 id, Mob *first_hint, Mob *second_hint)
@@ -2322,7 +2315,7 @@ void EntityList::ForEachCombatLogObserver(
 
 		float dist_sq = DistanceSquared(candidate->GetPosition(), sender->GetPosition());
 		float parity_dist_sq = dist_sq;
-		if (other && other != sender) {
+		if (parity_range > 0 && other && other != sender) {
 			float other_dist_sq = DistanceSquared(candidate->GetPosition(), other->GetPosition());
 			if (other_dist_sq < parity_dist_sq) {
 				parity_dist_sq = other_dist_sq;
@@ -2388,6 +2381,10 @@ void EntityList::QueueCombatClients(
 		return; // QueueCloseClients already broadcast zone-wide
 	}
 
+	if (!RuleB(Combat, GroupRaidCombatLogParity)) {
+		return;
+	}
+
 	if (distance <= 0) {
 		distance = zone->GetClientUpdateRange(); // mirror QueueCloseClients' radius for the proximity dedup
 	}
@@ -2448,7 +2445,12 @@ void EntityList::FilteredMessageCombatString(
 		message6, message7, message8, message9
 	);
 
+	if (!sender || !RuleB(Combat, GroupRaidCombatLogParity)) {
+		return;
+	}
+
 	// FilteredMessageCloseString scans every client in the zone at <= range
+	std::unique_ptr<EQApplicationPacket> observer_message;
 	ForEachCombatLogObserver(
 		sender,
 		other,
@@ -2466,11 +2468,15 @@ void EntityList::FilteredMessageCombatString(
 				return;
 			}
 
-			SendCombatLogObserverMessageString(
-				client, type, string_id,
-				message1, message2, message3, message4, message5,
-				message6, message7, message8, message9
-			);
+			if (!observer_message) {
+				observer_message = MakeCombatLogObserverMessageStringPacket(
+					type, string_id,
+					message1, message2, message3, message4, message5,
+					message6, message7, message8, message9
+				);
+			}
+
+			client->QueuePacket(observer_message.get());
 		}
 	);
 }
@@ -2517,6 +2523,10 @@ void EntityList::FilteredMessageCombatClose(
 				client->Message(type, "%s", buffer);
 			}
 		}
+	}
+
+	if (!RuleB(Combat, GroupRaidCombatLogParity)) {
+		return;
 	}
 
 	// the proximity pass above iterates the close-mob cache at <= range
