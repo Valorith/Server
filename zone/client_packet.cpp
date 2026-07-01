@@ -15469,6 +15469,17 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 	//
 	// SoF sends 1 or more unhandled OP_Trader packets of size 96 when a trade has completed.
 	// I don't know what they are for (yet), but it doesn't seem to matter that we ignore them.
+	if (app->size < sizeof(uint32)) {
+		LogWarning(
+			"Short OP_Trader packet for client [{}] account [{}] character [{}] size [{}]",
+			GetCleanName(),
+			AccountID(),
+			CharacterID(),
+			app->size
+		);
+		return;
+	}
+
 	auto action = *(uint32 *)app->pBuffer;
 
 	LogTrading(
@@ -15519,6 +15530,10 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 		case ListTraderItems: {
 			TraderShowItems();
 			LogTrading("Show Trader Items");
+			break;
+		}
+		case ReconcileItems: {
+			LogTrading("Reconcile Trader Items");
 			break;
 		}
 		default: {
