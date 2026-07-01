@@ -6163,7 +6163,7 @@ namespace RoF2
 
 		auto action = *(uint32 *)__packet->pBuffer;
 
-		LogTrading(
+		LogTradingDetail(
 			"(RoF2) DECODE(OP_Trader) action [{}] size [{}]",
 			action,
 			__packet->size
@@ -6220,7 +6220,7 @@ namespace RoF2
 				break;
 			}
 			case structs::RoF2BazaarTraderBuyerActions::ReconcileItems: {
-				LogTrading("(RoF2) ReconcileItems action <green>[{}] size [{}]", action, __packet->size);
+				LogTradingDetail("(RoF2) ReconcileItems action <green>[{}] size [{}]", action, __packet->size);
 				break;
 			}
 			case structs::RoF2BazaarTraderBuyerActions::PriceUpdate: {
@@ -6277,7 +6277,7 @@ namespace RoF2
 
 		uint32 action = *(uint32 *)__packet->pBuffer;
 
-		LogTrading(
+		LogTradingDetail(
 			"(RoF2) DECODE(OP_TraderShop) action [{}] size [{}]",
 			action,
 			__packet->size
@@ -6338,7 +6338,7 @@ namespace RoF2
 
 				safe_delete_array(eq_buffer);
 
-				LogTrading("(RoF2) EndTransaction action <green>[{}]", action);
+				LogTradingDetail("(RoF2) EndTransaction action <green>[{}]", action);
 				break;
 			}
 			case structs::RoF2BazaarTraderBuyerActions::BazaarInspect: {
