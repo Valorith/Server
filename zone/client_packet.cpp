@@ -15483,7 +15483,7 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 
 	auto action = *(uint32 *)app->pBuffer;
 
-	LogTrading(
+	LogTradingDetail(
 		"Handle_OP_Trader client [{}] account [{}] character [{}] action [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -15534,7 +15534,7 @@ void Client::Handle_OP_Trader(const EQApplicationPacket *app)
 			break;
 		}
 		case ReconcileItems: {
-			LogTrading("Reconcile Trader Items");
+			LogTradingDetail("Reconcile Trader Items");
 			break;
 		}
 		default: {
@@ -15740,7 +15740,7 @@ void Client::Handle_OP_TradeRequestAck(const EQApplicationPacket *app)
 void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 {
 	auto in = (TraderClick_Struct *) app->pBuffer;
-	LogTrading(
+	LogTradingDetail(
 		"Handle_OP_TraderShop client [{}] account [{}] character [{}] code [{}] trader_id [{}] unknown008 [{}] approval [{}] size [{}] trader [{}] buyer [{}] zone [{}] instance [{}]",
 		GetCleanName(),
 		AccountID(),
@@ -15755,7 +15755,7 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 		GetZoneID(),
 		GetInstanceID()
 	);
-	LogTrading("Handle_OP_TraderShop: TraderClick_Struct TraderID [{}], Code [{}], Unknown008 [{}], Approval [{}]",
+	LogTradingDetail("Handle_OP_TraderShop: TraderClick_Struct TraderID [{}], Code [{}], Unknown008 [{}], Approval [{}]",
 			   in->TraderID,
 			   in->Code,
 			   in->Unknown008,
@@ -15764,7 +15764,7 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 
 	switch (in->Code) {
 		case ClickTrader: {
-			LogTrading("Handle_OP_TraderShop case ClickTrader [{}]", in->Code);
+			LogTradingDetail("Handle_OP_TraderShop case ClickTrader [{}]", in->Code);
 			auto outapp        = std::make_unique<EQApplicationPacket>(
 				OP_TraderShop,
 				static_cast<uint32>(sizeof(TraderClick_Struct))
@@ -15774,7 +15774,7 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 
 			if (trader) {
 				data->Approval = trader->WithCustomer(GetID());
-				LogTrading("Client::Handle_OP_TraderShop: Shop Request ([{}]) to ([{}]) with Approval: [{}]",
+				LogTradingDetail("Client::Handle_OP_TraderShop: Shop Request ([{}]) to ([{}]) with Approval: [{}]",
 						   GetCleanName(),
 						   trader->GetCleanName(),
 						   data->Approval
@@ -15800,7 +15800,7 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 				BulkSendTraderInventory(trader->CharacterID());
 				trader->Trader_CustomerBrowsing(this);
 				SetTraderID(in->TraderID);
-				LogTrading("Client::Handle_OP_TraderShop: Trader Inventory Sent to [{}] from [{}]",
+				LogTradingDetail("Client::Handle_OP_TraderShop: Trader Inventory Sent to [{}] from [{}]",
 						   GetID(),
 						   in->TraderID
 				);
@@ -15817,7 +15817,7 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 			SetTraderID(0);
 			if (c) {
 				c->WithCustomer(0);
-				LogTrading("End Transaction - Code [{}]", in->Code);
+				LogTradingDetail("End Transaction - Code [{}]", in->Code);
 			}
 			else {
 				LogTrading("Null Client Pointer for Trader - Code [{}]", in->Code);
