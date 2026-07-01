@@ -6155,6 +6155,12 @@ namespace RoF2
 
 	DECODE(OP_Trader)
 	{
+		if (__packet->size < sizeof(uint32)) {
+			LogWarning("(RoF2) Short OP_Trader size [{}]", __packet->size);
+			__packet->SetOpcode(OP_Unknown);
+			return;
+		}
+
 		auto action = *(uint32 *)__packet->pBuffer;
 
 		LogTrading(
@@ -6213,6 +6219,10 @@ namespace RoF2
 				LogTrading("(RoF2) ListTraderItems action <green>[{}]", action);
 				break;
 			}
+			case structs::RoF2BazaarTraderBuyerActions::ReconcileItems: {
+				LogTrading("(RoF2) ReconcileItems action <green>[{}] size [{}]", action, __packet->size);
+				break;
+			}
 			case structs::RoF2BazaarTraderBuyerActions::PriceUpdate: {
 				DECODE_LENGTH_EXACT(structs::TraderPriceUpdate_Struct);
 				SETUP_DIRECT_DECODE(TraderPriceUpdate_Struct, structs::TraderPriceUpdate_Struct);
@@ -6259,6 +6269,12 @@ namespace RoF2
 
 	DECODE(OP_TraderShop)
 	{
+		if (__packet->size < sizeof(uint32)) {
+			LogWarning("(RoF2) Short OP_TraderShop size [{}]", __packet->size);
+			__packet->SetOpcode(OP_Unknown);
+			return;
+		}
+
 		uint32 action = *(uint32 *)__packet->pBuffer;
 
 		LogTrading(
@@ -6310,6 +6326,19 @@ namespace RoF2
 						   eq->unknown_008
 				);
 				FINISH_DIRECT_DECODE();
+				break;
+			}
+			case structs::RoF2BazaarTraderBuyerActions::EndTransaction: {
+				auto eq_buffer = __packet->pBuffer;
+				__packet->size = sizeof(TraderClick_Struct);
+				__packet->pBuffer = new unsigned char[__packet->size] {};
+
+				auto emu = (TraderClick_Struct *) __packet->pBuffer;
+				emu->Code = EndTransaction;
+
+				safe_delete_array(eq_buffer);
+
+				LogTrading("(RoF2) EndTransaction action <green>[{}]", action);
 				break;
 			}
 			case structs::RoF2BazaarTraderBuyerActions::BazaarInspect: {

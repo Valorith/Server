@@ -6462,6 +6462,7 @@ enum BazaarTraderBarterActions {
 	CustomerBrowsing             = 13,
 	BazaarInspect                = 18,
 	ItemMove                     = 19,
+	ReconcileItems               = 20,
 	TraderAck2                   = 22,
 	AddTraderToBazaarWindow      = 24,
 	RemoveTraderFromBazaarWindow = 25,
