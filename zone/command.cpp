@@ -86,6 +86,7 @@ int command_init(void)
 		command_add("appearanceeffects", "[Help|Remove|Set|View] - Modify appearance effects on yourself or your target.", AccountStatus::GMAdmin, command_appearanceeffects) ||
 		command_add("apply_shared_memory", "[shared_memory_name] - Tells every zone and world to apply a specific shared memory segment by name.", AccountStatus::GMImpossible, command_apply_shared_memory) ||
 		command_add("attack", "[Entity Name] - Make your NPC target attack an entity by name", AccountStatus::GMLeadAdmin, command_attack) ||
+		command_add("autoskill", "[skill] [on|off] - Automatically use supported combat skills while auto-attack is active", AccountStatus::Player, command_autoskill) ||
 		command_add("augmentitem", "Force augments an item. Must have the augment item window open.", AccountStatus::GMImpossible, command_augmentitem) ||
 		command_add("ban", "[Character Name] [Reason] - Ban by character name", AccountStatus::GMLeadAdmin, command_ban) ||
 		command_add("bugs", "[Close|Delete|Review|Search|View] - Handles player bug reports", AccountStatus::QuestTroupe, command_bugs) ||
