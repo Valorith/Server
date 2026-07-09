@@ -7353,12 +7353,14 @@ CREATE TABLE IF NOT EXISTS `character_offline_transactions` (
 	`id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`character_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`type` INT(10) UNSIGNED NULL DEFAULT '0',
+	`item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 	`item_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
 	`quantity` INT(11) NULL DEFAULT '0',
 	`price` BIGINT(20) UNSIGNED NULL DEFAULT '0',
 	`buyer_name` VARCHAR(64) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
 	PRIMARY KEY (`id`) USING BTREE,
-	INDEX `idx_character_id` (`character_id`)
+	INDEX `idx_character_id` (`character_id`),
+	INDEX `idx_item_id` (`item_id`)
 ) COLLATE='latin1_swedish_ci' ENGINE=InnoDB;
 )",
 		.content_schema_update = false
@@ -7419,6 +7421,7 @@ CREATE TABLE IF NOT EXISTS `expedition_templates` (
 	`replay_on_join` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`silent` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
 	`boss_only_spawn` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+	`require_bosses_dead` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1',
 	`request_phrase` VARCHAR(64) NOT NULL DEFAULT 'expedition',
 	`request_mode` VARCHAR(32) NOT NULL DEFAULT 'db_only',
 	`notes` TEXT NULL,
@@ -7508,6 +7511,80 @@ ALTER TABLE `expedition_template_events`
 ADD COLUMN `completion_mode` VARCHAR(32) NOT NULL DEFAULT 'first_completion' AFTER `sort_order`;
 )",
 		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9347,
+		.description = "2026_06_12_expedition_require_bosses_dead.sql",
+		.check = "SHOW COLUMNS FROM `expedition_templates` LIKE 'require_bosses_dead'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `expedition_templates`
+ADD COLUMN `require_bosses_dead` TINYINT(1) UNSIGNED NOT NULL DEFAULT '1' AFTER `boss_only_spawn`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9348,
+		.description = "2026_06_13_expedition_min_max_level.sql",
+		.check = "SHOW COLUMNS FROM `dynamic_zone_templates` LIKE 'min_level'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `dynamic_zone_templates`
+ADD COLUMN `min_level` INT(11) NOT NULL DEFAULT '46' AFTER `max_players`,
+ADD COLUMN `max_level` INT(11) NOT NULL DEFAULT '0' AFTER `min_level`;
+)",
+		.content_schema_update = true
+	},
+	ManifestEntry{
+		.version = 9349,
+		.description = "2026_06_13_dynamic_zones_min_max_level.sql",
+		.check = "SHOW COLUMNS FROM `dynamic_zones` LIKE 'min_level'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `dynamic_zones`
+ADD COLUMN `min_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `max_players`,
+ADD COLUMN `max_level` INT(10) UNSIGNED NOT NULL DEFAULT 0 AFTER `min_level`;
+
+UPDATE `dynamic_zones` dz
+INNER JOIN `instance_list` il
+	ON dz.`instance_id` = il.`id`
+INNER JOIN `dynamic_zone_templates` dzt
+	ON dz.`name` = dzt.`name`
+	AND il.`zone` = dzt.`zone_id`
+	AND il.`version` = dzt.`zone_version`
+SET dz.`min_level` = dzt.`min_level`,
+	dz.`max_level` = dzt.`max_level`
+WHERE dz.`type` = 1
+	AND dz.`min_level` = 0
+	AND dz.`max_level` = 0;
+)"
+	},
+	ManifestEntry{
+		.version = 9350,
+		.description = "2026_06_20_character_offline_transactions_item_id.sql",
+		.check = "SHOW COLUMNS FROM `character_offline_transactions` LIKE 'item_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_offline_transactions`
+	ADD COLUMN `item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `type`,
+	ADD INDEX `idx_item_id` (`item_id`);
+)"
+	},
+	ManifestEntry{
+		.version = 9351,
+		.description = "2026_06_20_trader_audit_item_id.sql",
+		.check = "SHOW COLUMNS FROM `trader_audit` LIKE 'item_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `trader_audit`
+	ADD COLUMN `item_id` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `buyer`,
+	ADD INDEX `idx_trader_audit_item_id` (`item_id`);
+)"
 	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{

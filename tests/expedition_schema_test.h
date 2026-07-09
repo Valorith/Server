@@ -19,12 +19,16 @@ public:
 		TEST_ADD(ExpeditionSchemaTest::CreationMigrationHasFinalSchema);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyMigrationUpdatesExistingTemplates);
 		TEST_ADD(ExpeditionSchemaTest::EventCompletionModeMigrationUpdatesExistingEvents);
+		TEST_ADD(ExpeditionSchemaTest::RequireBossesDeadMigrationUpdatesExistingTemplates);
 		TEST_ADD(ExpeditionSchemaTest::BinaryDatabaseVersionIncludesExpeditionMigrations);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyDefaultsAreOff);
+		TEST_ADD(ExpeditionSchemaTest::RequireBossesDeadDefaultsOn);
 		TEST_ADD(ExpeditionSchemaTest::EventCompletionModeDefaultsToFirstCompletion);
 		TEST_ADD(ExpeditionSchemaTest::BossEventNpcRemovalDeletesEvent);
 		TEST_ADD(ExpeditionSchemaTest::LockoutNamespaceUsesDynamicZoneName);
 		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterKeepsRequestersUnrestricted);
+		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterEnforcesWithoutConcreteBossSpawn);
+		TEST_ADD(ExpeditionSchemaTest::BossOnlyFilterAllowsTriggerSpawnOverrides);
 		TEST_ADD(ExpeditionSchemaTest::SimpleBuilderDefaultsAreRaidReady);
 		TEST_ADD(ExpeditionSchemaTest::SharedRequesterMenuSortsExpeditions);
 		TEST_ADD(ExpeditionSchemaTest::RequesterLockoutReasonsAreStatusAware);
@@ -67,6 +71,7 @@ private:
 		TEST_ASSERT(entry->condition == "empty");
 		TEST_ASSERT(entry->sql.find("request_mode") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("boss_only_spawn") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("require_bosses_dead") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("db_only") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("zone_version") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("complete_on_spawn") != std::string::npos);
@@ -111,9 +116,24 @@ private:
 		TEST_ASSERT(entry->sql.find("DEFAULT 'first_completion'") != std::string::npos);
 	}
 
+	void RequireBossesDeadMigrationUpdatesExistingTemplates()
+	{
+		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry& e) {
+			return e.version == 9347 && e.description == "2026_06_12_expedition_require_bosses_dead.sql";
+		});
+
+		TEST_ASSERT(entry != manifest_entries.end());
+		TEST_ASSERT(entry->content_schema_update);
+		TEST_ASSERT(entry->check == "SHOW COLUMNS FROM `expedition_templates` LIKE 'require_bosses_dead'");
+		TEST_ASSERT(entry->condition == "empty");
+		TEST_ASSERT(entry->sql.find("ALTER TABLE `expedition_templates`") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("require_bosses_dead") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("DEFAULT '1'") != std::string::npos);
+	}
+
 	void BinaryDatabaseVersionIncludesExpeditionMigrations()
 	{
-		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9346);
+		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9347);
 	}
 
 	void BossOnlyDefaultsAreOff()
@@ -127,6 +147,12 @@ private:
 		TEST_ASSERT(filter.unrestricted_spawn2_ids.empty());
 		TEST_ASSERT(filter.AllowsSpawn2(1));
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(1) == nullptr);
+	}
+
+	void RequireBossesDeadDefaultsOn()
+	{
+		ExpeditionDB::Template template_data;
+		TEST_ASSERT(template_data.require_bosses_dead);
 	}
 
 	void EventCompletionModeDefaultsToFirstCompletion()
@@ -244,6 +270,96 @@ private:
 		TEST_ASSERT(!boss_allowed_types->contains(100));
 
 		TEST_ASSERT(filter.AllowedNPCTypeIDs(30) == nullptr);
+	}
+
+	void BossOnlyFilterEnforcesWithoutConcreteBossSpawn()
+	{
+		ExpeditionDB::Template template_data;
+		template_data.boss_only_spawn = true;
+
+		ExpeditionDB::RequestNpc request_npc;
+		request_npc.enabled = true;
+		request_npc.npc_type_id = 300;
+		request_npc.spawn2_id = 30;
+		template_data.request_npcs.push_back(request_npc);
+
+		ExpeditionDB::Event event_data;
+		ExpeditionDB::EventNpc dynamic_boss;
+		dynamic_boss.role = "boss";
+		dynamic_boss.npc_type_id = 200;
+		dynamic_boss.spawn2_id = 0;
+		event_data.npcs.push_back(dynamic_boss);
+		template_data.events.push_back(event_data);
+
+		const auto filter = ExpeditionDB::BuildBossOnlySpawnFilter(template_data);
+
+		TEST_ASSERT(filter.enabled);
+		TEST_ASSERT(filter.AllowsSpawn2(30));
+		TEST_ASSERT(!filter.AllowsSpawn2(10));
+		TEST_ASSERT(filter.unrestricted_spawn2_ids.contains(30));
+		TEST_ASSERT(filter.npc_type_ids_by_spawn2_id.empty());
+	}
+
+	void BossOnlyFilterAllowsTriggerSpawnOverrides()
+	{
+		ExpeditionDB::Template template_data;
+		template_data.boss_only_spawn = true;
+
+		ExpeditionDB::Event event_data;
+		ExpeditionDB::EventNpc boss_npc;
+		boss_npc.role = "boss";
+		boss_npc.npc_type_id = 200;
+		boss_npc.spawn2_id = 20;
+		event_data.npcs.push_back(boss_npc);
+		template_data.events.push_back(event_data);
+
+		const auto filter = ExpeditionDB::BuildBossOnlySpawnFilter(template_data);
+
+		ExpeditionDB::NPCTypeIDsBySpawn2ID always_allowed_npc_type_ids_by_spawn2_id;
+		always_allowed_npc_type_ids_by_spawn2_id[10].insert(67000);
+		always_allowed_npc_type_ids_by_spawn2_id[20].insert(67001);
+
+		bool blocked_spawn_enabled = true;
+		std::unordered_set<uint32_t> blocked_combined_allowed;
+		const auto* blocked_allowed = ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+			filter,
+			always_allowed_npc_type_ids_by_spawn2_id,
+			10,
+			blocked_spawn_enabled,
+			blocked_combined_allowed
+		);
+
+		TEST_ASSERT(blocked_spawn_enabled);
+		TEST_ASSERT(blocked_allowed != nullptr);
+		TEST_ASSERT(blocked_allowed->contains(67000));
+
+		bool boss_spawn_enabled = true;
+		std::unordered_set<uint32_t> boss_combined_allowed;
+		const auto* boss_allowed = ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+			filter,
+			always_allowed_npc_type_ids_by_spawn2_id,
+			20,
+			boss_spawn_enabled,
+			boss_combined_allowed
+		);
+
+		TEST_ASSERT(boss_spawn_enabled);
+		TEST_ASSERT(boss_allowed != nullptr);
+		TEST_ASSERT(boss_allowed->contains(200));
+		TEST_ASSERT(boss_allowed->contains(67001));
+
+		bool trash_spawn_enabled = true;
+		std::unordered_set<uint32_t> trash_combined_allowed;
+		const auto* trash_allowed = ExpeditionDB::ResolveBossOnlyAllowedNPCTypeIDs(
+			filter,
+			always_allowed_npc_type_ids_by_spawn2_id,
+			50,
+			trash_spawn_enabled,
+			trash_combined_allowed
+		);
+
+		TEST_ASSERT(!trash_spawn_enabled);
+		TEST_ASSERT(trash_allowed == nullptr);
 	}
 
 	void SimpleBuilderDefaultsAreRaidReady()

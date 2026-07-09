@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class Client;
 
@@ -24,6 +25,7 @@ struct ExpeditionCheckResult
 	uint32_t max_players = 0;
 	bool is_raid = false;
 	std::string reason;
+	std::vector<std::string> base_zone_bosses_alive;
 };
 
 uint32_t ParseExpeditionDuration(const std::string& duration);
@@ -56,3 +58,14 @@ namespace ExpeditionEditPopup
 
 // Dispatches a two-button popup response for the expedition edit-mode add flow (defined in gm_commands/expedition.cpp).
 void ExpeditionEditPopupResponse(Client* client, uint32_t popup_id);
+
+// Player-facing "Form Expedition?" confirmation popup. Template ids are tracked server-side so
+// the popup id does not need to pack database ids into a limited bit range.
+namespace ExpeditionRequestPopup
+{
+	inline constexpr uint32_t kBase = 0x41000000u; // distinct from ExpeditionEditPopup::kBase (0x40000000)
+	inline constexpr uint32_t kConfirm = kBase;
+	inline constexpr uint32_t kCancel = kBase | 1u;
+	inline bool Owns(uint32_t popup_id) { return popup_id == kConfirm || popup_id == kCancel; }
+	inline bool Accepted(uint32_t popup_id) { return popup_id == kConfirm; }
+}

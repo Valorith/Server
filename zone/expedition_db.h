@@ -21,6 +21,8 @@ namespace ExpeditionDB {
 
 inline constexpr uint32_t kSimpleSetupMinPlayers = 6;
 inline constexpr uint32_t kSimpleSetupMaxPlayers = 54;
+inline constexpr uint32_t kSimpleSetupMinLevel = 46;
+inline constexpr uint32_t kSimpleSetupMaxLevel = 0; // 0 = unlimited (no maximum)
 inline constexpr uint32_t kSimpleSetupDurationSeconds = 6 * 60 * 60;
 inline constexpr uint32_t kSimpleSetupReplaySeconds = 24 * 60 * 60;
 inline constexpr uint32_t kSimpleBossLockoutSeconds = (6 * 24 * 60 * 60) + (12 * 60 * 60);
@@ -219,6 +221,7 @@ struct Template {
 	bool replay_on_join = true;
 	bool silent = false;
 	bool boss_only_spawn = false;
+	bool require_bosses_dead = true;
 	std::string request_phrase = "expedition";
 	std::string request_mode = "db_only";
 	std::string notes;
@@ -356,6 +359,48 @@ struct BossOnlySpawnFilter {
 	}
 };
 
+using NPCTypeIDsBySpawn2ID = std::unordered_map<uint32_t, std::unordered_set<uint32_t>>;
+
+inline const std::unordered_set<uint32_t>* FindNPCTypeIDsBySpawn2ID(
+	const NPCTypeIDsBySpawn2ID& npc_type_ids_by_spawn2_id,
+	uint32_t spawn2_id
+)
+{
+	const auto it = npc_type_ids_by_spawn2_id.find(spawn2_id);
+	return it != npc_type_ids_by_spawn2_id.end() ? &it->second : nullptr;
+}
+
+inline const std::unordered_set<uint32_t>* ResolveBossOnlyAllowedNPCTypeIDs(
+	const BossOnlySpawnFilter& filter,
+	const NPCTypeIDsBySpawn2ID& always_allowed_npc_type_ids_by_spawn2_id,
+	uint32_t spawn2_id,
+	bool& spawn_enabled,
+	std::unordered_set<uint32_t>& combined_allowed_npc_type_ids
+)
+{
+	if (!filter.enabled) {
+		return nullptr;
+	}
+
+	const auto* always_allowed_npc_type_ids = FindNPCTypeIDsBySpawn2ID(always_allowed_npc_type_ids_by_spawn2_id, spawn2_id);
+	if (!filter.AllowsSpawn2(spawn2_id)) {
+		if (!always_allowed_npc_type_ids) {
+			spawn_enabled = false;
+		}
+
+		return always_allowed_npc_type_ids;
+	}
+
+	const auto* allowed_npc_type_ids = filter.AllowedNPCTypeIDs(spawn2_id);
+	if (!allowed_npc_type_ids || !always_allowed_npc_type_ids) {
+		return allowed_npc_type_ids;
+	}
+
+	combined_allowed_npc_type_ids = *allowed_npc_type_ids;
+	combined_allowed_npc_type_ids.insert(always_allowed_npc_type_ids->begin(), always_allowed_npc_type_ids->end());
+	return &combined_allowed_npc_type_ids;
+}
+
 inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_data)
 {
 	BossOnlySpawnFilter filter;
@@ -389,7 +434,7 @@ inline BossOnlySpawnFilter BuildBossOnlySpawnFilter(const Template& template_dat
 		}
 	}
 
-	filter.enabled = !filter.npc_type_ids_by_spawn2_id.empty();
+	filter.enabled = true;
 	return filter;
 }
 
@@ -401,10 +446,12 @@ bool SetTemplateEnabled(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateReplay(Database& db, uint32_t template_id, uint32_t seconds);
 bool SetTemplateSilent(Database& db, uint32_t template_id, bool silent);
 bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled);
+bool SetTemplateRequireBossesDead(Database& db, uint32_t template_id, bool enabled);
 bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode);
 bool SetDzTemplateZone(Database& db, uint32_t dz_template_id, uint32_t zone_id, uint32_t version);
 bool SetDzTemplateDuration(Database& db, uint32_t dz_template_id, uint32_t seconds);
 bool SetDzTemplatePlayers(Database& db, uint32_t dz_template_id, uint32_t min_players, uint32_t max_players);
+bool SetDzTemplateLevels(Database& db, uint32_t dz_template_id, uint32_t min_level, uint32_t max_level);
 bool SetDzTemplateZoneIn(Database& db, uint32_t dz_template_id, float x, float y, float z, float h);
 bool SetDzTemplateSafeReturn(Database& db, uint32_t dz_template_id, uint32_t zone_id, float x, float y, float z, float h);
 bool SetDzTemplateCompass(Database& db, uint32_t dz_template_id, uint32_t zone_id, float x, float y, float z);
@@ -444,6 +491,7 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template
 ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template& template_data, bool allow_disabled);
 ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::string& id_or_name);
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message);
+void HandleRequestConfirmPopup(Client& client, uint32_t popup_id);
 bool HandleNpcDeath(NPC& npc, Client* killer);
 bool HandleNpcSpawn(NPC& npc);
 bool IsBossSpawnBlockedByActiveLockout(uint32_t npc_type_id, uint32_t spawn2_id);

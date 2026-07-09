@@ -12,6 +12,7 @@ set(eqlaunch_headers
 )
 
 add_executable(eqlaunch ${eqlaunch_sources} ${eqlaunch_headers})
+eqemu_normalize_unix_binary(eqlaunch)
 
 install(TARGETS eqlaunch RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

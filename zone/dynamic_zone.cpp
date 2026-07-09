@@ -396,6 +396,31 @@ bool DynamicZone::ProcessAddConflicts(Client* leader, Client* client, bool swapp
 		}
 	}
 
+	// enforce the expedition's level restrictions on the invited player; GM inviters bypass
+	// just as they do for the player-count requirement at creation time
+	const uint32_t min_level = GetMinLevel();
+	const uint32_t max_level = GetMaxLevel(); // 0 == unlimited
+	if (min_level != 0 || max_level != 0)
+	{
+		auto bypass_status = RuleI(Expedition, MinStatusToBypassPlayerCountRequirements);
+		const bool gm_bypass = leader && leader->GetGM() && leader->Admin() >= bypass_status;
+		if (!gm_bypass)
+		{
+			if (min_level != 0 && client->GetLevel() < min_level)
+			{
+				SendLeaderMessage(leader, Chat::Red, fmt::format(
+					"{} is below the minimum level of {} required for this expedition.", client->GetName(), min_level));
+				has_conflict = true;
+			}
+			else if (max_level != 0 && client->GetLevel() > max_level)
+			{
+				SendLeaderMessage(leader, Chat::Red, fmt::format(
+					"{} is above the maximum level of {} allowed for this expedition.", client->GetName(), max_level));
+				has_conflict = true;
+			}
+		}
+	}
+
 	auto invite_id = client->GetPendingDzInviteID();
 	if (invite_id)
 	{

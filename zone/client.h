@@ -982,6 +982,14 @@ public:
 	uint32 GetRawSkill(EQ::skills::SkillType skill_id) const { if (skill_id <= EQ::skills::HIGHEST_SKILL) { return(m_pp.skills[skill_id]); } return 0; }
 	bool HasSkill(EQ::skills::SkillType skill_id) const;
 	bool CanHaveSkill(EQ::skills::SkillType skill_id) const;
+	uint32 GetAutoSkillEnabledMask() const { return auto_skill_enabled_mask; }
+	bool IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const;
+	bool IsAutoSkillUsable(EQ::skills::SkillType skill_id) const;
+	void SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled);
+	void LoadAutoSkillSettings();
+	void SaveAutoSkillSettings();
+	std::vector<EQ::skills::SkillType> GetApplicableAutoSkills() const;
+	void ProcessAutoSkills();
 	void SetSkill(EQ::skills::SkillType skill_num, uint16 value);
 	void AddSkill(EQ::skills::SkillType skillid, uint16 value);
 	void CheckSpecializeIncrease(uint16 spell_id);
@@ -2132,6 +2140,7 @@ private:
 	bool m_is_manual_afk = false;
 	bool auto_attack;
 	bool auto_fire;
+	uint32 auto_skill_enabled_mask = 0;
 	bool runmode;
 	uint8 gmspeed;
 	bool gminvul;
@@ -2269,6 +2278,7 @@ private:
 	Timer parcel_timer;	//Used to limit the number of parcels to one every 30 seconds (default).  Changable via rule.
 	Timer lazy_load_bank_check_timer;
 	Timer bandolier_throttle_timer;
+	Timer auto_skill_process_timer;
 
 	bool m_lazy_load_bank            = false;
 	int  m_lazy_load_sent_bank_slots = 0;

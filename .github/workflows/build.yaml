@@ -6,6 +6,16 @@ on:
   pull_request:
 
 jobs:
+  metadata:
+    name: Metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Check binary database versions
+        run: python3 utils/scripts/release/release_version.py check-db-versions
+
   # Check if we should skip this workflow run (e.g., if the same code already built successfully)
   pre_job:
     runs-on: ubuntu-latest
@@ -104,13 +114,38 @@ jobs:
         with:
           arch: x64
 
+      - name: Compute Windows cache keys
+        id: windows-cache
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $manifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "vcpkg.json").Hash.ToLowerInvariant()
+          $metadataPath = if ($env:VCPKG_ROOT) { Join-Path $env:VCPKG_ROOT "scripts\vcpkg-tool-metadata.txt" } else { $null }
+          if ($metadataPath -and (Test-Path -LiteralPath $metadataPath)) {
+            $vcpkgMetadataHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $metadataPath).Hash.ToLowerInvariant()
+          } else {
+            $vcpkgMetadataHash = "no-vcpkg-metadata"
+          }
+
+          $image = if ($env:ImageOS) { $env:ImageOS } else { "unknown-image" }
+          $vsVersion = if ($env:VisualStudioVersion) { $env:VisualStudioVersion } else { "unknown-vs" }
+          $vcToolsVersion = if ($env:VCToolsVersion) { $env:VCToolsVersion } else { "unknown-vctools" }
+          $ucrtVersion = if ($env:UCRTVersion) { $env:UCRTVersion } else { "unknown-ucrt" }
+          $runnerOs = if ($env:RUNNER_OS) { $env:RUNNER_OS } else { "Windows" }
+          $keyPrefix = "$runnerOs-vcpkg-msvc-v2-$image-vs$vsVersion-vc$vcToolsVersion-ucrt$ucrtVersion"
+
+          "vcpkg-key=$keyPrefix-$manifestHash-$vcpkgMetadataHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "vcpkg-restore-prefix=$keyPrefix-" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
           path: .vcpkg-binary-cache
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'submodules/vcpkg/scripts/vcpkg-tool-metadata.txt') }}
+          key: ${{ steps.windows-cache.outputs.vcpkg-key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-
+            ${{ steps.windows-cache.outputs.vcpkg-restore-prefix }}
+            ${{ runner.os }}-vcpkg-msvc-v2-
 
       - name: Configure vcpkg binary cache
         shell: pwsh
@@ -119,11 +154,50 @@ jobs:
           New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
           "VCPKG_BINARY_SOURCES=clear;files,$cachePath,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Restore Strawberry Perl cache
+        id: strawberry-perl-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Strawberry-5.24
+          key: ${{ runner.os }}-strawberry-perl-5.24.4.1-v1
+
+      - name: Install officially-supported Strawberry Perl (5.24)
+        if: steps.strawberry-perl-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $version = "5.24.4.1"
+          $url = "https://strawberryperl.com/download/$version/strawberry-perl-$version-64bit-portable.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "strawberry-$version.zip"
+          $dest = "C:\Strawberry-5.24"
+          Write-Host "Installing Strawberry Perl $version (the supported EQEmu Windows Perl)"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+
+      - name: Configure Strawberry Perl
+        shell: pwsh
+        run: |
+          $dest = "C:\Strawberry-5.24"
+          if (-not (Test-Path "$dest\perl\bin\perl.exe")) {
+            throw "Strawberry Perl was not found at $dest."
+          }
+          # perl.exe's MinGW runtime (e.g. libgcc_s_seh-1.dll) can live in c\bin; copy it
+          # next to perl.exe so FindPerl can run perl during configure WITHOUT putting the
+          # MinGW toolchain (gcc/g++) on PATH, which would derail the MSVC/Ninja build.
+          foreach ($d in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll') {
+            if (Test-Path "$dest\c\bin\$d") { Copy-Item "$dest\c\bin\$d" "$dest\perl\bin\" -Force }
+          }
+          "$dest\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$dest\perl\bin"      | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $perlExe = "$dest\perl\bin\perl.exe".Replace('\', '/')
+          "PERL_524_EXE=$perlExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & "$dest\perl\bin\perl.exe" -e "printf qq{Linking against Strawberry Perl %vd\n}, $^V"
+
       - name: Configure
         shell: pwsh
         run: |
           cmake -S . -B build -G Ninja `
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DPERL_EXECUTABLE="$env:PERL_524_EXE" `
             -DEQEMU_BUILD_TESTS=ON `
             -DEQEMU_BUILD_LOGIN=ON `
             -DEQEMU_BUILD_LUA=ON `

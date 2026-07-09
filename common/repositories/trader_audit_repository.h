@@ -9,6 +9,7 @@ public:
 		std::string time;
 		std::string seller;
 		std::string buyer;
+		uint32_t    item_id;
 		std::string itemname;
 		int         quantity;
 		int         totalcost;
@@ -26,6 +27,7 @@ public:
 			"time",
 			"seller",
 			"buyer",
+			"item_id",
 			"itemname",
 			"quantity",
 			"totalcost",
@@ -83,6 +85,7 @@ public:
 		entry.time      = '0000-00-00 00:00:00';
 		entry.seller    = "";
 		entry.buyer     = "";
+		entry.item_id   = 0;
 		entry.itemname  = "";
 		entry.quantity  = 0;
 		entry.totalcost = 0;
@@ -124,10 +127,11 @@ public:
 			entry.time      = row[0];
 			entry.seller    = row[1];
 			entry.buyer     = row[2];
-			entry.itemname  = row[3];
-			entry.quantity  = atoi(row[4]);
-			entry.totalcost = atoi(row[5]);
-			entry.trantype  = atoi(row[6]);
+			entry.item_id   = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
+			entry.itemname  = row[4];
+			entry.quantity  = atoi(row[5]);
+			entry.totalcost = atoi(row[6]);
+			entry.trantype  = atoi(row[7]);
 
 			return entry;
 		}
@@ -162,10 +166,11 @@ public:
 		update_values.push_back(columns[0] + " = '" + Strings::Escape(trader_audit_entry.time) + "'");
 		update_values.push_back(columns[1] + " = '" + Strings::Escape(trader_audit_entry.seller) + "'");
 		update_values.push_back(columns[2] + " = '" + Strings::Escape(trader_audit_entry.buyer) + "'");
-		update_values.push_back(columns[3] + " = '" + Strings::Escape(trader_audit_entry.itemname) + "'");
-		update_values.push_back(columns[4] + " = " + std::to_string(trader_audit_entry.quantity));
-		update_values.push_back(columns[5] + " = " + std::to_string(trader_audit_entry.totalcost));
-		update_values.push_back(columns[6] + " = " + std::to_string(trader_audit_entry.trantype));
+		update_values.push_back(columns[3] + " = " + std::to_string(trader_audit_entry.item_id));
+		update_values.push_back(columns[4] + " = '" + Strings::Escape(trader_audit_entry.itemname) + "'");
+		update_values.push_back(columns[5] + " = " + std::to_string(trader_audit_entry.quantity));
+		update_values.push_back(columns[6] + " = " + std::to_string(trader_audit_entry.totalcost));
+		update_values.push_back(columns[7] + " = " + std::to_string(trader_audit_entry.trantype));
 
 		auto results = database.QueryDatabase(
 			fmt::format(
@@ -189,6 +194,7 @@ public:
 		insert_values.push_back("'" + Strings::Escape(trader_audit_entry.time) + "'");
 		insert_values.push_back("'" + Strings::Escape(trader_audit_entry.seller) + "'");
 		insert_values.push_back("'" + Strings::Escape(trader_audit_entry.buyer) + "'");
+		insert_values.push_back(std::to_string(trader_audit_entry.item_id));
 		insert_values.push_back("'" + Strings::Escape(trader_audit_entry.itemname) + "'");
 		insert_values.push_back(std::to_string(trader_audit_entry.quantity));
 		insert_values.push_back(std::to_string(trader_audit_entry.totalcost));
@@ -224,6 +230,7 @@ public:
 			insert_values.push_back("'" + Strings::Escape(trader_audit_entry.time) + "'");
 			insert_values.push_back("'" + Strings::Escape(trader_audit_entry.seller) + "'");
 			insert_values.push_back("'" + Strings::Escape(trader_audit_entry.buyer) + "'");
+			insert_values.push_back(std::to_string(trader_audit_entry.item_id));
 			insert_values.push_back("'" + Strings::Escape(trader_audit_entry.itemname) + "'");
 			insert_values.push_back(std::to_string(trader_audit_entry.quantity));
 			insert_values.push_back(std::to_string(trader_audit_entry.totalcost));
@@ -264,10 +271,11 @@ public:
 			entry.time      = row[0];
 			entry.seller    = row[1];
 			entry.buyer     = row[2];
-			entry.itemname  = row[3];
-			entry.quantity  = atoi(row[4]);
-			entry.totalcost = atoi(row[5]);
-			entry.trantype  = atoi(row[6]);
+			entry.item_id   = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
+			entry.itemname  = row[4];
+			entry.quantity  = atoi(row[5]);
+			entry.totalcost = atoi(row[6]);
+			entry.trantype  = atoi(row[7]);
 
 			all_entries.push_back(entry);
 		}

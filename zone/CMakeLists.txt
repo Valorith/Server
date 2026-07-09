@@ -7,6 +7,7 @@ set(zone_sources
     aggromanager.cpp
     api_service.cpp
     attack.cpp
+    autoskill.cpp
     aura.cpp
     beacon.cpp
     bonuses.cpp
@@ -381,6 +382,7 @@ set(gm_command_sources
     gm_commands/appearance.cpp
     gm_commands/appearanceeffects.cpp
     gm_commands/attack.cpp
+    gm_commands/autoskill.cpp
     gm_commands/augmentitem.cpp
     gm_commands/ban.cpp
     gm_commands/bugs.cpp
@@ -680,6 +682,7 @@ set_target_properties(gm_commands_zone PROPERTIES UNITY_BUILD ON UNITY_BUILD_BAT
 set_property(TARGET gm_commands_zone PROPERTY FOLDER libraries)
 
 add_executable(zone ${zone_sources} ${zone_headers})
+eqemu_normalize_unix_binary(zone)
 
 install(TARGETS zone RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

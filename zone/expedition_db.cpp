@@ -9,6 +9,8 @@
 #include "zone/dynamic_zone.h"
 #include "zone/entity.h"
 #include "zone/expedition_config.h"
+#include "zone/groups.h"
+#include "zone/raids.h"
 #include "zone/event_codes.h"
 #include "zone/npc.h"
 #include "zone/quest_parser_collection.h"
@@ -50,10 +52,19 @@ std::string NpcTypeLabel(uint32_t npc_type_id)
 
 namespace {
 	constexpr const char* kManageRule = "===========================================";
+	constexpr const char* kEntryDivider = "- - - - - - - - - - - - - - - - - - - - - -";
+
+	// Roughly center text within the rule width for tidy headers.
+	std::string CenteredRuleText(const std::string& text)
+	{
+		const size_t width = std::char_traits<char>::length(kManageRule);
+		return text.size() >= width ? text : std::string((width - text.size()) / 2, ' ') + text;
+	}
 
 	std::unordered_map<uint32_t, Template> g_templates;
 	std::unordered_map<uint32_t, BuilderState> g_builder_states;
 	std::unordered_map<uint32_t, uint16_t> g_last_gm_target_menu_entity;
+	std::unordered_map<uint32_t, uint32_t> g_pending_request_confirmations;
 	std::unordered_map<uint32_t, std::unordered_set<std::string>> g_completed_runtime_events;
 	std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::unordered_set<uint32_t>>> g_grouped_boss_progress;
 
@@ -354,25 +365,70 @@ namespace {
 			zone->GetZoneID() == static_cast<uint32_t>(template_data.dz_template.zone_id);
 	}
 
+	bool ShouldCheckBaseZoneBossAvailability(const Template& template_data)
+	{
+		return template_data.require_bosses_dead && IsCurrentBaseZoneForTemplate(template_data);
+	}
+
+	bool IsActiveBaseZoneBoss(const EventNpc& event_npc)
+	{
+		return IsBaseZoneAvailabilityBoss(event_npc) &&
+			entity_list.IsActiveNPCSpawnedByNpcTypeID(event_npc.npc_type_id, event_npc.spawn2_id);
+	}
+
 	bool HasActiveBaseZoneBoss(const Template& template_data)
 	{
-		if (!IsCurrentBaseZoneForTemplate(template_data)) {
+		if (!ShouldCheckBaseZoneBossAvailability(template_data)) {
 			return false;
 		}
 
 		for (const auto& event_data : template_data.events) {
 			for (const auto& event_npc : event_data.npcs) {
-				if (!IsBaseZoneAvailabilityBoss(event_npc)) {
-					continue;
-				}
-
-				if (entity_list.IsActiveNPCSpawnedByNpcTypeID(event_npc.npc_type_id, event_npc.spawn2_id)) {
+				if (IsActiveBaseZoneBoss(event_npc)) {
 					return true;
 				}
 			}
 		}
 
 		return false;
+	}
+
+	std::vector<std::string> ActiveBaseZoneBossNames(const Template& template_data)
+	{
+		std::vector<std::string> boss_names;
+		if (!ShouldCheckBaseZoneBossAvailability(template_data)) {
+			return boss_names;
+		}
+
+		std::unordered_set<std::string> seen_bosses;
+		for (const auto& event_data : template_data.events) {
+			for (const auto& event_npc : event_data.npcs) {
+				if (!IsActiveBaseZoneBoss(event_npc)) {
+					continue;
+				}
+
+				const std::string key = fmt::format("{}:{}", event_npc.npc_type_id, event_npc.spawn2_id);
+				if (!seen_bosses.insert(key).second) {
+					continue;
+				}
+
+				boss_names.push_back(NpcTypeName(event_npc.npc_type_id));
+			}
+		}
+
+		return boss_names;
+	}
+
+	void SendActiveBaseZoneBossList(Client& client, const std::vector<std::string>& boss_names)
+	{
+		if (boss_names.empty()) {
+			return;
+		}
+
+		client.Message(Chat::Red, "Required bosses still alive:");
+		for (const auto& boss_name : boss_names) {
+			client.Message(Chat::Red, "  - %s", boss_name.c_str());
+		}
 	}
 
 	std::string RequestFailureLabel(const ExpeditionCheckResult& check)
@@ -395,6 +451,14 @@ namespace {
 
 		if (check.reason == "player_count") {
 			return fmt::format("need {}-{} players", check.min_players, check.max_players);
+		}
+
+		if (check.reason == "min_level") {
+			return "below minimum level";
+		}
+
+		if (check.reason == "max_level") {
+			return "above maximum level";
 		}
 
 		if (check.reason == "no_members") {
@@ -440,6 +504,9 @@ namespace {
 		if (!check.success) {
 			if (!template_data.silent) {
 				client.Message(Chat::Red, fmt::format("Cannot create expedition: {}.", RequestFailureLabel(check)).c_str());
+				if (IsBaseZoneBossSpawnedReason(check.reason)) {
+					SendActiveBaseZoneBossList(client, check.base_zone_bosses_alive);
+				}
 			}
 			return true;
 		}
@@ -509,6 +576,66 @@ namespace {
 		return true;
 	}
 
+	// Player-facing summaries of who may form/join an expedition. The "*Text" helpers
+	// describe the configured range; the "*Met" helpers report whether the requesting
+	// player actually satisfies it (independent of GM bypass, so the menu reflects reality).
+	std::string LevelRangeText(const Template& template_data)
+	{
+		const auto& dz = template_data.dz_template;
+		if (dz.min_level > 0 && dz.max_level > 0) {
+			return fmt::format("Level {}-{}", dz.min_level, dz.max_level);
+		}
+		if (dz.min_level > 0) {
+			return fmt::format("Level {}+", dz.min_level);
+		}
+		if (dz.max_level > 0) {
+			return fmt::format("Level up to {}", dz.max_level);
+		}
+		return "Any level";
+	}
+
+	std::string PlayerRangeText(const Template& template_data)
+	{
+		const auto& dz = template_data.dz_template;
+		if (dz.max_players > 0 && dz.min_players != dz.max_players) {
+			return fmt::format("{}-{} players", dz.min_players, dz.max_players);
+		}
+		const int32_t count = dz.max_players > 0 ? dz.max_players : dz.min_players;
+		return fmt::format("{} player{}", count, count == 1 ? "" : "s");
+	}
+
+	bool LevelRequirementMet(const Template& template_data, uint32_t player_level)
+	{
+		const auto& dz = template_data.dz_template;
+		const int32_t lvl = static_cast<int32_t>(player_level);
+		return (dz.min_level == 0 || lvl >= dz.min_level) && (dz.max_level == 0 || lvl <= dz.max_level);
+	}
+
+	bool PlayerRequirementMet(const Template& template_data, uint32_t party_size)
+	{
+		// mirrors the creation rule: only the minimum gates creation (raids beyond max are truncated)
+		return static_cast<int32_t>(party_size) >= template_data.dz_template.min_players;
+	}
+
+	// Combined one-line summary used in the confirmation popup body (no color).
+	std::string FormatExpeditionRequirements(const Template& template_data)
+	{
+		return fmt::format("{}  |  {}", LevelRangeText(template_data), PlayerRangeText(template_data));
+	}
+
+	// The requesting player's prospective party size (group/raid), used to evaluate the
+	// player-count requirement for the menu coloring.
+	uint32_t RequesterPartySize(Client& client)
+	{
+		if (Raid* raid = client.GetRaid()) {
+			return raid->RaidCount();
+		}
+		if (Group* group = client.GetGroup()) {
+			return group->GroupCount();
+		}
+		return 1;
+	}
+
 	void OfferRequestMenu(Client& client, const RequesterMatches& matches)
 	{
 		if (matches.empty()) {
@@ -518,6 +645,11 @@ namespace {
 		const bool multi = matches.size() > 1;
 		DynamicZone* active_expedition = RequesterContextExpedition(client);
 
+		// Evaluated against the requesting player's real level and party size so the menu
+		// colors reflect actual eligibility, regardless of any GM player-count/level bypass.
+		const uint32_t player_level = client.GetLevel();
+		const uint32_t party_size = RequesterPartySize(client);
+
 		// Each menu entry is either a clickable action (phrase + button label) or an info note.
 		struct MenuEntry {
 			std::string name;
@@ -525,6 +657,11 @@ namespace {
 			std::string button;
 			std::string status;
 			std::string note;
+			std::string level_text;
+			std::string players_text;
+			std::vector<std::string> required_bosses_alive;
+			bool level_met = false;
+			bool players_met = false;
 			bool status_block = false;
 		};
 		std::vector<MenuEntry> entries;
@@ -538,6 +675,10 @@ namespace {
 
 			MenuEntry entry;
 			entry.name = RequesterMenuLabel(*template_data);
+			entry.level_text = LevelRangeText(*template_data);
+			entry.players_text = PlayerRangeText(*template_data);
+			entry.level_met = LevelRequirementMet(*template_data, player_level);
+			entry.players_met = PlayerRequirementMet(*template_data, party_size);
 			if (active_expedition) {
 				if (IsMatchingExpedition(*active_expedition, *template_data)) {
 					entry.status = "Current";
@@ -567,6 +708,9 @@ namespace {
 				else {
 					entry.note = RequestMenuNoteLabel(check);
 					entry.status_block = IsRequesterStatusBlockReason(check.reason);
+					if (IsBaseZoneBossSpawnedReason(check.reason)) {
+						entry.required_bosses_alive = check.base_zone_bosses_alive;
+					}
 				}
 			}
 			entries.push_back(std::move(entry));
@@ -576,28 +720,48 @@ namespace {
 			return;
 		}
 
-		const std::string title = multi ? "   Expeditions Offered Here" : fmt::format("   Expedition: {}", entries.front().name);
+		const std::string title = multi ? "Expeditions Offered Here" : fmt::format("Expedition: {}", entries.front().name);
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
-		client.Message(Chat::NPCQuestSay, "%s", title.c_str());
+		client.Message(Chat::NPCQuestSay, "%s", CenteredRuleText(title).c_str());
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
-		for (const auto& entry : entries) {
-			const std::string status = (entry.note.empty() || entry.status_block) ? entry.status : fmt::format("{} ({})", entry.status, entry.note);
+
+		for (size_t i = 0; i < entries.size(); ++i) {
+			const auto& entry = entries[i];
+
+			// Status-block notes read as a sentence continuation ("Unavailable while ..."),
+			// other notes are parenthetical hints ("Locked (replay timer active)").
+			const std::string status_text = entry.note.empty() ? entry.status :
+				entry.status_block ? fmt::format("{} {}", entry.status, entry.note) :
+				fmt::format("{} ({})", entry.status, entry.note);
+
+			// Header line: "<name> - <status>" (the name is dropped in single view since it is
+			// already in the title), with the action button appended when one is offered.
+			std::string header = multi ? fmt::format("{} - {}", entry.name, status_text) : status_text;
 			if (!entry.phrase.empty()) {
-				const std::string action = Saylink::Silent(entry.phrase, fmt::format("[ {} ]", entry.button));
-				const std::string line = multi ?
-					fmt::format("   {} - {} {}", entry.name, status, action) :
-					fmt::format("   {} {}", status, action);
-				client.Message(Chat::NPCQuestSay, "%s", line.c_str());
-				continue;
+				header += "   " + Saylink::Silent(entry.phrase, fmt::format("[ {} ]", entry.button));
 			}
 
-			const std::string line = multi ?
-				fmt::format("   {} - {}", entry.name, status) :
-				fmt::format("   {}", status);
-			const uint16_t chat_type = entry.status == "Locked" ? Chat::Red : Chat::Yellow;
-			client.Message(chat_type, "%s", line.c_str());
-			if (entry.status_block && !entry.note.empty()) {
-				client.Message(chat_type, "      %s", entry.note.c_str());
+			// Color the whole header by availability so each block reads at a glance.
+			const uint16_t status_color =
+				entry.status == "Available" ? Chat::Green :
+				(entry.status == "Locked" || entry.status == "Unavailable") ? Chat::Red :
+				Chat::Yellow;
+			client.Message(status_color, "%s", header.c_str());
+
+			// Requirement lines, indented under the header and colored by the requesting player's
+			// real eligibility (green = meets it, red = does not; independent of any GM bypass).
+			client.Message(entry.level_met ? Chat::Green : Chat::Red, "     %s", entry.level_text.c_str());
+			client.Message(entry.players_met ? Chat::Green : Chat::Red, "     %s", entry.players_text.c_str());
+			if (!entry.required_bosses_alive.empty()) {
+				client.Message(Chat::Red, "     Required bosses still alive:");
+				for (const auto& boss_name : entry.required_bosses_alive) {
+					client.Message(Chat::Red, "       - %s", boss_name.c_str());
+				}
+			}
+
+			// Light divider between expeditions (omitted after the last one).
+			if (multi && i + 1 < entries.size()) {
+				client.Message(Chat::Gray, "%s", kEntryDivider);
 			}
 		}
 		client.Message(Chat::NPCQuestSay, "%s", kManageRule);
@@ -855,15 +1019,17 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 
 	const uint32_t dz_template_id = InsertID(db, fmt::format(
 		"INSERT INTO dynamic_zone_templates "
-		"(zone_id, zone_version, name, min_players, max_players, duration_seconds, dz_switch_id, "
+		"(zone_id, zone_version, name, min_players, max_players, min_level, max_level, duration_seconds, dz_switch_id, "
 		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
 		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h) "
-		"VALUES ({}, {}, '{}', {}, {}, {}, 0, {}, {}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
+		"VALUES ({}, {}, '{}', {}, {}, {}, {}, {}, 0, {}, {}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
 		zone->GetZoneID(),
 		zone->GetInstanceVersion(),
 		escaped_name,
 		kSimpleSetupMinPlayers,
 		kSimpleSetupMaxPlayers,
+		kSimpleSetupMinLevel,
+		kSimpleSetupMaxLevel,
 		kSimpleSetupDurationSeconds,
 		zone->GetZoneID(),
 		pos.x,
@@ -894,6 +1060,7 @@ uint32_t CreateTemplateFromClient(Database& db, Client& client, const std::strin
 		true,
 		false,
 		false,
+		true,
 		kSimpleRequestPhrase,
 		kSimpleRequestMode,
 		""
@@ -919,10 +1086,10 @@ uint32_t CloneTemplate(Database& db, uint32_t source_template_id, const std::str
 	const std::string slug = fmt::format("{}_{}_{}", Slugify(name), source_template_id, static_cast<uint32_t>(std::time(nullptr)));
 	const uint32_t dz_template_id = InsertID(db, fmt::format(
 		"INSERT INTO dynamic_zone_templates "
-		"(zone_id, zone_version, name, min_players, max_players, duration_seconds, dz_switch_id, "
+		"(zone_id, zone_version, name, min_players, max_players, min_level, max_level, duration_seconds, dz_switch_id, "
 		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
 		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h) "
-		"SELECT zone_id, zone_version, '{}', min_players, max_players, duration_seconds, dz_switch_id, "
+		"SELECT zone_id, zone_version, '{}', min_players, max_players, min_level, max_level, duration_seconds, dz_switch_id, "
 		"compass_zone_id, compass_x, compass_y, compass_z, return_zone_id, return_x, return_y, return_z, return_h, "
 		"override_zone_in, zone_in_x, zone_in_y, zone_in_z, zone_in_h "
 		"FROM dynamic_zone_templates WHERE id = {}",
@@ -1029,6 +1196,13 @@ bool SetTemplateBossOnlySpawn(Database& db, uint32_t template_id, bool enabled)
 	return ok;
 }
 
+bool SetTemplateRequireBossesDead(Database& db, uint32_t template_id, bool enabled)
+{
+	const bool ok = ExpeditionRepository::UpdateTemplateRequireBossesDead(db, template_id, enabled);
+	Reload(db);
+	return ok;
+}
+
 bool SetTemplateRequestMode(Database& db, uint32_t template_id, const std::string& request_mode)
 {
 	if (!IsKnownRequestMode(request_mode)) {
@@ -1065,6 +1239,18 @@ bool SetDzTemplatePlayers(Database& db, uint32_t dz_template_id, uint32_t min_pl
 		"UPDATE dynamic_zone_templates SET min_players = {}, max_players = {} WHERE id = {}",
 		min_players,
 		max_players,
+		dz_template_id
+	));
+	Reload(db);
+	return ok;
+}
+
+bool SetDzTemplateLevels(Database& db, uint32_t dz_template_id, uint32_t min_level, uint32_t max_level)
+{
+	const bool ok = QueryOK(db, fmt::format(
+		"UPDATE dynamic_zone_templates SET min_level = {}, max_level = {} WHERE id = {}",
+		min_level,
+		max_level,
 		dz_template_id
 	));
 	Reload(db);
@@ -1482,6 +1668,10 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		result.errors.push_back("Player minimum and maximum are invalid.");
 	}
 
+	if (template_data.dz_template.max_level != 0 && template_data.dz_template.max_level < template_data.dz_template.min_level) {
+		result.errors.push_back("Maximum level must be zero (unlimited) or at least the minimum level.");
+	}
+
 	if (
 		template_data.request_mode != "db_only" &&
 		template_data.request_mode != "script_can_opt_in" &&
@@ -1522,7 +1712,7 @@ ValidationResult ValidateTemplate(const Template& template_data)
 		}
 
 		if (!has_concrete_boss) {
-			result.errors.push_back("Boss-only spawn mode requires at least one boss NPC mapping with a concrete spawn2_id.");
+			result.warnings.push_back("Boss-only spawn mode has no boss NPC mapping with a concrete spawn2_id; only request NPCs, trigger NPCs, and script-spawned NPCs will be available.");
 		}
 	}
 
@@ -1745,7 +1935,8 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const Template
 		return result;
 	}
 
-	if (HasActiveBaseZoneBoss(template_data)) {
+	result.base_zone_bosses_alive = ActiveBaseZoneBossNames(template_data);
+	if (!result.base_zone_bosses_alive.empty()) {
 		result.reason = kBaseZoneBossSpawnedReason;
 		return result;
 	}
@@ -1770,6 +1961,33 @@ ExpeditionCheckResult CheckExpeditionFromTemplate(Client& client, const std::str
 	result.reason = "template_not_found";
 	return result;
 }
+
+	// Presents a Yes/No confirmation popup before forming an expedition from the menu saylink.
+	// If the player is no longer eligible, defer to the normal path so they get the real reason.
+	void OfferRequestConfirmation(Client& client, const Template& template_data)
+	{
+		const auto check = CheckExpeditionFromTemplate(client, template_data);
+		if (!check.success) {
+			TryCreateTemplateRequest(client, template_data);
+			return;
+		}
+
+		const std::string body = fmt::format(
+			"Form the expedition \"{}\"?<br><br>{}<br><br>"
+			"This creates the instance for you and your group/raid.",
+			template_data.name,
+			FormatExpeditionRequirements(template_data)
+		);
+
+		g_pending_request_confirmations[client.CharacterID()] = template_data.id;
+		client.SendFullPopup(
+			"Form Expedition?",
+			body.c_str(),
+			ExpeditionRequestPopup::kConfirm, // Yes -> create
+			ExpeditionRequestPopup::kCancel,  // No  -> dismiss and clear pending request
+			1, 0, "Yes", "No"
+		);
+	}
 
 bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 {
@@ -1826,8 +2044,8 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 
 			if (menu_template_id != 0) {
 				if (menu_template_id == template_data->id) {
-					TryCreateTemplateRequest(client, *template_data);
-					return true;
+					OfferRequestConfirmation(client, *template_data);
+					return false;
 				}
 				continue;
 			}
@@ -1881,6 +2099,31 @@ bool HandleRequestSay(Client& client, NPC& npc, const std::string& message)
 	}
 
 	return false;
+}
+
+void HandleRequestConfirmPopup(Client& client, uint32_t popup_id)
+{
+	auto pending = g_pending_request_confirmations.find(client.CharacterID());
+	if (pending == g_pending_request_confirmations.end()) {
+		return;
+	}
+
+	const uint32_t template_id = pending->second;
+	g_pending_request_confirmations.erase(pending);
+
+	if (!ExpeditionRequestPopup::Accepted(popup_id)) {
+		return;
+	}
+
+	// Player answered "Yes" on the "Form Expedition?" confirmation popup. Look up the pending
+	// template and create it. TryCreateTemplateRequest re-validates (level, player count,
+	// lockouts) and messages the player on failure.
+	const Template* template_data = FindTemplate(template_id);
+	if (!template_data) {
+		return;
+	}
+
+	TryCreateTemplateRequest(client, *template_data);
 }
 
 bool HandleNpcDeath(NPC& npc, Client* killer)

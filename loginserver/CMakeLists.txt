@@ -29,6 +29,7 @@ set(eqlogin_headers
 add_compile_definitions(EQEMU_USE_OPENSSL)
 
 add_executable(loginserver ${eqlogin_sources} ${eqlogin_headers})
+eqemu_normalize_unix_binary(loginserver)
 
 install(TARGETS loginserver RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 

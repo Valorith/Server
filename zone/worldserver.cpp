@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "worldserver.h"
 
+#include "common/bazaar.h"
 #include "common/eq_packet_structs.h"
 #include "common/events/player_event_logs.h"
 #include "common/misc_functions.h"
@@ -91,7 +92,7 @@ bool HasActiveTraderTransaction(uint32 character_id)
 
 	const auto active_entries = TraderRepository::GetWhere(
 		database,
-		fmt::format("`character_id` = {} AND `active_transaction` = 1 LIMIT 1", character_id)
+		fmt::format("`character_id` = {} AND `active_transaction` <> 0 LIMIT 1", character_id)
 	);
 
 	return !active_entries.empty();
@@ -109,6 +110,27 @@ Client *FindOfflineReclaimClient(const OfflineSessionReclaim_Struct &request)
 	}
 
 	return client;
+}
+
+void CloseOfflineTradeCustomer(Client *client)
+{
+	if (!client || !client->IsThereACustomer()) {
+		return;
+	}
+
+	auto customer = entity_list.GetClientByID(client->GetCustomerID());
+	if (customer) {
+		if (client->IsTrader()) {
+			customer->CancelTraderTradeWindow();
+			customer->SetTraderID(0);
+			customer->ClearTraderMerchantList();
+		}
+		else if (client->IsBuyer()) {
+			customer->CancelBuyerTradeWindow();
+		}
+	}
+
+	client->WithCustomer(0);
 }
 }
 
@@ -3825,6 +3847,20 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						return;
 					}
 
+					if (!TraderRepository::StartActiveTransactionProcessing(
+						database,
+						in->id,
+						in->trader_buy_struct.item_unique_id
+					)) {
+						LogTrading(
+							"Ignoring duplicate or stale bazaar parcel purchase message for trader_id [{}] item unique_id [{}] buyer [{}]",
+							in->trader_buy_struct.trader_id,
+							in->trader_buy_struct.item_unique_id,
+							in->buyer_id
+						);
+						break;
+					}
+
 					auto item = trader_pc->FindTraderItemByUniqueID(in->trader_buy_struct.item_unique_id);
 					if (!item) {
 						in->transaction_status = BazaarPurchaseTraderFailed;
@@ -3835,10 +3871,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					//if there is a customer currently browsing, close to ensure no conflict of purchase
 					if (trader_pc->IsThereACustomer()) {
-						auto customer = entity_list.GetClientByID(trader_pc->GetCustomerID());
-						if (customer) {
-							customer->CancelTraderTradeWindow();
-						}
+						CloseOfflineTradeCustomer(trader_pc);
 					}
 
 					//Update the trader's db entries
@@ -3889,6 +3922,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					trader_pc->AddMoneyToPP(total_cost,	true);
 
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							trader_pc->GetCleanName(),
+							in->trader_buy_struct.buyer_name,
+							item->GetID(),
+							in->trader_buy_struct.item_name,
+							in->item_quantity,
+							total_cost,
+							0
+						);
+					}
+
 					//Update the trader to indicate the sale has completed
 					EQApplicationPacket outapp(OP_Trader, sizeof(TraderBuy_Struct));
 					auto                data = reinterpret_cast<TraderBuy_Struct *>(outapp.pBuffer);
@@ -3921,8 +3967,9 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (trader_pc->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = trader_pc->CharacterID();
+						e.item_id      = item->GetID();
 						e.item_name    = in->trader_buy_struct.item_name;
-						e.price        = in->trader_buy_struct.price * in->trader_buy_struct.quantity;
+						e.price        = total_cost;
 						e.quantity     = in->trader_buy_struct.quantity;
 						e.type         = TRADER_TRANSACTION;
 						e.buyer_name   = in->trader_buy_struct.buyer_name;
@@ -3931,7 +3978,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					}
 
 					in->transaction_status = BazaarPurchaseSuccess;
-					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					worldserver.SendPacket(pack);
 
 					LogTradingDetail("Step 6:Bazaar Purchase. Purchase checks complete for trader.  Send Success to buyer via world.");
@@ -3947,6 +3993,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							zone->GetZoneID(),
 							zone->GetInstanceID()
 						);
+						TraderRepository::UpdateActiveTransaction(database, in->id, false);
 						return;
 					}
 
@@ -4065,6 +4112,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					memcpy(data, &in->trader_buy_struct, sizeof(TraderBuy_Struct));
 					buyer->ReturnTraderReq(&outapp, in->item_quantity, in->trader_buy_struct.item_id);
+					TraderRepository::UpdateActiveTransaction(database, in->id, false);
 					LogTradingDetail("Step 8:Bazaar Purchase. Purchase complete. Sending update packet to buyer.");
 
 					break;
@@ -4230,10 +4278,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						return;
 					}
 					if (buyer->IsThereACustomer()) {
-						auto customer = entity_list.GetClientByID(buyer->GetCustomerID());
-						if (customer) {
-							customer->CancelBuyerTradeWindow();
-						}
+						CloseOfflineTradeCustomer(buyer);
 					}
 
 					BuyerLineSellItem_Struct sell_line{};
@@ -4327,10 +4372,11 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (buyer->IsOffline()) {
 						auto e         = CharacterOfflineTransactionsRepository::NewEntity();
 						e.character_id = buyer->CharacterID();
+						e.item_id      = sell_line.item_id;
 						e.item_name    = sell_line.item_name;
 						e.price        = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
 						e.quantity     = sell_line.seller_quantity;
-						e.type         = BUYER_TRANSACTION;
+						e.type         = BARTER_TRANSACTION;
 						e.buyer_name   = sell_line.seller_name;
 
 						CharacterOfflineTransactionsRepository::InsertOne(database, e);
@@ -4378,6 +4424,19 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						Barter_Success
 					);
 
+					if (RuleB(Bazaar, AuditTrail)) {
+						Bazaar::RecordAuditTrail(
+							database,
+							seller->GetCleanName(),
+							sell_line.buyer_name,
+							sell_line.item_id,
+							sell_line.item_name,
+							sell_line.seller_quantity,
+							total_cost,
+							1
+						);
+					}
+
 					if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
 						PlayerEvent::BarterTransaction e{};
 						e.status        = "Successful Barter Transaction";
@@ -4408,7 +4467,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			auto in = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
 			auto client = FindOfflineReclaimClient(*in);
 			if (!client) {
-				LogInfo(
+				LogTrading(
 					"Offline reclaim request [{}] for account [{}] character [{}] found no matching zone entity; reporting stale",
 					in->request_id,
 					in->account_id,
@@ -4449,21 +4508,29 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
-			const bool has_customer = client->IsThereACustomer();
 			const bool has_active_trader_transaction = client->IsTrader() && HasActiveTraderTransaction(client->CharacterID());
-			if (has_customer || has_active_trader_transaction) {
-				LogInfo(
-					"Offline reclaim request [{}] for client [{}] is busy; customer [{}] trader_transaction [{}]",
+			if (has_active_trader_transaction) {
+				LogTrading(
+					"Offline reclaim request [{}] for client [{}] is busy; trader_transaction [{}]",
 					in->request_id,
 					client->GetCleanName(),
-					has_customer,
 					has_active_trader_transaction
 				);
 				SendOfflineSessionReclaimResponse(*in, OfflineSessionReclaimBusy);
 				break;
 			}
 
-			LogInfo(
+			if (client->IsThereACustomer()) {
+				LogTrading(
+					"Closing passive offline {} browse session for client [{}] during reclaim request [{}]",
+					client->IsBuyer() ? "buyer" : "trader",
+					client->GetCleanName(),
+					in->request_id
+				);
+				CloseOfflineTradeCustomer(client);
+			}
+
+			LogTrading(
 				"Reclaiming offline {} [{}] for account [{}] character [{}]",
 				client->IsBuyer() ? "buyer" : "trader",
 				client->GetCleanName(),

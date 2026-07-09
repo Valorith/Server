@@ -13,6 +13,7 @@
 #include "zone/event_codes.h"
 #include "zone/position.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 class Client;
@@ -533,6 +534,7 @@ public:
 	bool		LoadSpawnGroups(const char* zone_name, uint16 version, SpawnGroupList* spawn_group_list);
 	bool		LoadSpawnGroupsByID(int spawn_group_id, SpawnGroupList* spawn_group_list);
 	bool		PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spawn2_list, int16 version);
+	std::unordered_map<uint32, std::unordered_set<uint32>> GetNPCTypeIDsByBodyTypeBySpawn2ID(uint32 zone_id, int16 version, uint8 body_type_id);
 	bool		CreateSpawn2(Client* c, uint32 spawngroup_id, const std::string& zone_short_name, const glm::vec4& position, uint32 respawn, uint32 variance, uint16 condition, int16 condition_value);
 	void		UpdateRespawnTime(uint32 spawn2_id, uint16 instance_id,uint32 timeleft);
 	uint32		GetSpawnTimeLeft(uint32 spawn2_id, uint16 instance_id);

@@ -179,7 +179,8 @@ Client::Client() : Mob(
 				   tmSitting(0),
 				   parcel_timer(RuleI(Parcel, ParcelDeliveryDelay)),
 				   lazy_load_bank_check_timer(1000),
-				   bandolier_throttle_timer(0)
+				   bandolier_throttle_timer(0),
+				   auto_skill_process_timer(250)
 {
 	eqs = nullptr;
 	for (auto client_filter = FilterNone; client_filter < _FilterCount; client_filter = eqFilterType(client_filter + 1)) {
@@ -229,6 +230,7 @@ Client::Client() : Mob(
 	SetTarget(0);
 	auto_attack = false;
 	auto_fire = false;
+	auto_skill_enabled_mask = 0;
 	runmode = false;
 	linkdead_timer.Disable();
 	zonesummon_id = 0;
@@ -488,7 +490,8 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	tmSitting(0),
 	parcel_timer(RuleI(Parcel, ParcelDeliveryDelay)),
 	lazy_load_bank_check_timer(1000),
-	bandolier_throttle_timer(0)
+	bandolier_throttle_timer(0),
+	auto_skill_process_timer(250)
 {
 	for (auto client_filter = FilterNone; client_filter < _FilterCount; client_filter = eqFilterType(client_filter + 1)) {
 		SetFilter(client_filter, FilterShow);
@@ -540,6 +543,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	SetTarget(0);
 	auto_attack = false;
 	auto_fire = false;
+	auto_skill_enabled_mask = 0;
 	runmode = false;
 	linkdead_timer.Disable();
 	zonesummon_id = 0;
@@ -13269,6 +13273,11 @@ void Client::BroadcastPositionUpdate()
 	spu->delta_z       = FloatToEQ13(0);
 	spu->delta_heading = FloatToEQ10(0);
 	spu->animation     = 0;
+
+	if (IsOffline()) {
+		entity_list.QueueClients(this, &outapp, true);
+		return;
+	}
 
 	entity_list.QueueCloseClients(this, &outapp, true, zone->GetClientUpdateRange());
 

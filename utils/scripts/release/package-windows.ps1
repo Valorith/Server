@@ -6,13 +6,20 @@ param(
     [string]$Tag,
 
     [Parameter(Mandatory = $true)]
-    [string]$CommitSha
+    [string]$CommitSha,
+
+    [string]$BuildBinDir
 )
 
 $ErrorActionPreference = "Stop"
 
 $rootDir = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
-$binDir = Join-Path $rootDir "build/bin"
+$binDir = if ($BuildBinDir) {
+    (Resolve-Path -LiteralPath $BuildBinDir).Path
+}
+else {
+    Join-Path $rootDir "build/bin"
+}
 $distDir = Join-Path $rootDir "dist"
 $packageName = "eqemu-server-windows-x64-$Tag"
 $stageDir = Join-Path $distDir $packageName
@@ -345,6 +352,40 @@ function Find-RuntimeDependency {
     return $null
 }
 
+function Test-IsStrawberryPerlProvidedDll {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [string]$RequiredBy
+    )
+
+    # The release links the officially-supported Strawberry Perl (5.24), which must be
+    # installed on the host -- it is the documented EQEmu Windows prerequisite. The
+    # embedded interpreter loads perl5xx.dll and its MinGW runtime from the user's
+    # Strawberry install at runtime, so these are deliberately NOT bundled. Bundling
+    # perl5xx.dll would also ship the build machine's compiled-in @INC paths (which do
+    # not exist on user machines) and break every Perl quest. This mirrors the local
+    # distribution, which ships no Perl/MinGW DLLs.
+    if ($Name -match '^perl5\d+\.dll$') {
+        return $true
+    }
+
+    # The MinGW runtime is host-provided ONLY when it is pulled in by the host's
+    # perl5xx.dll. If any other (MSVC) binary ever links it, it must still be bundled or
+    # flagged -- never silently dropped -- so gate this on the requiring file.
+    $mingwRuntime = @(
+        "libgcc_s_seh-1.dll",
+        "libstdc++-6.dll",
+        "libwinpthread-1.dll"
+    )
+    if ($mingwRuntime -contains $Name) {
+        return ($RequiredBy -match '^perl5\d+\.dll$')
+    }
+
+    return $false
+}
+
 function Copy-DynamicRuntimeDependencies {
     $dynamicRuntimeDlls = @(
         # libmariadb loads authentication and protocol plugins dynamically.
@@ -376,6 +417,25 @@ function Copy-DynamicRuntimeDependencies {
     }
 }
 
+function Get-BuildRootFromBinDir {
+    $current = (Resolve-Path -LiteralPath $binDir).Path
+
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath (Join-Path $current "CMakeCache.txt") -PathType Leaf) {
+            return $current
+        }
+
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) {
+            break
+        }
+
+        $current = $parent
+    }
+
+    return (Join-Path $rootDir "build")
+}
+
 function Resolve-RuntimeDependencies {
     $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
     if (-not $dumpbin) {
@@ -395,6 +455,9 @@ function Resolve-RuntimeDependencies {
         Get-ChildItem -Path $stageDir -File | Where-Object { $_.Extension -in @(".exe", ".dll") } | ForEach-Object {
             foreach ($dependency in (Get-DumpbinDependencies -Path $_.FullName)) {
                 if ($dependency -match "^(api-ms-win-|ext-ms-)") {
+                    continue
+                }
+                if (Test-IsStrawberryPerlProvidedDll -Name $dependency -RequiredBy $_.Name) {
                     continue
                 }
                 if ($systemDlls.Contains($dependency)) {
@@ -443,6 +506,9 @@ function Test-RuntimeDependencies {
             if ($dependency -match "^(api-ms-win-|ext-ms-)") {
                 continue
             }
+            if (Test-IsStrawberryPerlProvidedDll -Name $dependency -RequiredBy $_.Name) {
+                continue
+            }
             if ($systemDlls.Contains($dependency)) {
                 continue
             }
@@ -472,11 +538,9 @@ function Test-PackageContents {
         "import_client_files.exe",
         "legacy.dll",
         "libcrypto-3-x64.dll",
-        "libgcc_s_seh-1.dll",
         "libmariadb.dll",
         "libsodium.dll",
         "libssl-3-x64.dll",
-        "libwinpthread-1.dll",
         "loginserver.exe",
         "lua51.dll",
         "msvcp140.dll",
@@ -485,10 +549,10 @@ function Test-PackageContents {
         "msvcp140_atomic_wait.dll",
         "msvcp140_codecvt_ids.dll",
         "mysql_clear_password.dll",
-        "perl542.dll",
         "pkgconf-7.dll",
         "pvio_shmem.dll",
         "queryserv.exe",
+        "README-windows-dropin.txt",
         "release-manifest.json",
         "sha256_password.dll",
         "shared_memory.exe",
@@ -521,6 +585,20 @@ function Test-PackageContents {
         $blockedNames = $blockedFiles | Sort-Object Name | ForEach-Object { $_.Name }
         throw "Release package contains non-runtime files:`n$($blockedNames -join "`n")"
     }
+
+    # Perl and its MinGW runtime are intentionally host-provided (the user's installed
+    # Strawberry Perl 5.24). Assert they were not bundled so a future change cannot
+    # silently reintroduce bundling -- a bundled perl5xx.dll ships the build machine's
+    # @INC paths and breaks every Perl quest on user machines.
+    $hostProvidedFiles = @(Get-ChildItem -Path $stageDir -File | Where-Object {
+        $_.Name -match '^perl5\d+\.dll$' -or
+        @("libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll") -contains $_.Name
+    })
+
+    if ($hostProvidedFiles.Count -gt 0) {
+        $hostProvidedNames = $hostProvidedFiles | Sort-Object Name | ForEach-Object { $_.Name }
+        throw "Release package bundles host-provided Perl runtime (it must come from the user's installed Strawberry Perl):`n$($hostProvidedNames -join "`n")"
+    }
 }
 
 if (Test-Path $stageDir) {
@@ -539,10 +617,11 @@ foreach ($binary in $requiredBinaries) {
     Copy-UniqueFile -Path $path
 }
 
+$buildRoot = Get-BuildRootFromBinDir
 $libraryRoots = @(
     $binDir,
-    (Join-Path $rootDir "build/libs"),
-    (Join-Path $rootDir "build/vcpkg_installed"),
+    (Join-Path $buildRoot "libs"),
+    (Join-Path $buildRoot "vcpkg_installed"),
     (Join-Path $rootDir "vcpkg_installed")
 )
 
@@ -550,6 +629,8 @@ Copy-DynamicRuntimeDependencies
 Copy-VisualCppRuntime
 Resolve-RuntimeDependencies
 Test-RuntimeDependencies
+
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README-windows-dropin.txt") -Destination $stageDir -Force
 
 $manifestFiles = @(Get-ChildItem -Path $stageDir -File | Sort-Object Name | ForEach-Object {
     [PSCustomObject]@{

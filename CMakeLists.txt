@@ -19,7 +19,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
 endif()
 
 project(EQEmu
-	VERSION 1.2.5
+	VERSION 1.2.13
 	LANGUAGES CXX 
 )
 
@@ -31,7 +31,7 @@ if(POLICY CMP0167)
 endif()
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type")
+	set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -39,6 +39,94 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(EQEMU_BUILD_PCH "Build with precompiled headers (Windows)" ON)
+option(EQEMU_DETERMINISTIC_BUILD "Normalize build timestamps and source paths for reproducible binaries." ON)
+option(EQEMU_DETERMINISTIC_STRIP_DEBUG "Strip debug sections from deterministic Unix binaries." ON)
+
+if(EQEMU_DETERMINISTIC_BUILD)
+	execute_process(
+		COMMAND git -C "${CMAKE_SOURCE_DIR}" log -1 --format=%ct
+		OUTPUT_VARIABLE EQEMU_SOURCE_DATE_EPOCH
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		ERROR_QUIET
+	)
+
+	if(NOT EQEMU_SOURCE_DATE_EPOCH MATCHES "^[0-9]+$")
+		if(DEFINED ENV{SOURCE_DATE_EPOCH} AND "$ENV{SOURCE_DATE_EPOCH}" MATCHES "^[0-9]+$")
+			set(EQEMU_SOURCE_DATE_EPOCH "$ENV{SOURCE_DATE_EPOCH}")
+		else()
+			set(EQEMU_SOURCE_DATE_EPOCH "0")
+		endif()
+	endif()
+
+	set(ENV{SOURCE_DATE_EPOCH} "${EQEMU_SOURCE_DATE_EPOCH}")
+	string(TIMESTAMP EQEMU_COMPILE_DATE_VALUE "%b %d %Y" UTC)
+	string(TIMESTAMP EQEMU_COMPILE_TIME_VALUE "%H:%M:%S" UTC)
+	string(TIMESTAMP EQEMU_COMPILE_TIMESTAMP_VALUE "%a %b %d %H:%M:%S %Y" UTC)
+	string(REGEX REPLACE " 0([1-9] )" "  \\1" EQEMU_COMPILE_DATE_VALUE "${EQEMU_COMPILE_DATE_VALUE}")
+	string(REGEX REPLACE "^([A-Za-z][A-Za-z][A-Za-z] [A-Za-z][A-Za-z][A-Za-z]) 0([1-9] )" "\\1  \\2" EQEMU_COMPILE_TIMESTAMP_VALUE "${EQEMU_COMPILE_TIMESTAMP_VALUE}")
+
+	add_compile_definitions(
+		EQEMU_COMPILE_DATE="${EQEMU_COMPILE_DATE_VALUE}"
+		EQEMU_COMPILE_TIME="${EQEMU_COMPILE_TIME_VALUE}"
+		EQEMU_COMPILE_TIMESTAMP="${EQEMU_COMPILE_TIMESTAMP_VALUE}"
+	)
+
+	if(MSVC)
+		add_compile_options(
+			/experimental:deterministic
+			"/pathmap:${CMAKE_SOURCE_DIR}=."
+			"/pathmap:${CMAKE_BINARY_DIR}/vcpkg_installed=./vcpkg_installed"
+		)
+		add_link_options(/Brepro)
+	elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+		add_compile_options(
+			"-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+			"-ffile-prefix-map=${CMAKE_BINARY_DIR}=."
+			"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=."
+			"-fmacro-prefix-map=${CMAKE_BINARY_DIR}=."
+			"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=."
+			"-fdebug-prefix-map=${CMAKE_BINARY_DIR}=."
+		)
+		add_link_options("-Wl,--build-id=none")
+		if(EQEMU_DETERMINISTIC_STRIP_DEBUG)
+			add_link_options("-Wl,--strip-debug")
+		endif()
+	endif()
+endif()
+
+if(EQEMU_DETERMINISTIC_BUILD AND UNIX AND NOT APPLE AND DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+	set(EQEMU_VCPKG_TRIPLET_ROOT "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
+	if(EXISTS "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libcrypto.a")
+		set(OPENSSL_CRYPTO_LIBRARY "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libcrypto.a" CACHE FILEPATH "Deterministic OpenSSL crypto library" FORCE)
+	endif()
+	if(EXISTS "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libssl.a")
+		set(OPENSSL_SSL_LIBRARY "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libssl.a" CACHE FILEPATH "Deterministic OpenSSL SSL library" FORCE)
+	endif()
+	if(EXISTS "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libluajit-5.1.a")
+		find_library(EQEMU_LUAJIT_MATH_LIBRARY m)
+		set(LUAJIT_LIBRARY "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/libluajit-5.1.a" CACHE FILEPATH "Deterministic LuaJIT library" FORCE)
+		set(LUAJIT_LIBRARIES "${LUAJIT_LIBRARY};${EQEMU_LUAJIT_MATH_LIBRARY}" CACHE STRING "Deterministic LuaJIT libraries" FORCE)
+	endif()
+	if(EXISTS "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/pkgconfig")
+		set(ENV{PKG_CONFIG_PATH} "${EQEMU_VCPKG_TRIPLET_ROOT}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+	endif()
+endif()
+
+if(EQEMU_DETERMINISTIC_BUILD AND UNIX AND NOT APPLE)
+	find_package(Python3 COMPONENTS Interpreter QUIET)
+	set(EQEMU_OPENSSL_BUILT_ON_VALUE "built on: Thu Jan  1 00:00:00 1970 UTC")
+	function(eqemu_normalize_unix_binary target_name)
+		if(Python3_Interpreter_FOUND)
+			add_custom_command(TARGET ${target_name} POST_BUILD
+				COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/utils/scripts/release/normalize-linux-binary.py" "$<TARGET_FILE:${target_name}>" "${EQEMU_OPENSSL_BUILT_ON_VALUE}"
+				VERBATIM
+			)
+		endif()
+	endfunction()
+else()
+	function(eqemu_normalize_unix_binary target_name)
+	endfunction()
+endif()
 
 if(MSVC)
 	add_compile_options(/bigobj)

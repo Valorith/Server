@@ -2,8 +2,87 @@
 
 #include "common/item_instance.h"
 #include "common/repositories/trader_repository.h"
+#include "common/strings.h"
 
+#include <limits>
 #include <memory>
+
+Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
+	uint32 requested_quantity,
+	bool is_stackable,
+	int16 listed_charges
+)
+{
+	const uint32 max_signed_quantity = static_cast<uint32>(std::numeric_limits<int32>::max());
+	if (requested_quantity == 0 || requested_quantity > max_signed_quantity) {
+		return {false, 0};
+	}
+
+	uint32 quantity = requested_quantity;
+	if (!is_stackable) {
+		if (quantity != 1) {
+			return {false, 0};
+		}
+
+		return {true, quantity};
+	}
+
+	if (listed_charges <= 0) {
+		return {false, 0};
+	}
+
+	const uint32 available_quantity = static_cast<uint32>(listed_charges);
+	if (quantity > available_quantity) {
+		quantity = available_quantity;
+	}
+
+	return {true, quantity};
+}
+
+bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity)
+{
+	return requested_quantity > 0 && requested_quantity <= listed_quantity;
+}
+
+bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
+{
+	return listed_price > 0 && requested_price == listed_price;
+}
+
+void Bazaar::RecordAuditTrail(
+	Database &db,
+	const std::string &seller,
+	const std::string &buyer,
+	uint32 item_id,
+	const std::string &item_name,
+	uint32 quantity,
+	uint64 total_cost,
+	int transaction_type
+)
+{
+	auto query = fmt::format(
+		"INSERT INTO `trader_audit` "
+		"(`time`, `seller`, `buyer`, `item_id`, `itemname`, `quantity`, `totalcost`, `trantype`) "
+		"VALUES (NOW(), '{}', '{}', {}, '{}', {}, {}, {})",
+		Strings::Escape(seller),
+		Strings::Escape(buyer),
+		item_id,
+		Strings::Escape(item_name),
+		quantity,
+		total_cost,
+		transaction_type
+	);
+
+	auto results = db.QueryDatabase(query);
+	if (!results.Success()) {
+		LogTrading("Audit write error: {} : {}", query, results.ErrorMessage());
+	}
+}
+
+uint32 Bazaar::ResolvePurchaseFailureSubAction(uint32 sub_action)
+{
+	return sub_action == Success ? Failed : sub_action;
+}
 
 std::vector<BazaarSearchResultsFromDB_Struct>
 Bazaar::GetSearchResults(

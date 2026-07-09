@@ -129,7 +129,10 @@ int main(int argc, char **argv)
 #endif
 
 	WorldBoot::RegisterLoginservers();
-	WorldBoot::LoadDatabaseConnections();
+	if (!WorldBoot::LoadDatabaseConnections()) {
+		return 1;
+	}
+
 	if (!WorldBoot::DatabaseLoadRoutines(argc, argv)) {
 		return 1;
 	}
