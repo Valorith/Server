@@ -2623,6 +2623,7 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		e.spell_id       = suppressed ? buffs[slot_id].suppressedid : buffs[slot_id].spellid;
 		e.caster_level   = buffs[slot_id].casterlevel;
 		e.caster_name    = buffs[slot_id].caster_name;
+		e.caster_is_client = buffs[slot_id].client ? 1 : 0;
 		e.ticsremaining  = suppressed ? buffs[slot_id].suppressedticsremaining : buffs[slot_id].ticsremaining;
 		e.counters       = buffs[slot_id].counters;
 		e.numhits        = buffs[slot_id].hit_number;
@@ -2731,7 +2732,7 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			strn0cpy(buffs[e.slot_id].caster_name, c->GetName(), sizeof(buffs[e.slot_id].caster_name));
 		} else {
 			buffs[e.slot_id].casterid = 0;
-			buffs[e.slot_id].client   = false;
+			buffs[e.slot_id].client   = e.caster_is_client != 0;
 
 			// keep the stored name so buff tic attribution survives the
 			// caster being gone (Spells:BuffTicAttributionFallback)

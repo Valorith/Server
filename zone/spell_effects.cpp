@@ -3949,7 +3949,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 				effect_value = caster->GetActSpellHealing(buff.spellid, effect_value, nullptr, true);
 			}
 
-			HealDamage(effect_value, caster, buff.spellid, buff.caster_name);
+			HealDamage(effect_value, caster, buff.spellid, buff.caster_name, true);
 			// healing aggro would go here; removed for now
 			break;
 		}
@@ -3978,7 +3978,7 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 				Damage(caster, effect_value, buff.spellid, spell.skill, false, slot, true);
 			} else if (effect_value > 0) {
 				// healing spell...
-				HealDamage(effect_value, caster, buff.spellid, buff.caster_name);
+				HealDamage(effect_value, caster, buff.spellid, buff.caster_name, true);
 				// healing aggro would go here; removed for now
 			}
 			break;

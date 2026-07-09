@@ -2707,9 +2707,6 @@ void EntityList::FilteredMessageCombatClose(
 	va_end(argptr);
 	std::unique_ptr<EQApplicationPacket> message_packet;
 	auto queue_message = [&](Client *client) {
-		if (!CombatLogMessageTypeAllowsClient(client, type)) {
-			return;
-		}
 		if (!message_packet) {
 			message_packet = MakeCombatLogRawMessagePacket(type, buffer);
 		}

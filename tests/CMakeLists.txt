@@ -11,6 +11,7 @@ set(tests_headers
 	autoskill_util_test.h
 	bazaar_test.h
 	buyer_buy_lines_repository_test.h
+	character_buffs_repository_test.h
 	crash_report_endpoint_test.h
 	data_verification_test.h
 	eq_limits_test.h

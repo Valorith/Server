@@ -7586,6 +7586,18 @@ ALTER TABLE `trader_audit`
 	ADD INDEX `idx_trader_audit_item_id` (`item_id`);
 )"
 	},
+	ManifestEntry{
+		.version = 9352,
+		.description = "2026_07_09_add_caster_is_client_to_character_buffs.sql",
+		.check = "SHOW COLUMNS FROM `character_buffs` LIKE 'caster_is_client'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `character_buffs`
+ADD COLUMN `caster_is_client` TINYINT(1) UNSIGNED NOT NULL DEFAULT '0' AFTER `caster_name`;
+)",
+		.content_schema_update = false
+	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,

@@ -4968,8 +4968,9 @@ bool Bot::Death(Mob *killer_mob, int64 damage, uint16 spell_id, EQ::skills::Skil
 }
 
 void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable, int8 buffslot, bool iBuffTic, eSpecialAttacks special) {
-	// orphaned buff tics carry no caster mob (Spells:BuffTicAttributionFallback)
-	if (!from && !iBuffTic) {
+	// Orphaned buff tics carry no caster mob. Keep the historical null-source
+	// behavior unless the fallback rule explicitly enables those ticks.
+	if (!from && (!iBuffTic || !RuleB(Spells, BuffTicAttributionFallback))) {
 		return;
 	}
 
@@ -4990,13 +4991,11 @@ void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType
 		attacked_timer.Start(CombatEventTimer_expire);
 	}
 	// if spell is lifetap add hp to the caster
-	if (IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
+	if (from && IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
 		int64 healed = GetActSpellHealing(spell_id, damage);
 		LogCombatDetail("Applying lifetap heal of [{}] to [{}]", healed, GetCleanName());
 		HealDamage(healed);
-		if (from) {
-			entity_list.FilteredMessageClose(this, true, RuleI(Range, SpellMessages), Chat::Emote, FilterSocials, "%s beams a smile at %s", GetCleanName(), from->GetCleanName());
-		}
+		entity_list.FilteredMessageClose(this, true, RuleI(Range, SpellMessages), Chat::Emote, FilterSocials, "%s beams a smile at %s", GetCleanName(), from->GetCleanName());
 	}
 
 	CommonDamage(from, damage, spell_id, attack_skill, avoidable, buffslot, iBuffTic, special);
