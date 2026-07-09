@@ -2734,9 +2734,13 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			buffs[e.slot_id].casterid = 0;
 			buffs[e.slot_id].client   = e.caster_is_client != 0;
 
-			// keep the stored name so buff tic attribution survives the
-			// caster being gone (Spells:BuffTicAttributionFallback)
-			strn0cpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), sizeof(buffs[e.slot_id].caster_name));
+			if (RuleB(Spells, BuffTicAttributionFallback)) {
+				// Keep the stored name so buff tic attribution survives the
+				// caster being gone when the fallback is explicitly enabled.
+				strn0cpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), sizeof(buffs[e.slot_id].caster_name));
+			} else {
+				buffs[e.slot_id].caster_name[0] = '\0';
+			}
 		}
 
 		buffs[e.slot_id].ticsremaining     = e.ticsremaining;
