@@ -451,7 +451,7 @@ public:
 	// proximity_covers_client can further refine whether the paired proximity
 	// send was actually visible for packet types such as OP_Damage, where the
 	// source and target may differ from sender.
-	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<bool(Client*)>& proximity_covers_client, const std::function<bool(Client*)>& proximity_filter_allows_client, const std::function<void(Client*)>& fn);
+	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<bool(Client*)>& proximity_covers_client, const std::function<bool(Client*)>& proximity_filter_allows_client, eqFilterType observer_filter, const std::function<void(Client*)>& fn);
 	void	QueueCombatClients(Mob* sender, Mob* other, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
 	void	FilteredMessageCombatString(
 		Mob* sender,
