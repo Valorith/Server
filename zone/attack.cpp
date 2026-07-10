@@ -4867,6 +4867,12 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* ca
 		amount = lua_ret;
 	}
 #endif
+	const bool use_caster_name_fallback =
+		is_buff_tic &&
+		RuleB(Spells, BuffTicAttributionFallback) &&
+		caster_name_fallback &&
+		caster_name_fallback[0];
+
 	int64 maxhp = GetMaxHP();
 	int64 curhp = GetHP();
 	uint64 acthealed = 0;
@@ -4930,7 +4936,7 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* ca
 			if (heal_filter != FilterShowSelfOnly && heal_filter != FilterHide) {
 				// the buff's stored caster name (passed by HoT tics) restores
 				// attribution when the caster mob is gone
-				if (caster_name_fallback && caster_name_fallback[0]) {
+				if (use_caster_name_fallback) {
 					MessageString(Chat::NonMelee, YOU_HEALED, caster_name_fallback, itoa(acthealed));
 				} else {
 					Message(Chat::NonMelee, "You have been healed for %d points of damage.", acthealed);
@@ -4944,7 +4950,7 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* ca
 		// line and the heal target anchors delivery (like orphaned DoTs)
 		const char *heal_source_name =
 			caster ? caster->GetCleanName() :
-			(caster_name_fallback && caster_name_fallback[0]) ? caster_name_fallback : nullptr;
+			use_caster_name_fallback ? caster_name_fallback : nullptr;
 
 		if (RuleB(Combat, HealBystanderMessages) && heal_source_name && caster != this && IsValidSpell(spell_id)) {
 			Mob *heal_anchor = caster ? caster : this;

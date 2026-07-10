@@ -4990,14 +4990,6 @@ void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType
 
 		attacked_timer.Start(CombatEventTimer_expire);
 	}
-	// if spell is lifetap add hp to the caster
-	if (from && IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
-		int64 healed = GetActSpellHealing(spell_id, damage);
-		LogCombatDetail("Applying lifetap heal of [{}] to [{}]", healed, GetCleanName());
-		HealDamage(healed);
-		entity_list.FilteredMessageClose(this, true, RuleI(Range, SpellMessages), Chat::Emote, FilterSocials, "%s beams a smile at %s", GetCleanName(), from->GetCleanName());
-	}
-
 	CommonDamage(from, damage, spell_id, attack_skill, avoidable, buffslot, iBuffTic, special);
 	if (GetHP() < 0) {
 		if (IsCasting())
