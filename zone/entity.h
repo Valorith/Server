@@ -432,8 +432,8 @@ public:
 	// Combat log group/raid parity (Combat:GroupRaidCombatLogParity): resolves
 	// the parties to a combat event (sender/other, or their owners for pets)
 	// and invokes fn for each in-zone observer: group/raid members, or for an
-	// ungrouped client party (e.g. a solo pet owner away from its pet's
-	// fight), that client itself - beyond proximity_range of the sender;
+	// ungrouped client party (e.g. a solo pet owner away from its pet's fight)
+	// or ungrouped bot, that client or bot owner - beyond proximity_range;
 	// anyone within range already received (or filtered) the proximity copy.
 	// Combat-only; non-combat proximity messaging must keep using the
 	// existing Close functions.

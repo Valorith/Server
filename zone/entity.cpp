@@ -2389,6 +2389,12 @@ void EntityList::ForEachCombatLogObserver(
 			if (!raids[i] && anchors[i]->IsGrouped()) {
 				groups[i] = GetGroupByMob(anchors[i]);
 			}
+			if (!raids[i] && !groups[i]) {
+				Mob *owner = anchors[i]->CastToBot()->GetBotOwner();
+				if (owner && owner->IsClient()) {
+					solos[i] = owner->CastToClient();
+				}
+			}
 		} else if (anchors[i]->IsGrouped()) {
 			groups[i] = GetGroupByMob(anchors[i]);
 		}
@@ -2452,7 +2458,9 @@ void EntityList::ForEachCombatLogObserver(
 	// client is in at most one group xor one raid, so the surviving parties
 	// are disjoint and need no per-candidate dedup
 	if (anchors[1] &&
-		((raids[1] && raids[1] == raids[0]) || (groups[1] && groups[1] == groups[0]))) {
+		((raids[1] && raids[1] == raids[0]) ||
+		(groups[1] && groups[1] == groups[0]) ||
+		(solos[1] && solos[1] == solos[0]))) {
 		anchors[1] = nullptr;
 	}
 
