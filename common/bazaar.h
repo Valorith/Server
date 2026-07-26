@@ -18,6 +18,13 @@ public:
 		int16 listed_charges
 	);
 
+	static int16 ResolvePurchaseItemCharges(
+		uint32 purchase_quantity,
+		bool is_stackable,
+		int16 max_charges,
+		int16 listed_charges
+	);
+
 	static bool ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity);
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);

@@ -39,6 +39,23 @@ Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 	return {true, quantity};
 }
 
+int16 Bazaar::ResolvePurchaseItemCharges(
+	uint32 purchase_quantity,
+	bool is_stackable,
+	int16 max_charges,
+	int16 listed_charges
+)
+{
+	// ItemInstance charges represent stack quantity for stackable items, even
+	// when each item also has a click charge. Only non-stackable charged items
+	// should retain the seller's remaining charges.
+	if (!is_stackable && max_charges > 0) {
+		return listed_charges;
+	}
+
+	return static_cast<int16>(purchase_quantity);
+}
+
 bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity)
 {
 	return requested_quantity > 0 && requested_quantity <= listed_quantity;

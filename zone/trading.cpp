@@ -1600,11 +1600,31 @@ void Client::BuyTraderItem(const EQApplicationPacket *app)
 		return;
 	}
 
-	auto quantity = in->quantity;
-	inst_copy->SetCharges(quantity);
-	if (buy_inst->GetItem()->MaxCharges > 0) {
-		inst_copy->SetCharges(buy_inst->GetCharges());
+	auto quantity_validation = Bazaar::ValidatePurchaseQuantity(
+		in->quantity,
+		buy_inst->IsStackable(),
+		buy_inst->GetCharges()
+	);
+	if (!quantity_validation.is_valid) {
+		LogTrading(
+			"Rejecting direct bazaar purchase with invalid quantity [{}] for item [{}]",
+			in->quantity,
+			buy_inst->GetItem()->Name
+		);
+		TradeRequestFailed(app);
+		return;
 	}
+
+	auto quantity = quantity_validation.quantity;
+	in->quantity  = quantity;
+	inst_copy->SetCharges(
+		Bazaar::ResolvePurchaseItemCharges(
+			quantity,
+			inst_copy->IsStackable(),
+			inst_copy->GetItem()->MaxCharges,
+			buy_inst->GetCharges()
+		)
+	);
 
 	if (inst_copy->IsStackable() && quantity != buy_inst->GetCharges()) {
 		auto item_unique_id = database.ReserveNewItemUniqueId();

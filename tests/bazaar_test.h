@@ -31,6 +31,12 @@ public:
 		TEST_ADD(BazaarTest::ClampsStackableQuantityToListedCharges);
 		TEST_ADD(BazaarTest::AcceptsPositiveNonStackableQuantity);
 		TEST_ADD(BazaarTest::RejectsNonStackableQuantityAboveOne);
+		TEST_ADD(BazaarTest::UsesPurchaseQuantityForChargedStackable);
+		TEST_ADD(BazaarTest::UsesPurchaseQuantityForUnchargedStackable);
+		TEST_ADD(BazaarTest::PreservesChargesForChargedNonStackable);
+		TEST_ADD(BazaarTest::UsesPurchaseQuantityForUnchargedNonStackable);
+		TEST_ADD(BazaarTest::SupportsFullChargedStackPurchase);
+		TEST_ADD(BazaarTest::ChargedStackPartialPurchaseDoesNotDuplicate);
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
@@ -92,6 +98,59 @@ private:
 
 		TEST_ASSERT(!result.is_valid);
 		TEST_ASSERT(result.quantity == 0);
+	}
+
+	void UsesPurchaseQuantityForChargedStackable()
+	{
+		auto charges = Bazaar::ResolvePurchaseItemCharges(1, true, 1, 95);
+
+		TEST_ASSERT(charges == 1);
+	}
+
+	void UsesPurchaseQuantityForUnchargedStackable()
+	{
+		auto charges = Bazaar::ResolvePurchaseItemCharges(7, true, -1, 95);
+
+		TEST_ASSERT(charges == 7);
+	}
+
+	void PreservesChargesForChargedNonStackable()
+	{
+		auto charges = Bazaar::ResolvePurchaseItemCharges(1, false, 5, 3);
+
+		TEST_ASSERT(charges == 3);
+	}
+
+	void UsesPurchaseQuantityForUnchargedNonStackable()
+	{
+		auto charges = Bazaar::ResolvePurchaseItemCharges(1, false, -1, 0);
+
+		TEST_ASSERT(charges == 1);
+	}
+
+	void SupportsFullChargedStackPurchase()
+	{
+		auto charges = Bazaar::ResolvePurchaseItemCharges(95, true, 1, 95);
+
+		TEST_ASSERT(charges == 95);
+	}
+
+	void ChargedStackPartialPurchaseDoesNotDuplicate()
+	{
+		const int16 listed_quantity = 95;
+		auto quantity_validation = Bazaar::ValidatePurchaseQuantity(1, true, listed_quantity);
+		auto delivered_quantity = Bazaar::ResolvePurchaseItemCharges(
+			quantity_validation.quantity,
+			true,
+			1,
+			listed_quantity
+		);
+		auto seller_quantity = listed_quantity - static_cast<int16>(quantity_validation.quantity);
+
+		TEST_ASSERT(quantity_validation.is_valid);
+		TEST_ASSERT(delivered_quantity == 1);
+		TEST_ASSERT(seller_quantity == 94);
+		TEST_ASSERT(delivered_quantity + seller_quantity == listed_quantity);
 	}
 
 	void RejectsZeroBarterSellQuantity()

@@ -4051,10 +4051,14 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					}
 
 					auto item = database.GetItem(in->trader_buy_struct.item_id);
-					auto quantity = in->item_quantity;
-					if (item->MaxCharges > 0) {
-						quantity = in->item_charges;
-					}
+					auto quantity = static_cast<uint32>(
+						Bazaar::ResolvePurchaseItemCharges(
+							in->item_quantity,
+							item->Stackable,
+							item->MaxCharges,
+							in->item_charges
+						)
+					);
 
 					//Send the item via parcel
 					CharacterParcelsRepository::CharacterParcels parcel_out{};
