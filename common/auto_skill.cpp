@@ -1,7 +1,5 @@
 #include "common/auto_skill.h"
 
-#include "common/features.h"
-
 #include <algorithm>
 #include <cctype>
 
@@ -31,15 +29,17 @@ bool AutoSkillNameMatches(const EQ::skills::autoskill::AutoSkillDefinition &defi
 const std::vector<EQ::skills::autoskill::AutoSkillDefinition> &EQ::skills::autoskill::GetSkillDefinitions()
 {
 	static const std::vector<AutoSkillDefinition> auto_skill_definitions = {
-		{ EQ::skills::SkillBackstab,    1u << 0, "Backstab",     "backstab",     { "back stab" } },
-		{ EQ::skills::SkillFrenzy,      1u << 1, "Frenzy",       "frenzy",       {} },
-		{ EQ::skills::SkillFlyingKick,  1u << 2, "Flying Kick",  "flying kick",  { "flyingkick" } },
-		{ EQ::skills::SkillDragonPunch, 1u << 3, "Dragon Punch", "dragon punch", { "dragonpunch", "tail rake", "tailrake" } },
-		{ EQ::skills::SkillEagleStrike, 1u << 4, "Eagle Strike", "eagle strike", { "eaglestrike" } },
-		{ EQ::skills::SkillTigerClaw,   1u << 5, "Tiger Claw",   "tiger claw",   { "tigerclaw" } },
-		{ EQ::skills::SkillRoundKick,   1u << 6, "Round Kick",   "round kick",   { "roundkick" } },
-		{ EQ::skills::SkillKick,        1u << 7, "Kick",         "kick",         {} },
-		{ EQ::skills::SkillBash,        1u << 8, "Bash",         "bash",         { "slam" } }
+		// Client-facing, unmodified reuse in seconds. These intentionally do not use the legacy pTimer
+		// constants in features.h, which contain historical server-side allowances and source-era values.
+		{ EQ::skills::SkillBackstab,    1u << 0, 10, "Backstab",     "backstab",     { "back stab" } },
+		{ EQ::skills::SkillFrenzy,      1u << 1, 15, "Frenzy",       "frenzy",       {} },
+		{ EQ::skills::SkillFlyingKick,  1u << 2,  8, "Flying Kick",  "flying kick",  { "flyingkick" } },
+		{ EQ::skills::SkillDragonPunch, 1u << 3,  6, "Dragon Punch", "dragon punch", { "dragonpunch", "tail rake", "tailrake" } },
+		{ EQ::skills::SkillEagleStrike, 1u << 4,  6, "Eagle Strike", "eagle strike", { "eaglestrike" } },
+		{ EQ::skills::SkillTigerClaw,   1u << 5,  6, "Tiger Claw",   "tiger claw",   { "tigerclaw" } },
+		{ EQ::skills::SkillRoundKick,   1u << 6,  8, "Round Kick",   "round kick",   { "roundkick" } },
+		{ EQ::skills::SkillKick,        1u << 7,  8, "Kick",         "kick",         {} },
+		{ EQ::skills::SkillBash,        1u << 8,  8, "Bash",         "bash",         { "slam" } }
 	};
 
 	return auto_skill_definitions;
@@ -117,42 +117,16 @@ uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
 	int total_haste
 )
 {
-	int base_reuse_time = 0;
-
-	switch (skill) {
-		case EQ::skills::SkillBackstab:
-			base_reuse_time = BackstabReuseTime;
-			break;
-		case EQ::skills::SkillFrenzy:
-			base_reuse_time = FrenzyReuseTime;
-			break;
-		case EQ::skills::SkillFlyingKick:
-			base_reuse_time = FlyingKickReuseTime;
-			break;
-		case EQ::skills::SkillDragonPunch:
-			base_reuse_time = TailRakeReuseTime;
-			break;
-		case EQ::skills::SkillEagleStrike:
-			base_reuse_time = EagleStrikeReuseTime;
-			break;
-		case EQ::skills::SkillTigerClaw:
-			base_reuse_time = TigerClawReuseTime;
-			break;
-		case EQ::skills::SkillRoundKick:
-			base_reuse_time = RoundKickReuseTime;
-			break;
-		case EQ::skills::SkillKick:
-			base_reuse_time = KickReuseTime;
-			break;
-		case EQ::skills::SkillBash:
-			base_reuse_time = BashReuseTime;
-			break;
-		default:
-			return 0;
+	const auto *definition = GetSkillDefinition(skill);
+	if (!definition) {
+		return 0;
 	}
 
 	// The one-second allowance used by the client packet pTimer is not part of the automated scheduler deadline.
-	const auto adjusted_reuse_time = std::max(base_reuse_time - skill_reuse_reduction, 1);
+	const auto adjusted_reuse_time = std::max(
+		static_cast<int>(definition->base_reuse_time) - skill_reuse_reduction,
+		1
+	);
 	// GetHaste() is 100-based after all client haste caps: 100 is unmodified speed.
 	const auto effective_haste = total_haste > 0 ? total_haste : 100;
 	const auto unscaled_reuse_time = static_cast<uint64>(adjusted_reuse_time) * 1000 * 100;

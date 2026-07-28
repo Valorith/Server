@@ -18,6 +18,7 @@
 
 #include "mob.h"
 
+#include "common/auto_skill.h"
 #include "common/rulesys.h"
 #include "common/strings.h"
 #include "zone/bot.h"
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 
 extern double frame_time;
 
@@ -240,6 +242,22 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	     (!IsAttackAllowed(who))))
 		return;
 
+	uint16 skill_proc_reuse_time = static_cast<uint16>(ReuseTime * 1000);
+	if (
+		IsClient() &&
+		RuleB(Combat, EnableAutoSkill) &&
+		CastToClient()->IsAutoSkillEnabled(skill)
+	) {
+		const auto auto_skill_reuse_time = EQ::skills::autoskill::GetReuseTimeMilliseconds(
+			skill,
+			GetSkillReuseTime(skill),
+			GetHaste()
+		);
+		skill_proc_reuse_time = static_cast<uint16>(
+			std::min(auto_skill_reuse_time, static_cast<uint32>(std::numeric_limits<uint16>::max()))
+		);
+	}
+
 	DamageHitInfo my_hit;
 	my_hit.damage_done = 1; // min 1 dmg
 	my_hit.base_damage = base_damage;
@@ -333,11 +351,11 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	TryCastOnSkillUse(who, skill);
 
 	if (HasSkillProcs()) {
-		TrySkillProc(who, skill, ReuseTime * 1000);
+		TrySkillProc(who, skill, skill_proc_reuse_time);
 	}
 
 	if (my_hit.damage_done > 0 && HasSkillProcSuccess()) {
-		TrySkillProc(who, skill, ReuseTime * 1000, true);
+		TrySkillProc(who, skill, skill_proc_reuse_time, true);
 	}
 }
 
@@ -639,13 +657,24 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	reuse_time = (reuse_time * haste_modifier) / 100;
 
-	reuse_time = EQ::Clamp(reuse_time, 0, reuse_time);
+	// A reuse reduction at or beyond the legacy allowance must not wrap into a multi-year uint32 timer.
+	reuse_time = std::max(reuse_time, 0);
 
 	if (reuse_time) {
 		p_timers.Start(timer, reuse_time);
 	}
 
-	if (found_skill) {
+	bool start_auto_skill_reuse_timer = found_skill;
+	if (skill == EQ::skills::SkillBackstab) {
+		const auto *primary_weapon = GetInv().GetItem(EQ::invslot::slotPrimary);
+		start_auto_skill_reuse_timer = (
+			primary_weapon &&
+			primary_weapon->GetItem() &&
+			primary_weapon->GetItem()->ItemType == EQ::item::ItemType1HPiercing
+		);
+	}
+
+	if (start_auto_skill_reuse_timer) {
 		StartAutoSkillReuseTimer(timer, skill, skill_reduction, haste);
 	}
 }

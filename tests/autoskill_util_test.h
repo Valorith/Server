@@ -55,36 +55,42 @@ private:
 
 	void KeepsPriorityOrder() {
 		const auto &definitions = EQ::skills::autoskill::GetSkillDefinitions();
+		const std::array<uint8, 9> expected_base_reuse_times = {
+			10, 15, 8, 6, 6, 6, 8, 8, 8
+		};
 
 		TEST_ASSERT(definitions.size() == 9);
 		TEST_ASSERT(definitions.front().skill == EQ::skills::SkillBackstab);
 		TEST_ASSERT(definitions[1].skill == EQ::skills::SkillFrenzy);
 		TEST_ASSERT(definitions.back().skill == EQ::skills::SkillBash);
+		for (size_t i = 0; i < definitions.size(); ++i) {
+			TEST_ASSERT(definitions[i].base_reuse_time == expected_base_reuse_times[i]);
+		}
 	}
 
 	void CalculatesReuseTimes() {
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBackstab, 0, 100) == 9000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 100) == 10000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFlyingKick, 0, 100) == 7000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBackstab, 0, 100) == 10000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 100) == 15000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFlyingKick, 0, 100) == 8000);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillDragonPunch, 0, 100) == 6000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillEagleStrike, 0, 100) == 5000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillEagleStrike, 0, 100) == 6000);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillTigerClaw, 0, 100) == 6000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillRoundKick, 0, 100) == 9000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillKick, 0, 100) == 5000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 100) == 5000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillRoundKick, 0, 100) == 8000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillKick, 0, 100) == 8000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 100) == 8000);
 
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 141) == 3547);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 141) == 7093);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 200) == 5000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 50) == 10000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 141) == 5674);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 141) == 10639);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 0, 200) == 7500);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 50) == 16000);
 
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 3, 100) == 7000);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 2, 141) == 2128);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 5, 141) == 710);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillFrenzy, 3, 100) == 12000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 2, 141) == 4256);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 8, 141) == 710);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 50, 141) == 710);
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, -2, 100) == 7000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, -2, 100) == 10000);
 
-		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 0) == 5000);
+		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 0) == 8000);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillTaunt, 0, 100) == 0);
 	}
 
@@ -95,15 +101,15 @@ private:
 		};
 
 		const std::array<ReuseTestCase, 9> reuse_test_cases = {{
-			{ EQ::skills::SkillBackstab,    9 },
-			{ EQ::skills::SkillFrenzy,     10 },
-			{ EQ::skills::SkillFlyingKick,  7 },
+			{ EQ::skills::SkillBackstab,   10 },
+			{ EQ::skills::SkillFrenzy,     15 },
+			{ EQ::skills::SkillFlyingKick,  8 },
 			{ EQ::skills::SkillDragonPunch, 6 },
-			{ EQ::skills::SkillEagleStrike, 5 },
+			{ EQ::skills::SkillEagleStrike, 6 },
 			{ EQ::skills::SkillTigerClaw,   6 },
-			{ EQ::skills::SkillRoundKick,   9 },
-			{ EQ::skills::SkillKick,        5 },
-			{ EQ::skills::SkillBash,        5 }
+			{ EQ::skills::SkillRoundKick,   8 },
+			{ EQ::skills::SkillKick,        8 },
+			{ EQ::skills::SkillBash,        8 }
 		}};
 
 		for (const auto &test_case : reuse_test_cases) {

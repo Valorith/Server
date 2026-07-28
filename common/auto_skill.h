@@ -13,6 +13,7 @@ namespace autoskill {
 struct AutoSkillDefinition {
 	EQ::skills::SkillType skill;
 	uint32 mask;
+	uint8 base_reuse_time;
 	const char *name;
 	const char *command_name;
 	std::vector<const char *> aliases;
