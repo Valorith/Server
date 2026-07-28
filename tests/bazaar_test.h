@@ -194,9 +194,14 @@ private:
 		charged_item.Stackable  = false;
 		charged_item.MaxCharges = 5;
 
+		EQ::ItemData valid_item{};
+		valid_item.ID        = 60540;
+		valid_item.Stackable = false;
+
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 3).empty());
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 0).empty());
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &charged_item, 1).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &valid_item, 0).empty());
 	}
 
 	void RejectsMultiCopyLoreBarterItemCreation()
