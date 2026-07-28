@@ -4706,13 +4706,8 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		buyer_error = true;
 	}
 
-	auto buy_item_slot_id = buyer->GetInv().HasItem(
-		sell_line.item_id,
-		sell_line.seller_quantity,
-		invWherePersonal
-	);
-	auto buy_item         = buy_item_slot_id == INVALID_INDEX ? nullptr : buyer->GetInv().GetItem(buy_item_slot_id);
-	if (buy_item && buyer->CheckLoreConflict(buy_item->GetItem())) {
+	const auto *buy_item = database.GetItem(sell_line.item_id);
+	if (buy_item && buyer->CheckLoreConflict(buy_item)) {
 		LogTradingDetail(
 			"Seller attempting to sell item <green>[{}] to buyer <green>[{}] though buyer already has the item which is LORE.",
 			sell_line.item_name,
@@ -4780,6 +4775,21 @@ bool Client::DoBarterSellerChecks(BuyerLineSellItem_Struct &sell_line)
 			sell_line.item_name
 		);
 		Message(Chat::Red, "Charged non-stackable items cannot be sold to a buyer.");
+	}
+
+	if (
+		sell_item &&
+		!sell_item->IsStackable() &&
+		sell_item->GetItem()->LoreFlag &&
+		sell_line.seller_quantity > 1
+	) {
+		seller_error = true;
+		LogTradingDetail(
+			"Seller item <red>[{}] is LORE and cannot be delivered in quantity [{}] by a buyer transaction.",
+			sell_line.item_name,
+			sell_line.seller_quantity
+		);
+		Message(Chat::Red, "Multiple copies of a LORE item cannot be sold to a buyer in one transaction.");
 	}
 
 	if (seller_error) {

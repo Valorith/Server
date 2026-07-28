@@ -42,6 +42,7 @@ public:
 		TEST_ADD(BazaarTest::ChargedStackPartialPurchaseDoesNotDuplicate);
 		TEST_ADD(BazaarTest::CreatesDistinctNonStackableBarterItems);
 		TEST_ADD(BazaarTest::RejectsInvalidBarterItemCreation);
+		TEST_ADD(BazaarTest::RejectsMultiCopyLoreBarterItemCreation);
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
@@ -196,6 +197,19 @@ private:
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 3).empty());
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 0).empty());
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &charged_item, 1).empty());
+	}
+
+	void RejectsMultiCopyLoreBarterItemCreation()
+	{
+		SharedDatabase db;
+		EQ::ItemData lore_item{};
+		lore_item.ID        = 60539;
+		lore_item.Stackable = false;
+		lore_item.LoreFlag  = true;
+		lore_item.LoreGroup = -1;
+
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &lore_item, 2).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &lore_item, 1).size() == 1);
 	}
 
 	void RejectsZeroBarterSellQuantity()
