@@ -185,9 +185,14 @@ private:
 	void RejectsInvalidBarterItemCreation()
 	{
 		SharedDatabase db;
+		EQ::ItemData charged_item{};
+		charged_item.ID         = 60539;
+		charged_item.Stackable  = false;
+		charged_item.MaxCharges = 5;
 
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 3).empty());
 		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 0).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &charged_item, 1).empty());
 	}
 
 	void RejectsZeroBarterSellQuantity()
@@ -241,6 +246,8 @@ private:
 		TEST_ASSERT(entry->check.find("information_schema") != std::string::npos);
 		TEST_ASSERT(entry->check.find("DATA_TYPE` = 'bigint'") != std::string::npos);
 		TEST_ASSERT(entry->check.find("COLUMN_TYPE` LIKE '%unsigned%'") != std::string::npos);
+		TEST_ASSERT(entry->check.find("IS_NULLABLE` = 'NO'") != std::string::npos);
+		TEST_ASSERT(entry->check.find("COLUMN_DEFAULT` = '0'") != std::string::npos);
 		TEST_ASSERT(entry->sql.find("MODIFY COLUMN `totalcost` BIGINT UNSIGNED") != std::string::npos);
 		TEST_ASSERT(DatabaseUpdate::ShouldRunMigration(*entry, ""));
 		TEST_ASSERT(!DatabaseUpdate::ShouldRunMigration(*entry, "totalcost"));

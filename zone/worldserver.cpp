@@ -4298,7 +4298,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					if (!buyer->DoBarterBuyerChecks(sell_line)) {
 						in->action     = Barter_FailedTransaction;
-						in->sub_action = Barter_FailedBuyerChecks;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
 						worldserver.SendPacket(pack);
 						break;
 					}
@@ -4316,17 +4316,18 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					strn0cpy(blis.item_name, in->item_name, sizeof(blis.item_name));
 
 					uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
-					if (!buyer->PutBarterPurchaseItems(in->buy_item_id, in->seller_quantity)) {
-						buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
+					if (!buyer->TakeMoneyFromPP(total_cost, false)) {
 						in->action     = Barter_FailedTransaction;
-						in->sub_action = Barter_FailedBuyerChecks;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
 						worldserver.SendPacket(pack);
 						break;
 					}
 
-					if (!buyer->TakeMoneyFromPP(total_cost, false)) {
+					if (!buyer->PutBarterPurchaseItems(in->buy_item_id, in->seller_quantity)) {
+						buyer->AddMoneyToPP(total_cost, true);
+						buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
 						in->action     = Barter_FailedTransaction;
-						in->sub_action = Barter_FailedBuyerChecks;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
 						worldserver.SendPacket(pack);
 						break;
 					}

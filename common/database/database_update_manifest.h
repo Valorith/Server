@@ -7597,6 +7597,8 @@ WHERE `TABLE_SCHEMA` = DATABASE()
 	AND `COLUMN_NAME` = 'totalcost'
 	AND `DATA_TYPE` = 'bigint'
 	AND `COLUMN_TYPE` LIKE '%unsigned%'
+	AND `IS_NULLABLE` = 'NO'
+	AND `COLUMN_DEFAULT` = '0'
 )",
 		.condition = "empty",
 		.match = "",

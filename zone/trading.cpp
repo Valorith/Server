@@ -2460,7 +2460,7 @@ bool Client::PutBarterPurchaseItems(uint32 item_id, uint32 quantity)
 	auto items = Bazaar::CreateBarterPurchaseItems(database, item, quantity);
 	if (items.size() != quantity) {
 		LogTrading(
-			"Failed to create distinct barter purchase items [{}] quantity [{}] for buyer [{}]",
+			"Failed to create supported, distinct barter purchase items [{}] quantity [{}] for buyer [{}]",
 			item_id,
 			quantity,
 			GetCleanName()
@@ -2468,6 +2468,8 @@ bool Client::PutBarterPurchaseItems(uint32 item_id, uint32 quantity)
 		return false;
 	}
 
+	std::vector<std::string> placed_item_ids;
+	placed_item_ids.reserve(items.size());
 	for (auto &inst : items) {
 		if (!PutItemInInventoryWithStacking(inst.get())) {
 			LogTrading(
@@ -2475,8 +2477,26 @@ bool Client::PutBarterPurchaseItems(uint32 item_id, uint32 quantity)
 				item_id,
 				GetCleanName()
 			);
+
+			if (!inst->GetUniqueID().empty()) {
+				placed_item_ids.emplace_back(inst->GetUniqueID());
+			}
+
+			for (const auto &item_unique_id : placed_item_ids) {
+				if (!RemoveItemByItemUniqueId(item_unique_id)) {
+					LogError(
+						"Failed to roll back barter purchase item [{}] unique_id [{}] for buyer [{}]",
+						item_id,
+						item_unique_id,
+						GetCleanName()
+					);
+				}
+			}
+
 			return false;
 		}
+
+		placed_item_ids.emplace_back(inst->GetUniqueID());
 	}
 
 	return true;
@@ -4628,6 +4648,15 @@ bool Client::DoBarterSellerChecks(BuyerLineSellItem_Struct &sell_line)
 						 sell_line.item_name
 		);
 		Message(Chat::Red, "The item that you are trying to sell is non-tradeable and therefore cannot be sold.");
+	}
+
+	if (sell_item && !sell_item->IsStackable() && sell_item->GetItem()->MaxCharges > 0) {
+		seller_error = true;
+		LogTradingDetail(
+			"Seller item <red>[{}] has charges that cannot be preserved by buyer transactions.",
+			sell_line.item_name
+		);
+		Message(Chat::Red, "Charged non-stackable items cannot be sold to a buyer.");
 	}
 
 	if (seller_error) {

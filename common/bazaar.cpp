@@ -63,7 +63,7 @@ std::vector<std::unique_ptr<EQ::ItemInstance>> Bazaar::CreateBarterPurchaseItems
 )
 {
 	std::vector<std::unique_ptr<EQ::ItemInstance>> items;
-	if (!item || quantity == 0) {
+	if (!item || item->MaxCharges > 0 || quantity == 0) {
 		return items;
 	}
 
