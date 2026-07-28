@@ -16,6 +16,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
 		TEST_ADD(AutoSkillUtilTest::CalculatesReuseTimes);
+		TEST_ADD(AutoSkillUtilTest::ValidatesObservedHasteMatrix);
 		TEST_ADD(AutoSkillUtilTest::RoundsReuseTimesUpAcrossRange);
 	}
 
@@ -107,6 +108,40 @@ private:
 			) == std::numeric_limits<uint32>::max()
 		);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillTaunt, 0, 100) == 0);
+	}
+
+	void ValidatesObservedHasteMatrix() {
+		struct ReuseMatrixTestCase {
+			EQ::skills::SkillType skill;
+			std::array<uint32, 6> expected_reuse_ms;
+		};
+
+		const std::array<int, 6> total_haste_values = {
+			100, 125, 141, 150, 200, 50
+		};
+		const std::array<ReuseMatrixTestCase, 9> reuse_matrix = {{
+			{ EQ::skills::SkillBackstab,    { 10000,  8000,  7093,  6667, 5000, 20000 } },
+			{ EQ::skills::SkillFrenzy,      { 15000, 12000, 10639, 10000, 7500, 30000 } },
+			{ EQ::skills::SkillFlyingKick,  {  8000,  6400,  5674,  5334, 4000, 16000 } },
+			{ EQ::skills::SkillDragonPunch, {  6000,  4800,  4256,  4000, 3000, 12000 } },
+			{ EQ::skills::SkillEagleStrike, {  6000,  4800,  4256,  4000, 3000, 12000 } },
+			{ EQ::skills::SkillTigerClaw,   {  6000,  4800,  4256,  4000, 3000, 12000 } },
+			{ EQ::skills::SkillRoundKick,   {  8000,  6400,  5674,  5334, 4000, 16000 } },
+			{ EQ::skills::SkillKick,        {  8000,  6400,  5674,  5334, 4000, 16000 } },
+			{ EQ::skills::SkillBash,        {  8000,  6400,  5674,  5334, 4000, 16000 } }
+		}};
+
+		for (const auto &test_case : reuse_matrix) {
+			for (size_t i = 0; i < total_haste_values.size(); ++i) {
+				TEST_ASSERT(
+					EQ::skills::autoskill::GetReuseTimeMilliseconds(
+						test_case.skill,
+						0,
+						total_haste_values[i]
+					) == test_case.expected_reuse_ms[i]
+				);
+			}
+		}
 	}
 
 	void RoundsReuseTimesUpAcrossRange() {
