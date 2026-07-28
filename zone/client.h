@@ -984,6 +984,7 @@ public:
 	bool CanHaveSkill(EQ::skills::SkillType skill_id) const;
 	uint32 GetAutoSkillEnabledMask() const { return auto_skill_enabled_mask; }
 	bool IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const;
+	bool IsAutoSkillAttackInProgress() const { return auto_skill_attack_in_progress; }
 	bool IsAutoSkillUsable(EQ::skills::SkillType skill_id) const;
 	void SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled);
 	void LoadAutoSkillSettings();
@@ -2068,6 +2069,13 @@ private:
 	void OPGMTrainSkill(const EQApplicationPacket *app);
 	void OPGMSummon(const EQApplicationPacket *app);
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
+	bool IsAutoSkillReuseTimerReady(pTimerType timer);
+	void StartAutoSkillReuseTimer(
+		pTimerType timer,
+		EQ::skills::SkillType skill,
+		int skill_reuse_reduction,
+		int total_haste
+	);
 
 	// Bandolier Methods
 	void CreateBandolier(const EQApplicationPacket *app);
@@ -2141,6 +2149,7 @@ private:
 	bool auto_attack;
 	bool auto_fire;
 	uint32 auto_skill_enabled_mask = 0;
+	bool auto_skill_attack_in_progress = false;
 	bool runmode;
 	uint8 gmspeed;
 	bool gminvul;
@@ -2279,6 +2288,8 @@ private:
 	Timer lazy_load_bank_check_timer;
 	Timer bandolier_throttle_timer;
 	Timer auto_skill_process_timer;
+	Timer auto_skill_combat_ability_timer;
+	Timer auto_skill_combat_ability_2_timer;
 
 	bool m_lazy_load_bank            = false;
 	int  m_lazy_load_sent_bank_slots = 0;
