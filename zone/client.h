@@ -984,6 +984,7 @@ public:
 	bool CanHaveSkill(EQ::skills::SkillType skill_id) const;
 	uint32 GetAutoSkillEnabledMask() const { return auto_skill_enabled_mask; }
 	bool IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const;
+	bool IsAutoSkillAttackInProgress() const { return auto_skill_attack_in_progress; }
 	bool IsAutoSkillUsable(EQ::skills::SkillType skill_id) const;
 	void SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled);
 	void LoadAutoSkillSettings();
@@ -2148,6 +2149,7 @@ private:
 	bool auto_attack;
 	bool auto_fire;
 	uint32 auto_skill_enabled_mask = 0;
+	bool auto_skill_attack_in_progress = false;
 	bool runmode;
 	uint8 gmspeed;
 	bool gminvul;

@@ -18,6 +18,8 @@ public:
 		TEST_ADD(AutoSkillUtilTest::CalculatesReuseTimes);
 		TEST_ADD(AutoSkillUtilTest::ValidatesObservedHasteMatrix);
 		TEST_ADD(AutoSkillUtilTest::RoundsReuseTimesUpAcrossRange);
+		TEST_ADD(AutoSkillUtilTest::ClampsPersistentReuseTimes);
+		TEST_ADD(AutoSkillUtilTest::SelectsAutoSkillProcReuseTimes);
 	}
 
 	~AutoSkillUtilTest() {
@@ -192,5 +194,23 @@ private:
 				}
 			}
 		}
+	}
+
+	void ClampsPersistentReuseTimes() {
+		TEST_ASSERT(EQ::skills::autoskill::ClampPersistentReuseTime(std::numeric_limits<int>::min()) == 0);
+		TEST_ASSERT(EQ::skills::autoskill::ClampPersistentReuseTime(-1) == 0);
+		TEST_ASSERT(EQ::skills::autoskill::ClampPersistentReuseTime(0) == 0);
+		TEST_ASSERT(EQ::skills::autoskill::ClampPersistentReuseTime(1) == 1);
+		TEST_ASSERT(
+			EQ::skills::autoskill::ClampPersistentReuseTime(std::numeric_limits<int>::max()) ==
+			std::numeric_limits<int>::max()
+		);
+	}
+
+	void SelectsAutoSkillProcReuseTimes() {
+		TEST_ASSERT(EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(true, true));
+		TEST_ASSERT(!EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(true, false));
+		TEST_ASSERT(!EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(false, true));
+		TEST_ASSERT(!EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(false, false));
 	}
 };

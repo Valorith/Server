@@ -246,7 +246,10 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	if (
 		IsClient() &&
 		RuleB(Combat, EnableAutoSkill) &&
-		CastToClient()->IsAutoSkillEnabled(skill)
+		EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(
+			CastToClient()->IsAutoSkillAttackInProgress(),
+			CastToClient()->IsAutoSkillEnabled(skill)
+		)
 	) {
 		const auto auto_skill_reuse_time = EQ::skills::autoskill::GetReuseTimeMilliseconds(
 			skill,
@@ -482,6 +485,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 			reuse_time = BashReuseTime - 1 - skill_reduction;
 			reuse_time = (reuse_time * haste_modifier) / 100;
+			reuse_time = EQ::skills::autoskill::ClampPersistentReuseTime(reuse_time);
 			DoSpecialAttackDamage(GetTarget(), EQ::skills::SkillBash, damage, 0, hate_override, reuse_time);
 
 			if (reuse_time) {
@@ -515,6 +519,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 		reuse_time = FrenzyReuseTime - 1 - skill_reduction;
 		reuse_time = (reuse_time * haste_modifier) / 100;
+		reuse_time = EQ::skills::autoskill::ClampPersistentReuseTime(reuse_time);
 
 		const EQ::ItemInstance* primary_in_use = GetInv().GetItem(EQ::invslot::slotPrimary);
 		if (primary_in_use && GetWeaponDamage(GetTarget(), primary_in_use) <= 0) {
@@ -658,7 +663,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	reuse_time = (reuse_time * haste_modifier) / 100;
 
 	// A reuse reduction at or beyond the legacy allowance must not wrap into a multi-year uint32 timer.
-	reuse_time = std::max(reuse_time, 0);
+	reuse_time = EQ::skills::autoskill::ClampPersistentReuseTime(reuse_time);
 
 	if (reuse_time) {
 		p_timers.Start(timer, reuse_time);

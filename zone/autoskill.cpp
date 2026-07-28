@@ -284,7 +284,9 @@ void Client::ProcessAutoSkills()
 		combat_ability.m_atk = 100;
 		combat_ability.m_skill = skill;
 
+		auto_skill_attack_in_progress = true;
 		OPCombatAbility(&combat_ability);
+		auto_skill_attack_in_progress = false;
 
 		if (GetTarget() != target || target->GetHP() <= -10) {
 			return;

@@ -139,6 +139,19 @@ uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
 	);
 }
 
+int EQ::skills::autoskill::ClampPersistentReuseTime(int reuse_time)
+{
+	return std::max(reuse_time, 0);
+}
+
+bool EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(
+	bool auto_skill_attack_in_progress,
+	bool skill_enabled
+)
+{
+	return auto_skill_attack_in_progress && skill_enabled;
+}
+
 std::string EQ::skills::autoskill::NormalizeSkillName(const std::string &skill_name)
 {
 	std::string normalized_name;
