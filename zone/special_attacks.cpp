@@ -673,6 +673,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	if (skill == EQ::skills::SkillBackstab) {
 		const auto *primary_weapon = GetInv().GetItem(EQ::invslot::slotPrimary);
 		start_auto_skill_reuse_timer = (
+			found_skill &&
 			primary_weapon &&
 			primary_weapon->GetItem() &&
 			primary_weapon->GetItem()->ItemType == EQ::item::ItemType1HPiercing
