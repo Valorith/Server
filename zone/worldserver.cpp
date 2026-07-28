@@ -4251,6 +4251,31 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							}
 							break;
 						}
+						case Barter_BuyerTransactionRolledBack: {
+							if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
+								PlayerEvent::BarterTransaction e{};
+								e.status        = "Failed Barter Transaction";
+								e.item_id       = sell_line.item_id;
+								e.item_quantity = sell_line.seller_quantity;
+								e.item_name     = sell_line.item_name;
+								e.trade_items   = sell_line.trade_items;
+								for (auto &i: e.trade_items) {
+									i *= sell_line.seller_quantity;
+								}
+								e.total_cost  = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
+								e.buyer_name  = sell_line.buyer_name;
+								e.seller_name = sell_line.seller_name;
+
+								if (seller) {
+									RecordPlayerEventLogWithClient(seller, PlayerEvent::BARTER_TRANSACTION, e);
+								}
+
+								if (buyer) {
+									RecordPlayerEventLogWithClient(buyer, PlayerEvent::BARTER_TRANSACTION, e);
+								}
+							}
+							[[fallthrough]];
+						}
 						default: {
 							if (seller) {
 								seller->SendBarterBuyerClientMessage(
