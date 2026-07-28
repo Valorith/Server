@@ -3176,7 +3176,8 @@ enum BarterBuyerActions {
 	Barter_BuyerCouldNotBeFound      = 52,
 	Barter_FailedBuyerChecks         = 53,
 	Barter_SellerCouldNotBeFound     = 54,
-	Barter_FailedSellerChecks        = 55
+	Barter_FailedSellerChecks        = 55,
+	Barter_BuyerTransactionRolledBack = 56
 };
 
 enum BarterBuyerSubActions {

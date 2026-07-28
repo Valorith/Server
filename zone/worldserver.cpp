@@ -4251,6 +4251,31 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							}
 							break;
 						}
+						case Barter_BuyerTransactionRolledBack: {
+							if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::BARTER_TRANSACTION)) {
+								PlayerEvent::BarterTransaction e{};
+								e.status        = "Failed Barter Transaction";
+								e.item_id       = sell_line.item_id;
+								e.item_quantity = sell_line.seller_quantity;
+								e.item_name     = sell_line.item_name;
+								e.trade_items   = sell_line.trade_items;
+								for (auto &i: e.trade_items) {
+									i *= sell_line.seller_quantity;
+								}
+								e.total_cost  = (uint64) sell_line.item_cost * (uint64) in->seller_quantity;
+								e.buyer_name  = sell_line.buyer_name;
+								e.seller_name = sell_line.seller_name;
+
+								if (seller) {
+									RecordPlayerEventLogWithClient(seller, PlayerEvent::BARTER_TRANSACTION, e);
+								}
+
+								if (buyer) {
+									RecordPlayerEventLogWithClient(buyer, PlayerEvent::BARTER_TRANSACTION, e);
+								}
+							}
+							[[fallthrough]];
+						}
 						default: {
 							if (seller) {
 								seller->SendBarterBuyerClientMessage(
@@ -4298,7 +4323,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					if (!buyer->DoBarterBuyerChecks(sell_line)) {
 						in->action     = Barter_FailedTransaction;
-						in->sub_action = Barter_FailedBuyerChecks;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
 						worldserver.SendPacket(pack);
 						break;
 					}
@@ -4316,35 +4341,18 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					strn0cpy(blis.item_name, in->item_name, sizeof(blis.item_name));
 
 					uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
-					std::unique_ptr<EQ::ItemInstance> inst(database.CreateItem(in->buy_item_id, in->seller_quantity));
-
-					if (inst->IsStackable()) {
-						if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
-							buyer->Message(Chat::Red, "Error putting item in your inventory.");
-							buyer->AddMoneyToPP(total_cost, true);
-							in->action     = Barter_FailedTransaction;
-							in->sub_action = Barter_FailedBuyerChecks;
-							worldserver.SendPacket(pack);
-							break;
-						}
-					}
-					else {
-						for (int i = 1; i <= sell_line.seller_quantity; i++) {
-							inst->SetCharges(1);
-							if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
-								buyer->Message(Chat::Red, "Error putting item in your inventory.");
-								buyer->AddMoneyToPP(total_cost, true);
-								in->action     = Barter_FailedTransaction;
-								in->sub_action = Barter_FailedBuyerChecks;
-								worldserver.SendPacket(pack);
-								goto exit_loop;
-							}
-						}
-					}
-
 					if (!buyer->TakeMoneyFromPP(total_cost, false)) {
 						in->action     = Barter_FailedTransaction;
-						in->sub_action = Barter_FailedBuyerChecks;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
+						worldserver.SendPacket(pack);
+						break;
+					}
+
+					if (!buyer->PutBarterPurchaseItems(in->buy_item_id, in->seller_quantity)) {
+						buyer->AddMoneyToPP(total_cost, true);
+						buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
+						in->action     = Barter_FailedTransaction;
+						in->sub_action = Barter_BuyerTransactionRolledBack;
 						worldserver.SendPacket(pack);
 						break;
 					}
@@ -4389,7 +4397,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					in->action = Barter_BuyerTransactionComplete;
 					worldserver.SendPacket(pack);
 
-					exit_loop:
 					break;
 				}
 				case Barter_BuyerTransactionComplete: {

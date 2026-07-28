@@ -3,6 +3,7 @@
 #include "common/item_instance.h"
 #include "common/shareddb.h"
 
+#include <memory>
 #include <vector>
 
 class Bazaar {
@@ -10,6 +11,11 @@ public:
 	struct PurchaseQuantityValidation {
 		bool   is_valid;
 		uint32 quantity;
+	};
+
+	struct TransactionValueValidation {
+		bool   is_valid;
+		uint64 total_cost;
 	};
 
 	static PurchaseQuantityValidation ValidatePurchaseQuantity(
@@ -25,7 +31,24 @@ public:
 		int16 listed_charges
 	);
 
+	static std::vector<std::unique_ptr<EQ::ItemInstance>> CreateBarterPurchaseItems(
+		SharedDatabase &db,
+		const EQ::ItemData *item,
+		uint32 quantity
+	);
+
 	static bool ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity);
+
+	static TransactionValueValidation ValidateBuyLinePrice(
+		uint32 unit_price,
+		uint64 max_transaction_value
+	);
+
+	static TransactionValueValidation ValidateTransactionValue(
+		uint32 unit_price,
+		uint32 quantity,
+		uint64 max_transaction_value
+	);
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
 

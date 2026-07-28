@@ -35,6 +35,7 @@
 #include "zone/quest_parser_collection.h"
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <unordered_set>
@@ -2194,6 +2195,37 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 			return;
 		}
 
+		const uint64 max_transaction_value =
+			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+		const auto transaction_value = Bazaar::ValidateTransactionValue(
+			sell_line.item_cost,
+			sell_line.seller_quantity,
+			max_transaction_value
+		);
+		if (!transaction_value.is_valid) {
+			LogTrading(
+				"Rejecting buyer sale over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] seller [{}] buyer [{}]",
+				max_transaction_value,
+				sell_line.item_cost,
+				sell_line.seller_quantity,
+				sell_line.item_name,
+				GetCleanName(),
+				sell_line.buyer_name
+			);
+			Message(
+				Chat::Red,
+				"That would exceed the single transaction limit of %u platinum.",
+				static_cast<uint32>(max_transaction_value / 1000)
+			);
+			SendBarterBuyerClientMessage(
+				sell_line,
+				Barter_SellerTransactionComplete,
+				Barter_Failure,
+				Barter_Failure
+			);
+			return;
+		}
+
 		switch (sell_line.purchase_method) {
 			case BarterInBazaar:
 			case BarterByVendor: {
@@ -2271,44 +2303,20 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 					}
 				}
 
-				std::unique_ptr<EQ::ItemInstance> buy_inst(
-					database.CreateItem(
-						sell_line.item_id,
-						sell_line.seller_quantity
-					)
-				);
-				RemoveItem(sell_line.item_id, sell_line.seller_quantity);
-				if (buy_inst->IsStackable()) {
-					if (!buyer->PutItemInInventoryWithStacking(buy_inst.get())) {
-						buyer->Message(Chat::Red, "Error putting item in your inventory.");
-						PutItemInInventoryWithStacking(buy_inst.get());
-						SendBarterBuyerClientMessage(
-							sell_line,
-							Barter_SellerTransactionComplete,
-							Barter_Failure,
-							Barter_Failure
-						);
-						return;
-					}
-				}
-				else {
-					for (int i = 1; i <= sell_line.seller_quantity; i++) {
-						buy_inst->SetCharges(1);
-						if (!buyer->PutItemInInventoryWithStacking(buy_inst.get())) {
-							buyer->Message(Chat::Red, "Error putting item in your inventory.");
-							PutItemInInventoryWithStacking(buy_inst.get());
-							SendBarterBuyerClientMessage(
-							sell_line,
-								Barter_SellerTransactionComplete,
-								Barter_Failure,
-								Barter_Failure
-							);
-							return;
-						}
-					}
+				if (!buyer->PutBarterPurchaseItems(sell_line.item_id, sell_line.seller_quantity)) {
+					buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
+					SendBarterBuyerClientMessage(
+						sell_line,
+						Barter_SellerTransactionComplete,
+						Barter_Failure,
+						Barter_Failure
+					);
+					return;
 				}
 
-				uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
+				RemoveItem(sell_line.item_id, sell_line.seller_quantity);
+
+				const uint64 total_cost = transaction_value.total_cost;
 				AddMoneyToPP(total_cost, false);
 				buyer->TakeMoneyFromPP(total_cost, false);
 
@@ -2450,6 +2458,81 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 	}
 }
 
+bool Client::PutBarterPurchaseItems(uint32 item_id, uint32 quantity)
+{
+	const auto *item = database.GetItem(item_id);
+	if (!item || quantity == 0 || quantity > static_cast<uint32>(std::numeric_limits<int16>::max())) {
+		LogTrading(
+			"Unable to create barter purchase item [{}] quantity [{}] for buyer [{}]",
+			item_id,
+			quantity,
+			GetCleanName()
+		);
+		return false;
+	}
+
+	if (!GetInv().HasSpaceForItem(item, static_cast<int16>(quantity))) {
+		LogTrading(
+			"Buyer [{}] has insufficient inventory space for item [{}] quantity [{}]",
+			GetCleanName(),
+			item_id,
+			quantity
+		);
+		return false;
+	}
+
+	if (item->Stackable) {
+		auto inst = std::unique_ptr<EQ::ItemInstance>(
+			database.CreateItem(item, static_cast<int16>(quantity))
+		);
+		return inst && PutItemInInventoryWithStacking(inst.get());
+	}
+
+	auto items = Bazaar::CreateBarterPurchaseItems(database, item, quantity);
+	if (items.size() != quantity) {
+		LogTrading(
+			"Failed to create supported, distinct barter purchase items [{}] quantity [{}] for buyer [{}]",
+			item_id,
+			quantity,
+			GetCleanName()
+		);
+		return false;
+	}
+
+	std::vector<std::string> placed_item_ids;
+	placed_item_ids.reserve(items.size());
+	for (auto &inst : items) {
+		if (!PutItemInInventoryWithStacking(inst.get())) {
+			LogTrading(
+				"Failed to place barter purchase item [{}] for buyer [{}]",
+				item_id,
+				GetCleanName()
+			);
+
+			if (!inst->GetUniqueID().empty()) {
+				placed_item_ids.emplace_back(inst->GetUniqueID());
+			}
+
+			for (const auto &item_unique_id : placed_item_ids) {
+				if (!RemoveItemByItemUniqueId(item_unique_id)) {
+					LogError(
+						"Failed to roll back barter purchase item [{}] unique_id [{}] for buyer [{}]",
+						item_id,
+						item_unique_id,
+						GetCleanName()
+					);
+				}
+			}
+
+			return false;
+		}
+
+		placed_item_ids.emplace_back(inst->GetUniqueID());
+	}
+
+	return true;
+}
+
 void Client::SendBuyerPacket(Client* Buyer) {
 
 	// This is the Buyer Appearance packet. This method is called for each Buyer when a Client connects to the zone.
@@ -2533,7 +2616,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			return;
 		}
 
-		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
 		int64 current_total_cost = 0;
 		bool  pass               = false;
 
@@ -2541,8 +2623,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 
 		std::map<uint32, BuylineItemDetails_Struct> item_map;
 		BuildBuyLineMapFromVector(item_map, current_buy_lines);
-
-		current_total_cost = ValidateBuyLineCost(item_map);
 
 		auto buy_line = bl.buy_lines.front();
 		auto it       = std::find_if(
@@ -2554,9 +2634,48 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		);
 
 		if (buy_line.item_toggle) {
-			current_total_cost += buy_line.item_cost * buy_line.item_quantity;
+			const uint64 max_transaction_value =
+				EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+			const auto transaction_value = Bazaar::ValidateBuyLinePrice(
+				buy_line.item_cost,
+				max_transaction_value
+			);
+			if (!transaction_value.is_valid) {
+				LogTrading(
+					"Rejecting buy line modification over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] buyer [{}]",
+					max_transaction_value,
+					buy_line.item_cost,
+					buy_line.item_quantity,
+					buy_line.item_name,
+					GetCleanName()
+				);
+				Message(
+					Chat::Red,
+					"That would exceed the single transaction limit of %u platinum.",
+					static_cast<uint32>(max_transaction_value / 1000)
+				);
+
+				if (it != std::end(current_buy_lines)) {
+					buy_line = *it;
+				}
+				else {
+					buy_line.item_toggle = 0;
+				}
+
+				SendBuyLineUpdate(buy_line);
+				return;
+			}
+		}
+
+		current_total_cost = ValidateBuyLineCost(item_map);
+		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
+
+		if (buy_line.item_toggle) {
+			current_total_cost +=
+				static_cast<int64>(buy_line.item_cost) * static_cast<int64>(buy_line.item_quantity);
 			if (it != std::end(current_buy_lines)) {
-				current_total_cost -= it->item_cost * it->item_quantity;
+				current_total_cost -=
+					static_cast<int64>(it->item_cost) * static_cast<int64>(it->item_quantity);
 				if (current_total_cost > GetCarriedMoney()) {
 					buy_line.item_cost     = it->item_cost;
 					buy_line.item_quantity = it->item_quantity;
@@ -3979,6 +4098,31 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 			return;
 		}
 
+		const uint64 max_transaction_value =
+			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+		for (const auto &buy_line : bl.buy_lines) {
+			const auto transaction_value = Bazaar::ValidateBuyLinePrice(
+				buy_line.item_cost,
+				max_transaction_value
+			);
+			if (!transaction_value.is_valid) {
+				LogTrading(
+					"Rejecting initial buy lines over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] buyer [{}]",
+					max_transaction_value,
+					buy_line.item_cost,
+					buy_line.item_quantity,
+					buy_line.item_name,
+					GetCleanName()
+				);
+				Message(
+					Chat::Red,
+					"That would exceed the single transaction limit of %u platinum.",
+					static_cast<uint32>(max_transaction_value / 1000)
+				);
+				return;
+			}
+		}
+
 		std::map<uint32, BuylineItemDetails_Struct> item_map{};
 
 		if (!BuildBuyLineMap(item_map, bl)) {
@@ -4252,7 +4396,10 @@ bool Client::BuildBuyLineMap(std::map<uint32, BuylineItemDetails_Struct> &item_m
 			buyer_error = true;
 			break;
 		}
-		BuylineItemDetails_Struct t = {b.item_quantity * b.item_cost, b.item_quantity};
+		BuylineItemDetails_Struct t = {
+			static_cast<uint64>(b.item_quantity) * static_cast<uint64>(b.item_cost),
+			b.item_quantity
+		};
 		item_map.emplace(b.item_id, t);
 		for (auto const &i: b.trade_items) {
 			if (item_map.contains(i.item_id) && item_map[i.item_id].item_cost > 0) {
@@ -4302,7 +4449,10 @@ bool Client::BuildBuyLineMapFromVector(
 			buyer_error = true;
 			break;
 		}
-		BuylineItemDetails_Struct t = {b.item_quantity * b.item_cost, b.item_quantity};
+		BuylineItemDetails_Struct t = {
+			static_cast<uint64>(b.item_quantity) * static_cast<uint64>(b.item_cost),
+			b.item_quantity
+		};
 		item_map.emplace(b.item_id, t);
 		for (auto const &i: b.trade_items) {
 			if (item_map.contains(i.item_id) && item_map[i.item_id].item_cost > 0) {
@@ -4471,6 +4621,31 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		return false;
 	}
 
+	const uint64 max_transaction_value =
+		EQ::constants::StaticLookup(buyer->ClientVersion())->BazaarMaxTransaction;
+	const auto transaction_value = Bazaar::ValidateTransactionValue(
+		sell_line.item_cost,
+		sell_line.seller_quantity,
+		max_transaction_value
+	);
+	if (!transaction_value.is_valid) {
+		LogTrading(
+			"Rejecting buyer sale over buyer transaction limit [{}] item_cost [{}] quantity [{}] item [{}] seller [{}] buyer [{}]",
+			max_transaction_value,
+			sell_line.item_cost,
+			sell_line.seller_quantity,
+			sell_line.item_name,
+			sell_line.seller_name,
+			buyer->GetCleanName()
+		);
+		buyer->Message(
+			Chat::Red,
+			"That transaction would exceed the single transaction limit of %u platinum.",
+			static_cast<uint32>(max_transaction_value / 1000)
+		);
+		return false;
+	}
+
 	auto buyer_time = BuyerRepository::GetTransactionDate(database, buyer->CharacterID());
 	if (buyer_time > GetBarterTime()) {
 		if (sell_line.purchase_method == BarterByVendor) {
@@ -4512,7 +4687,7 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		}
 	}
 
-	uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
+	const uint64 total_cost = transaction_value.total_cost;
 	if (!buyer->HasMoney(total_cost)) {
 		LogTradingDetail(
 			"Seller attempting to sell item <green>[{}] to buyer <green>[{}] though buyer does not have enough money <red>[{}]",
@@ -4531,13 +4706,8 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		buyer_error = true;
 	}
 
-	auto buy_item_slot_id = buyer->GetInv().HasItem(
-		sell_line.item_id,
-		sell_line.seller_quantity,
-		invWherePersonal
-	);
-	auto buy_item         = buy_item_slot_id == INVALID_INDEX ? nullptr : buyer->GetInv().GetItem(buy_item_slot_id);
-	if (buy_item && buyer->CheckLoreConflict(buy_item->GetItem())) {
+	const auto *buy_item = database.GetItem(sell_line.item_id);
+	if (buy_item && buyer->CheckLoreConflict(buy_item)) {
 		LogTradingDetail(
 			"Seller attempting to sell item <green>[{}] to buyer <green>[{}] though buyer already has the item which is LORE.",
 			sell_line.item_name,
@@ -4596,6 +4766,30 @@ bool Client::DoBarterSellerChecks(BuyerLineSellItem_Struct &sell_line)
 						 sell_line.item_name
 		);
 		Message(Chat::Red, "The item that you are trying to sell is non-tradeable and therefore cannot be sold.");
+	}
+
+	if (sell_item && !sell_item->IsStackable() && sell_item->GetItem()->MaxCharges > 0) {
+		seller_error = true;
+		LogTradingDetail(
+			"Seller item <red>[{}] has charges that cannot be preserved by buyer transactions.",
+			sell_line.item_name
+		);
+		Message(Chat::Red, "Charged non-stackable items cannot be sold to a buyer.");
+	}
+
+	if (
+		sell_item &&
+		!sell_item->IsStackable() &&
+		sell_item->GetItem()->LoreFlag &&
+		sell_line.seller_quantity > 1
+	) {
+		seller_error = true;
+		LogTradingDetail(
+			"Seller item <red>[{}] is LORE and cannot be delivered in quantity [{}] by a buyer transaction.",
+			sell_line.item_name,
+			sell_line.seller_quantity
+		);
+		Message(Chat::Red, "Multiple copies of a LORE item cannot be sold to a buyer in one transaction.");
 	}
 
 	if (seller_error) {

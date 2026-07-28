@@ -56,9 +56,56 @@ int16 Bazaar::ResolvePurchaseItemCharges(
 	return static_cast<int16>(purchase_quantity);
 }
 
+std::vector<std::unique_ptr<EQ::ItemInstance>> Bazaar::CreateBarterPurchaseItems(
+	SharedDatabase &db,
+	const EQ::ItemData *item,
+	uint32 quantity
+)
+{
+	std::vector<std::unique_ptr<EQ::ItemInstance>> items;
+	if (!item || item->MaxCharges > 0 || quantity == 0 || (item->LoreFlag && quantity > 1)) {
+		return items;
+	}
+
+	items.reserve(quantity);
+	for (uint32 i = 0; i < quantity; ++i) {
+		auto inst = std::unique_ptr<EQ::ItemInstance>(db.CreateItem(item, 1));
+		if (!inst) {
+			items.clear();
+			return items;
+		}
+
+		items.emplace_back(std::move(inst));
+	}
+
+	return items;
+}
+
 bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity)
 {
 	return requested_quantity > 0 && requested_quantity <= listed_quantity;
+}
+
+Bazaar::TransactionValueValidation Bazaar::ValidateBuyLinePrice(
+	uint32 unit_price,
+	uint64 max_transaction_value
+)
+{
+	return ValidateTransactionValue(unit_price, 1, max_transaction_value);
+}
+
+Bazaar::TransactionValueValidation Bazaar::ValidateTransactionValue(
+	uint32 unit_price,
+	uint32 quantity,
+	uint64 max_transaction_value
+)
+{
+	const uint64 total_cost = static_cast<uint64>(unit_price) * static_cast<uint64>(quantity);
+	if (quantity == 0 || total_cost > max_transaction_value) {
+		return {false, 0};
+	}
+
+	return {true, total_cost};
 }
 
 bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)

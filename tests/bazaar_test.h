@@ -19,7 +19,10 @@
 #pragma once
 
 #include "common/bazaar.h"
+#include "common/eq_limits.h"
 #include "cppunit/cpptest.h"
+
+#include <limits>
 
 class BazaarTest : public Test::Suite {
 public:
@@ -37,9 +40,20 @@ public:
 		TEST_ADD(BazaarTest::UsesPurchaseQuantityForUnchargedNonStackable);
 		TEST_ADD(BazaarTest::SupportsFullChargedStackPurchase);
 		TEST_ADD(BazaarTest::ChargedStackPartialPurchaseDoesNotDuplicate);
+		TEST_ADD(BazaarTest::CreatesDistinctNonStackableBarterItems);
+		TEST_ADD(BazaarTest::RejectsInvalidBarterItemCreation);
+		TEST_ADD(BazaarTest::RejectsMultiCopyLoreBarterItemCreation);
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
+		TEST_ADD(BazaarTest::AcceptsBuyLinePriceAtLimit);
+		TEST_ADD(BazaarTest::RejectsBuyLinePriceOneCopperOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::AcceptsBuyerTransactionAtLimit);
+		TEST_ADD(BazaarTest::AcceptsMultiItemBuyerTransactionAtLimit);
+		TEST_ADD(BazaarTest::AllowsBuyLineWhoseFullQuantityExceedsTransactionLimit);
+		TEST_ADD(BazaarTest::RejectsBuyerTransactionOneCopperOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::RejectsBuyerTransactionOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::RejectsOverflowSizedBuyerTransactionWithoutCommitValue);
 		TEST_ADD(BazaarTest::RejectsZeroListedPrice);
 		TEST_ADD(BazaarTest::RejectsMismatchedPrice);
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
@@ -153,6 +167,56 @@ private:
 		TEST_ASSERT(delivered_quantity + seller_quantity == listed_quantity);
 	}
 
+	void CreatesDistinctNonStackableBarterItems()
+	{
+		SharedDatabase db;
+		EQ::ItemData item{};
+		item.ID        = 60539;
+		item.Stackable = false;
+
+		auto items = Bazaar::CreateBarterPurchaseItems(db, &item, 3);
+
+		TEST_ASSERT(items.size() == 3);
+		TEST_ASSERT(items[0].get() != items[1].get());
+		TEST_ASSERT(items[1].get() != items[2].get());
+		TEST_ASSERT(items[0]->GetSerialNumber() != items[1]->GetSerialNumber());
+		TEST_ASSERT(items[1]->GetSerialNumber() != items[2]->GetSerialNumber());
+		TEST_ASSERT(items[0]->GetUniqueID().empty());
+		TEST_ASSERT(items[1]->GetUniqueID().empty());
+		TEST_ASSERT(items[2]->GetUniqueID().empty());
+	}
+
+	void RejectsInvalidBarterItemCreation()
+	{
+		SharedDatabase db;
+		EQ::ItemData charged_item{};
+		charged_item.ID         = 60539;
+		charged_item.Stackable  = false;
+		charged_item.MaxCharges = 5;
+
+		EQ::ItemData valid_item{};
+		valid_item.ID        = 60540;
+		valid_item.Stackable = false;
+
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 3).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 0).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &charged_item, 1).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &valid_item, 0).empty());
+	}
+
+	void RejectsMultiCopyLoreBarterItemCreation()
+	{
+		SharedDatabase db;
+		EQ::ItemData lore_item{};
+		lore_item.ID        = 60539;
+		lore_item.Stackable = false;
+		lore_item.LoreFlag  = true;
+		lore_item.LoreGroup = -1;
+
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &lore_item, 2).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, &lore_item, 1).size() == 1);
+	}
+
 	void RejectsZeroBarterSellQuantity()
 	{
 		TEST_ASSERT(!Bazaar::ValidateBarterSellQuantity(0, 20));
@@ -166,6 +230,111 @@ private:
 	void AcceptsBarterSellQuantityWithinBuyLineQuantity()
 	{
 		TEST_ASSERT(Bazaar::ValidateBarterSellQuantity(20, 20));
+	}
+
+	void AcceptsBuyLinePriceAtLimit()
+	{
+		const auto result = Bazaar::ValidateBuyLinePrice(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void RejectsBuyLinePriceOneCopperOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateBuyLinePrice(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT + 1),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void AcceptsBuyerTransactionAtLimit()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT),
+			1,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void AcceptsMultiItemBuyerTransactionAtLimit()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			1000000000,
+			2,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void AllowsBuyLineWhoseFullQuantityExceedsTransactionLimit()
+	{
+		const auto buy_line = Bazaar::ValidateBuyLinePrice(
+			1000000000,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+		const auto two_item_sale = Bazaar::ValidateTransactionValue(
+			1000000000,
+			2,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+		const auto three_item_sale = Bazaar::ValidateTransactionValue(
+			1000000000,
+			3,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(buy_line.is_valid);
+		TEST_ASSERT(two_item_sale.is_valid);
+		TEST_ASSERT(!three_item_sale.is_valid);
+		TEST_ASSERT(three_item_sale.total_cost == 0);
+	}
+
+	void RejectsBuyerTransactionOneCopperOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT + 1),
+			1,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void RejectsBuyerTransactionOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			1000000000,
+			3,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void RejectsOverflowSizedBuyerTransactionWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			std::numeric_limits<uint32>::max(),
+			std::numeric_limits<uint32>::max(),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
 	}
 
 	void RejectsZeroListedPrice()
