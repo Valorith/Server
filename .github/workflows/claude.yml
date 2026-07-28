@@ -28,6 +28,7 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -47,6 +48,7 @@ jobs:
           claude_args: |
             --permission-mode dontAsk
             --disable-slash-commands
+            --max-turns 35
             --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*)"
             --disallowedTools "Edit,Write,NotebookEdit,Bash(git push:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr merge:*),Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh api:*)"
-            --append-system-prompt "Operate in review-only mode. Read and follow AGENTS.md before reviewing. Do not modify files, create commits, push branches, merge or close pull requests, execute builds or tests, or change repository settings. Analyze the pull request and respond with concise, actionable review feedback."
+            --append-system-prompt "Operate in review-only mode. Read and follow AGENTS.md before reviewing. Do not modify files, create commits, push branches, merge or close pull requests, execute builds or tests, or change repository settings. Analyze the pull request and respond with concise, actionable review feedback. Organize all findings under clear headings within the single primary Claude comment. Do not create reply comments or separate comments for individual findings."
