@@ -1,5 +1,8 @@
 #include "common/auto_skill.h"
 
+#include "common/features.h"
+
+#include <algorithm>
 #include <cctype>
 
 namespace {
@@ -106,6 +109,57 @@ uint32 EQ::skills::autoskill::SanitizeMask(uint32 enabled_mask)
 	}();
 
 	return enabled_mask & supported_mask;
+}
+
+uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
+	EQ::skills::SkillType skill,
+	int skill_reuse_reduction,
+	int total_haste
+)
+{
+	int base_reuse_time = 0;
+
+	switch (skill) {
+		case EQ::skills::SkillBackstab:
+			base_reuse_time = BackstabReuseTime;
+			break;
+		case EQ::skills::SkillFrenzy:
+			base_reuse_time = FrenzyReuseTime;
+			break;
+		case EQ::skills::SkillFlyingKick:
+			base_reuse_time = FlyingKickReuseTime;
+			break;
+		case EQ::skills::SkillDragonPunch:
+			base_reuse_time = TailRakeReuseTime;
+			break;
+		case EQ::skills::SkillEagleStrike:
+			base_reuse_time = EagleStrikeReuseTime;
+			break;
+		case EQ::skills::SkillTigerClaw:
+			base_reuse_time = TigerClawReuseTime;
+			break;
+		case EQ::skills::SkillRoundKick:
+			base_reuse_time = RoundKickReuseTime;
+			break;
+		case EQ::skills::SkillKick:
+			base_reuse_time = KickReuseTime;
+			break;
+		case EQ::skills::SkillBash:
+			base_reuse_time = BashReuseTime;
+			break;
+		default:
+			return 0;
+	}
+
+	// Automated cadence uses the configured full reuse time, matching bot and merc ability timers.
+	// The one-second allowance used by the client packet pTimer is not part of this scheduler deadline.
+	const auto adjusted_reuse_time = std::max(base_reuse_time - skill_reuse_reduction, 1);
+	// GetHaste() is 100-based after all client haste caps: 100 is unmodified speed.
+	const auto effective_haste = total_haste > 0 ? total_haste : 100;
+	const auto unscaled_reuse_time = static_cast<uint64>(adjusted_reuse_time) * 1000 * 100;
+
+	// Keep the calculation in milliseconds and round up so automated use never fires before the intended deadline.
+	return static_cast<uint32>((unscaled_reuse_time + effective_haste - 1) / effective_haste);
 }
 
 std::string EQ::skills::autoskill::NormalizeSkillName(const std::string &skill_name)

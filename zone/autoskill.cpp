@@ -2,7 +2,6 @@
 
 #include "common/auto_skill.h"
 #include "common/classes.h"
-#include "common/features.h"
 #include "common/item_data.h"
 #include "common/item_instance.h"
 #include "common/rulesys.h"
@@ -95,74 +94,6 @@ pTimerType GetAutoSkillTimer(const Client *client, EQ::skills::SkillType skill)
 	return pTimerCombatAbility;
 }
 
-int GetAutoSkillHasteModifier(Client *client)
-{
-	const int haste = client->GetHaste();
-
-	if (haste <= 0) {
-		return 100;
-	}
-
-	// Client haste is 100-based: 100 is unmodified speed.
-	return 10000 / haste;
-}
-
-uint32 GetAdjustedAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill, int reuse_time)
-{
-	reuse_time -= 1;
-	reuse_time -= client->GetSkillReuseTime(skill);
-
-	if (reuse_time <= 0) {
-		return 0;
-	}
-
-	reuse_time = (reuse_time * GetAutoSkillHasteModifier(client)) / 100;
-	if (reuse_time <= 0) {
-		return 0;
-	}
-
-	return static_cast<uint32>(reuse_time);
-}
-
-uint32 GetMinimumAutoSkillReuseTime(Client *client, EQ::skills::SkillType skill)
-{
-	switch (skill) {
-		case EQ::skills::SkillBackstab:
-			return GetAdjustedAutoSkillReuseTime(client, skill, BackstabReuseTime);
-		case EQ::skills::SkillFrenzy:
-			return GetAdjustedAutoSkillReuseTime(client, skill, FrenzyReuseTime);
-		case EQ::skills::SkillFlyingKick:
-			return GetAdjustedAutoSkillReuseTime(client, skill, FlyingKickReuseTime);
-		case EQ::skills::SkillDragonPunch:
-			return GetAdjustedAutoSkillReuseTime(client, skill, TailRakeReuseTime);
-		case EQ::skills::SkillEagleStrike:
-			return GetAdjustedAutoSkillReuseTime(client, skill, EagleStrikeReuseTime);
-		case EQ::skills::SkillTigerClaw:
-			return GetAdjustedAutoSkillReuseTime(client, skill, TigerClawReuseTime);
-		case EQ::skills::SkillRoundKick:
-			return GetAdjustedAutoSkillReuseTime(client, skill, RoundKickReuseTime);
-		case EQ::skills::SkillKick:
-			return GetAdjustedAutoSkillReuseTime(client, skill, KickReuseTime);
-		case EQ::skills::SkillBash:
-			return GetAdjustedAutoSkillReuseTime(client, skill, BashReuseTime);
-		default:
-			return 0;
-	}
-}
-
-void ConstrainAutoSkillTimer(Client *client, pTimerType timer, EQ::skills::SkillType skill)
-{
-	const auto minimum_reuse_time = GetMinimumAutoSkillReuseTime(client, skill);
-	if (minimum_reuse_time == 0) {
-		return;
-	}
-
-	const auto remaining_time = client->GetPTimers().GetRemainingTime(timer);
-	if (remaining_time > 0 && remaining_time < minimum_reuse_time) {
-		client->GetPTimers().Start(timer, minimum_reuse_time);
-	}
-}
-
 bool IsValidAutoSkillTarget(Client *client, Mob *target)
 {
 	return (
@@ -177,6 +108,38 @@ bool IsValidAutoSkillTarget(Client *client, Mob *target)
 }
 
 } // namespace
+
+bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
+{
+	auto &reuse_timer = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer :
+		auto_skill_combat_ability_timer;
+
+	// Persistent combat ability timers use whole seconds. This timer preserves the actual millisecond reuse deadline.
+	return !reuse_timer.Enabled() || reuse_timer.Check(false);
+}
+
+void Client::StartAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType skill)
+{
+	if (!RuleB(Combat, EnableAutoSkill)) {
+		return;
+	}
+
+	const auto reuse_time = EQ::skills::autoskill::GetReuseTimeMilliseconds(
+		skill,
+		GetSkillReuseTime(skill),
+		GetHaste()
+	);
+	if (reuse_time == 0) {
+		return;
+	}
+
+	auto &reuse_timer = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer :
+		auto_skill_combat_ability_timer;
+
+	reuse_timer.Start(reuse_time);
+}
 
 bool Client::IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const
 {
@@ -304,7 +267,10 @@ void Client::ProcessAutoSkills()
 		}
 
 		const auto timer = GetAutoSkillTimer(this, skill);
-		if (!p_timers.Expired(&database, timer, false)) {
+		if (
+			!IsAutoSkillReuseTimerReady(timer) ||
+			!p_timers.Expired(&database, timer, false)
+		) {
 			continue;
 		}
 
@@ -314,7 +280,6 @@ void Client::ProcessAutoSkills()
 		combat_ability.m_skill = skill;
 
 		OPCombatAbility(&combat_ability);
-		ConstrainAutoSkillTimer(this, timer, skill);
 
 		if (GetTarget() != target || target->GetHP() <= -10) {
 			return;

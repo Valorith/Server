@@ -2068,6 +2068,8 @@ private:
 	void OPGMTrainSkill(const EQApplicationPacket *app);
 	void OPGMSummon(const EQApplicationPacket *app);
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
+	bool IsAutoSkillReuseTimerReady(pTimerType timer);
+	void StartAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType skill);
 
 	// Bandolier Methods
 	void CreateBandolier(const EQApplicationPacket *app);
@@ -2279,6 +2281,8 @@ private:
 	Timer lazy_load_bank_check_timer;
 	Timer bandolier_throttle_timer;
 	Timer auto_skill_process_timer;
+	Timer auto_skill_combat_ability_timer;
+	Timer auto_skill_combat_ability_2_timer;
 
 	bool m_lazy_load_bank            = false;
 	int  m_lazy_load_sent_bank_slots = 0;

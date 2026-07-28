@@ -469,6 +469,8 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 			if (reuse_time) {
 				p_timers.Start(timer, reuse_time);
 			}
+
+			StartAutoSkillReuseTimer(timer, EQ::skills::SkillBash);
 		}
 
 		return;
@@ -513,6 +515,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 			p_timers.Start(timer, reuse_time);
 		}
 
+		StartAutoSkillReuseTimer(timer, EQ::skills::SkillFrenzy);
 		return;
 	}
 
@@ -640,6 +643,10 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	if (reuse_time) {
 		p_timers.Start(timer, reuse_time);
+	}
+
+	if (found_skill) {
+		StartAutoSkillReuseTimer(timer, skill);
 	}
 }
 
