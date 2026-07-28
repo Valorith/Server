@@ -19,7 +19,13 @@
 #pragma once
 
 #include "common/bazaar.h"
+#include "common/database/database_update.h"
+#include "common/version.h"
 #include "cppunit/cpptest.h"
+
+#include <algorithm>
+
+extern std::vector<ManifestEntry> manifest_entries;
 
 class BazaarTest : public Test::Suite {
 public:
@@ -37,6 +43,8 @@ public:
 		TEST_ADD(BazaarTest::UsesPurchaseQuantityForUnchargedNonStackable);
 		TEST_ADD(BazaarTest::SupportsFullChargedStackPurchase);
 		TEST_ADD(BazaarTest::ChargedStackPartialPurchaseDoesNotDuplicate);
+		TEST_ADD(BazaarTest::CreatesDistinctNonStackableBarterItems);
+		TEST_ADD(BazaarTest::RejectsInvalidBarterItemCreation);
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
@@ -45,6 +53,8 @@ public:
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
 		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
+		TEST_ADD(BazaarTest::AuditTotalCostMigrationUsesUnsignedBigint);
+		TEST_ADD(BazaarTest::BinaryDatabaseVersionIncludesAuditMigration);
 	}
 
 	~BazaarTest()
@@ -153,6 +163,33 @@ private:
 		TEST_ASSERT(delivered_quantity + seller_quantity == listed_quantity);
 	}
 
+	void CreatesDistinctNonStackableBarterItems()
+	{
+		SharedDatabase db;
+		EQ::ItemData item{};
+		item.ID        = 60539;
+		item.Stackable = false;
+
+		auto items = Bazaar::CreateBarterPurchaseItems(db, &item, 3);
+
+		TEST_ASSERT(items.size() == 3);
+		TEST_ASSERT(items[0].get() != items[1].get());
+		TEST_ASSERT(items[1].get() != items[2].get());
+		TEST_ASSERT(items[0]->GetSerialNumber() != items[1]->GetSerialNumber());
+		TEST_ASSERT(items[1]->GetSerialNumber() != items[2]->GetSerialNumber());
+		TEST_ASSERT(items[0]->GetUniqueID().empty());
+		TEST_ASSERT(items[1]->GetUniqueID().empty());
+		TEST_ASSERT(items[2]->GetUniqueID().empty());
+	}
+
+	void RejectsInvalidBarterItemCreation()
+	{
+		SharedDatabase db;
+
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 3).empty());
+		TEST_ASSERT(Bazaar::CreateBarterPurchaseItems(db, nullptr, 0).empty());
+	}
+
 	void RejectsZeroBarterSellQuantity()
 	{
 		TEST_ASSERT(!Bazaar::ValidateBarterSellQuantity(0, 20));
@@ -191,5 +228,26 @@ private:
 	void FailureSubActionPreservesSpecificFailure()
 	{
 		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
+	}
+
+	void AuditTotalCostMigrationUsesUnsignedBigint()
+	{
+		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry &e) {
+			return e.version == 9352 && e.description == "2026_07_28_trader_audit_totalcost_bigint.sql";
+		});
+
+		TEST_ASSERT(entry != manifest_entries.end());
+		TEST_ASSERT(entry->condition == "empty");
+		TEST_ASSERT(entry->check.find("information_schema") != std::string::npos);
+		TEST_ASSERT(entry->check.find("DATA_TYPE` = 'bigint'") != std::string::npos);
+		TEST_ASSERT(entry->check.find("COLUMN_TYPE` LIKE '%unsigned%'") != std::string::npos);
+		TEST_ASSERT(entry->sql.find("MODIFY COLUMN `totalcost` BIGINT UNSIGNED") != std::string::npos);
+		TEST_ASSERT(DatabaseUpdate::ShouldRunMigration(*entry, ""));
+		TEST_ASSERT(!DatabaseUpdate::ShouldRunMigration(*entry, "totalcost"));
+	}
+
+	void BinaryDatabaseVersionIncludesAuditMigration()
+	{
+		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9352);
 	}
 };

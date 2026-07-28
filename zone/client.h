@@ -471,6 +471,7 @@ public:
 	void CreateStartingBuyLines(const EQApplicationPacket *app);
 	void BuyerItemSearch(const EQApplicationPacket *app);
 	void SendWindowUpdatesToSellerAndBuyer(BuyerLineSellItem_Struct& blsi);
+	bool PutBarterPurchaseItems(uint32 item_id, uint32 quantity);
 	void SendBarterBuyerClientMessage(BuyerLineSellItem_Struct& blsi, BarterBuyerActions action, BarterBuyerSubActions sub_action, BarterBuyerSubActions error_code);
 	bool BuildBuyLineMap(std::map<uint32, BuylineItemDetails_Struct>& item_map, BuyerBuyLines_Struct& bl);
 	bool BuildBuyLineMapFromVector(std::map<uint32, BuylineItemDetails_Struct>& item_map, std::vector<BuyerLineItems_Struct>& bl);

@@ -4316,30 +4316,12 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					strn0cpy(blis.item_name, in->item_name, sizeof(blis.item_name));
 
 					uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
-					std::unique_ptr<EQ::ItemInstance> inst(database.CreateItem(in->buy_item_id, in->seller_quantity));
-
-					if (inst->IsStackable()) {
-						if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
-							buyer->Message(Chat::Red, "Error putting item in your inventory.");
-							buyer->AddMoneyToPP(total_cost, true);
-							in->action     = Barter_FailedTransaction;
-							in->sub_action = Barter_FailedBuyerChecks;
-							worldserver.SendPacket(pack);
-							break;
-						}
-					}
-					else {
-						for (int i = 1; i <= sell_line.seller_quantity; i++) {
-							inst->SetCharges(1);
-							if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
-								buyer->Message(Chat::Red, "Error putting item in your inventory.");
-								buyer->AddMoneyToPP(total_cost, true);
-								in->action     = Barter_FailedTransaction;
-								in->sub_action = Barter_FailedBuyerChecks;
-								worldserver.SendPacket(pack);
-								goto exit_loop;
-							}
-						}
+					if (!buyer->PutBarterPurchaseItems(in->buy_item_id, in->seller_quantity)) {
+						buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
+						in->action     = Barter_FailedTransaction;
+						in->sub_action = Barter_FailedBuyerChecks;
+						worldserver.SendPacket(pack);
+						break;
 					}
 
 					if (!buyer->TakeMoneyFromPP(total_cost, false)) {
@@ -4389,7 +4371,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					in->action = Barter_BuyerTransactionComplete;
 					worldserver.SendPacket(pack);
 
-					exit_loop:
 					break;
 				}
 				case Barter_BuyerTransactionComplete: {

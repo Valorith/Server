@@ -3,6 +3,7 @@
 #include "common/item_instance.h"
 #include "common/shareddb.h"
 
+#include <memory>
 #include <vector>
 
 class Bazaar {
@@ -23,6 +24,12 @@ public:
 		bool is_stackable,
 		int16 max_charges,
 		int16 listed_charges
+	);
+
+	static std::vector<std::unique_ptr<EQ::ItemInstance>> CreateBarterPurchaseItems(
+		SharedDatabase &db,
+		const EQ::ItemData *item,
+		uint32 quantity
 	);
 
 	static bool ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity);

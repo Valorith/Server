@@ -12,7 +12,7 @@ public:
 		uint32_t    item_id;
 		std::string itemname;
 		int         quantity;
-		int         totalcost;
+		uint64_t    totalcost;
 		int8        trantype;
 	};
 
@@ -130,7 +130,7 @@ public:
 			entry.item_id   = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
 			entry.itemname  = row[4];
 			entry.quantity  = atoi(row[5]);
-			entry.totalcost = atoi(row[6]);
+			entry.totalcost = row[6] ? strtoull(row[6], nullptr, 10) : 0;
 			entry.trantype  = atoi(row[7]);
 
 			return entry;
@@ -274,7 +274,7 @@ public:
 			entry.item_id   = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
 			entry.itemname  = row[4];
 			entry.quantity  = atoi(row[5]);
-			entry.totalcost = atoi(row[6]);
+			entry.totalcost = row[6] ? strtoull(row[6], nullptr, 10) : 0;
 			entry.trantype  = atoi(row[7]);
 
 			all_entries.push_back(entry);

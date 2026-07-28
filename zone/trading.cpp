@@ -35,6 +35,7 @@
 #include "zone/quest_parser_collection.h"
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <unordered_set>
@@ -2271,42 +2272,18 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 					}
 				}
 
-				std::unique_ptr<EQ::ItemInstance> buy_inst(
-					database.CreateItem(
-						sell_line.item_id,
-						sell_line.seller_quantity
-					)
-				);
+				if (!buyer->PutBarterPurchaseItems(sell_line.item_id, sell_line.seller_quantity)) {
+					buyer->Message(Chat::Red, "Unable to place the purchased item in your inventory.");
+					SendBarterBuyerClientMessage(
+						sell_line,
+						Barter_SellerTransactionComplete,
+						Barter_Failure,
+						Barter_Failure
+					);
+					return;
+				}
+
 				RemoveItem(sell_line.item_id, sell_line.seller_quantity);
-				if (buy_inst->IsStackable()) {
-					if (!buyer->PutItemInInventoryWithStacking(buy_inst.get())) {
-						buyer->Message(Chat::Red, "Error putting item in your inventory.");
-						PutItemInInventoryWithStacking(buy_inst.get());
-						SendBarterBuyerClientMessage(
-							sell_line,
-							Barter_SellerTransactionComplete,
-							Barter_Failure,
-							Barter_Failure
-						);
-						return;
-					}
-				}
-				else {
-					for (int i = 1; i <= sell_line.seller_quantity; i++) {
-						buy_inst->SetCharges(1);
-						if (!buyer->PutItemInInventoryWithStacking(buy_inst.get())) {
-							buyer->Message(Chat::Red, "Error putting item in your inventory.");
-							PutItemInInventoryWithStacking(buy_inst.get());
-							SendBarterBuyerClientMessage(
-							sell_line,
-								Barter_SellerTransactionComplete,
-								Barter_Failure,
-								Barter_Failure
-							);
-							return;
-						}
-					}
-				}
 
 				uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
 				AddMoneyToPP(total_cost, false);
@@ -2448,6 +2425,61 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 			}
 		}
 	}
+}
+
+bool Client::PutBarterPurchaseItems(uint32 item_id, uint32 quantity)
+{
+	const auto *item = database.GetItem(item_id);
+	if (!item || quantity == 0 || quantity > static_cast<uint32>(std::numeric_limits<int16>::max())) {
+		LogTrading(
+			"Unable to create barter purchase item [{}] quantity [{}] for buyer [{}]",
+			item_id,
+			quantity,
+			GetCleanName()
+		);
+		return false;
+	}
+
+	if (!GetInv().HasSpaceForItem(item, static_cast<int16>(quantity))) {
+		LogTrading(
+			"Buyer [{}] has insufficient inventory space for item [{}] quantity [{}]",
+			GetCleanName(),
+			item_id,
+			quantity
+		);
+		return false;
+	}
+
+	if (item->Stackable) {
+		auto inst = std::unique_ptr<EQ::ItemInstance>(
+			database.CreateItem(item, static_cast<int16>(quantity))
+		);
+		return inst && PutItemInInventoryWithStacking(inst.get());
+	}
+
+	auto items = Bazaar::CreateBarterPurchaseItems(database, item, quantity);
+	if (items.size() != quantity) {
+		LogTrading(
+			"Failed to create distinct barter purchase items [{}] quantity [{}] for buyer [{}]",
+			item_id,
+			quantity,
+			GetCleanName()
+		);
+		return false;
+	}
+
+	for (auto &inst : items) {
+		if (!PutItemInInventoryWithStacking(inst.get())) {
+			LogTrading(
+				"Failed to place barter purchase item [{}] for buyer [{}]",
+				item_id,
+				GetCleanName()
+			);
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void Client::SendBuyerPacket(Client* Buyer) {
