@@ -86,6 +86,28 @@ bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed
 	return requested_quantity > 0 && requested_quantity <= listed_quantity;
 }
 
+Bazaar::TransactionValueValidation Bazaar::ValidateBuyLinePrice(
+	uint32 unit_price,
+	uint64 max_transaction_value
+)
+{
+	return ValidateTransactionValue(unit_price, 1, max_transaction_value);
+}
+
+Bazaar::TransactionValueValidation Bazaar::ValidateTransactionValue(
+	uint32 unit_price,
+	uint32 quantity,
+	uint64 max_transaction_value
+)
+{
+	const uint64 total_cost = static_cast<uint64>(unit_price) * static_cast<uint64>(quantity);
+	if (quantity == 0 || total_cost > max_transaction_value) {
+		return {false, 0};
+	}
+
+	return {true, total_cost};
+}
+
 bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 {
 	return listed_price > 0 && requested_price == listed_price;

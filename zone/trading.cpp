@@ -2195,6 +2195,37 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 			return;
 		}
 
+		const uint64 max_transaction_value =
+			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+		const auto transaction_value = Bazaar::ValidateTransactionValue(
+			sell_line.item_cost,
+			sell_line.seller_quantity,
+			max_transaction_value
+		);
+		if (!transaction_value.is_valid) {
+			LogTrading(
+				"Rejecting buyer sale over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] seller [{}] buyer [{}]",
+				max_transaction_value,
+				sell_line.item_cost,
+				sell_line.seller_quantity,
+				sell_line.item_name,
+				GetCleanName(),
+				sell_line.buyer_name
+			);
+			Message(
+				Chat::Red,
+				"That would exceed the single transaction limit of %u platinum.",
+				static_cast<uint32>(max_transaction_value / 1000)
+			);
+			SendBarterBuyerClientMessage(
+				sell_line,
+				Barter_SellerTransactionComplete,
+				Barter_Failure,
+				Barter_Failure
+			);
+			return;
+		}
+
 		switch (sell_line.purchase_method) {
 			case BarterInBazaar:
 			case BarterByVendor: {
@@ -2285,7 +2316,7 @@ void Client::SellToBuyer(const EQApplicationPacket *app)
 
 				RemoveItem(sell_line.item_id, sell_line.seller_quantity);
 
-				uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
+				const uint64 total_cost = transaction_value.total_cost;
 				AddMoneyToPP(total_cost, false);
 				buyer->TakeMoneyFromPP(total_cost, false);
 
@@ -2585,7 +2616,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			return;
 		}
 
-		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
 		int64 current_total_cost = 0;
 		bool  pass               = false;
 
@@ -2593,8 +2623,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 
 		std::map<uint32, BuylineItemDetails_Struct> item_map;
 		BuildBuyLineMapFromVector(item_map, current_buy_lines);
-
-		current_total_cost = ValidateBuyLineCost(item_map);
 
 		auto buy_line = bl.buy_lines.front();
 		auto it       = std::find_if(
@@ -2606,9 +2634,48 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		);
 
 		if (buy_line.item_toggle) {
-			current_total_cost += buy_line.item_cost * buy_line.item_quantity;
+			const uint64 max_transaction_value =
+				EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+			const auto transaction_value = Bazaar::ValidateBuyLinePrice(
+				buy_line.item_cost,
+				max_transaction_value
+			);
+			if (!transaction_value.is_valid) {
+				LogTrading(
+					"Rejecting buy line modification over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] buyer [{}]",
+					max_transaction_value,
+					buy_line.item_cost,
+					buy_line.item_quantity,
+					buy_line.item_name,
+					GetCleanName()
+				);
+				Message(
+					Chat::Red,
+					"That would exceed the single transaction limit of %u platinum.",
+					static_cast<uint32>(max_transaction_value / 1000)
+				);
+
+				if (it != std::end(current_buy_lines)) {
+					buy_line = *it;
+				}
+				else {
+					buy_line.item_toggle = 0;
+				}
+
+				SendBuyLineUpdate(buy_line);
+				return;
+			}
+		}
+
+		current_total_cost = ValidateBuyLineCost(item_map);
+		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
+
+		if (buy_line.item_toggle) {
+			current_total_cost +=
+				static_cast<int64>(buy_line.item_cost) * static_cast<int64>(buy_line.item_quantity);
 			if (it != std::end(current_buy_lines)) {
-				current_total_cost -= it->item_cost * it->item_quantity;
+				current_total_cost -=
+					static_cast<int64>(it->item_cost) * static_cast<int64>(it->item_quantity);
 				if (current_total_cost > GetCarriedMoney()) {
 					buy_line.item_cost     = it->item_cost;
 					buy_line.item_quantity = it->item_quantity;
@@ -4031,6 +4098,31 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 			return;
 		}
 
+		const uint64 max_transaction_value =
+			EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
+		for (const auto &buy_line : bl.buy_lines) {
+			const auto transaction_value = Bazaar::ValidateBuyLinePrice(
+				buy_line.item_cost,
+				max_transaction_value
+			);
+			if (!transaction_value.is_valid) {
+				LogTrading(
+					"Rejecting initial buy lines over transaction limit [{}] item_cost [{}] quantity [{}] item [{}] buyer [{}]",
+					max_transaction_value,
+					buy_line.item_cost,
+					buy_line.item_quantity,
+					buy_line.item_name,
+					GetCleanName()
+				);
+				Message(
+					Chat::Red,
+					"That would exceed the single transaction limit of %u platinum.",
+					static_cast<uint32>(max_transaction_value / 1000)
+				);
+				return;
+			}
+		}
+
 		std::map<uint32, BuylineItemDetails_Struct> item_map{};
 
 		if (!BuildBuyLineMap(item_map, bl)) {
@@ -4304,7 +4396,10 @@ bool Client::BuildBuyLineMap(std::map<uint32, BuylineItemDetails_Struct> &item_m
 			buyer_error = true;
 			break;
 		}
-		BuylineItemDetails_Struct t = {b.item_quantity * b.item_cost, b.item_quantity};
+		BuylineItemDetails_Struct t = {
+			static_cast<uint64>(b.item_quantity) * static_cast<uint64>(b.item_cost),
+			b.item_quantity
+		};
 		item_map.emplace(b.item_id, t);
 		for (auto const &i: b.trade_items) {
 			if (item_map.contains(i.item_id) && item_map[i.item_id].item_cost > 0) {
@@ -4354,7 +4449,10 @@ bool Client::BuildBuyLineMapFromVector(
 			buyer_error = true;
 			break;
 		}
-		BuylineItemDetails_Struct t = {b.item_quantity * b.item_cost, b.item_quantity};
+		BuylineItemDetails_Struct t = {
+			static_cast<uint64>(b.item_quantity) * static_cast<uint64>(b.item_cost),
+			b.item_quantity
+		};
 		item_map.emplace(b.item_id, t);
 		for (auto const &i: b.trade_items) {
 			if (item_map.contains(i.item_id) && item_map[i.item_id].item_cost > 0) {
@@ -4523,6 +4621,31 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		return false;
 	}
 
+	const uint64 max_transaction_value =
+		EQ::constants::StaticLookup(buyer->ClientVersion())->BazaarMaxTransaction;
+	const auto transaction_value = Bazaar::ValidateTransactionValue(
+		sell_line.item_cost,
+		sell_line.seller_quantity,
+		max_transaction_value
+	);
+	if (!transaction_value.is_valid) {
+		LogTrading(
+			"Rejecting buyer sale over buyer transaction limit [{}] item_cost [{}] quantity [{}] item [{}] seller [{}] buyer [{}]",
+			max_transaction_value,
+			sell_line.item_cost,
+			sell_line.seller_quantity,
+			sell_line.item_name,
+			sell_line.seller_name,
+			buyer->GetCleanName()
+		);
+		buyer->Message(
+			Chat::Red,
+			"That transaction would exceed the single transaction limit of %u platinum.",
+			static_cast<uint32>(max_transaction_value / 1000)
+		);
+		return false;
+	}
+
 	auto buyer_time = BuyerRepository::GetTransactionDate(database, buyer->CharacterID());
 	if (buyer_time > GetBarterTime()) {
 		if (sell_line.purchase_method == BarterByVendor) {
@@ -4564,7 +4687,7 @@ bool Client::DoBarterBuyerChecks(BuyerLineSellItem_Struct &sell_line)
 		}
 	}
 
-	uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
+	const uint64 total_cost = transaction_value.total_cost;
 	if (!buyer->HasMoney(total_cost)) {
 		LogTradingDetail(
 			"Seller attempting to sell item <green>[{}] to buyer <green>[{}] though buyer does not have enough money <red>[{}]",

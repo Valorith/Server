@@ -7586,27 +7586,6 @@ ALTER TABLE `trader_audit`
 	ADD INDEX `idx_trader_audit_item_id` (`item_id`);
 )"
 	},
-	ManifestEntry{
-		.version = 9352,
-		.description = "2026_07_28_trader_audit_totalcost_bigint.sql",
-		.check = R"(
-SELECT `COLUMN_NAME`
-FROM `information_schema`.`COLUMNS`
-WHERE `TABLE_SCHEMA` = DATABASE()
-	AND `TABLE_NAME` = 'trader_audit'
-	AND `COLUMN_NAME` = 'totalcost'
-	AND `DATA_TYPE` = 'bigint'
-	AND `COLUMN_TYPE` LIKE '%unsigned%'
-	AND `IS_NULLABLE` = 'NO'
-	AND `COLUMN_DEFAULT` = '0'
-)",
-		.condition = "empty",
-		.match = "",
-		.sql = R"(
-ALTER TABLE `trader_audit`
-	MODIFY COLUMN `totalcost` BIGINT UNSIGNED NOT NULL DEFAULT '0';
-)"
-	},
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,

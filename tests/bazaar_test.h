@@ -19,13 +19,10 @@
 #pragma once
 
 #include "common/bazaar.h"
-#include "common/database/database_update.h"
-#include "common/version.h"
+#include "common/eq_limits.h"
 #include "cppunit/cpptest.h"
 
-#include <algorithm>
-
-extern std::vector<ManifestEntry> manifest_entries;
+#include <limits>
 
 class BazaarTest : public Test::Suite {
 public:
@@ -48,13 +45,19 @@ public:
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
+		TEST_ADD(BazaarTest::AcceptsBuyLinePriceAtLimit);
+		TEST_ADD(BazaarTest::RejectsBuyLinePriceOneCopperOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::AcceptsBuyerTransactionAtLimit);
+		TEST_ADD(BazaarTest::AcceptsMultiItemBuyerTransactionAtLimit);
+		TEST_ADD(BazaarTest::AllowsBuyLineWhoseFullQuantityExceedsTransactionLimit);
+		TEST_ADD(BazaarTest::RejectsBuyerTransactionOneCopperOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::RejectsBuyerTransactionOverLimitWithoutCommitValue);
+		TEST_ADD(BazaarTest::RejectsOverflowSizedBuyerTransactionWithoutCommitValue);
 		TEST_ADD(BazaarTest::RejectsZeroListedPrice);
 		TEST_ADD(BazaarTest::RejectsMismatchedPrice);
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
 		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
-		TEST_ADD(BazaarTest::AuditTotalCostMigrationUsesUnsignedBigint);
-		TEST_ADD(BazaarTest::BinaryDatabaseVersionIncludesAuditMigration);
 	}
 
 	~BazaarTest()
@@ -210,6 +213,111 @@ private:
 		TEST_ASSERT(Bazaar::ValidateBarterSellQuantity(20, 20));
 	}
 
+	void AcceptsBuyLinePriceAtLimit()
+	{
+		const auto result = Bazaar::ValidateBuyLinePrice(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void RejectsBuyLinePriceOneCopperOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateBuyLinePrice(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT + 1),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void AcceptsBuyerTransactionAtLimit()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT),
+			1,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void AcceptsMultiItemBuyerTransactionAtLimit()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			1000000000,
+			2,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(result.is_valid);
+		TEST_ASSERT(result.total_cost == EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT);
+	}
+
+	void AllowsBuyLineWhoseFullQuantityExceedsTransactionLimit()
+	{
+		const auto buy_line = Bazaar::ValidateBuyLinePrice(
+			1000000000,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+		const auto two_item_sale = Bazaar::ValidateTransactionValue(
+			1000000000,
+			2,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+		const auto three_item_sale = Bazaar::ValidateTransactionValue(
+			1000000000,
+			3,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(buy_line.is_valid);
+		TEST_ASSERT(two_item_sale.is_valid);
+		TEST_ASSERT(!three_item_sale.is_valid);
+		TEST_ASSERT(three_item_sale.total_cost == 0);
+	}
+
+	void RejectsBuyerTransactionOneCopperOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			static_cast<uint32>(EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT + 1),
+			1,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void RejectsBuyerTransactionOverLimitWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			1000000000,
+			3,
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
+	void RejectsOverflowSizedBuyerTransactionWithoutCommitValue()
+	{
+		const auto result = Bazaar::ValidateTransactionValue(
+			std::numeric_limits<uint32>::max(),
+			std::numeric_limits<uint32>::max(),
+			EQ::constants::BAZAAR_MAX_TRANSACTION_DEFAULT
+		);
+
+		TEST_ASSERT(!result.is_valid);
+		TEST_ASSERT(result.total_cost == 0);
+	}
+
 	void RejectsZeroListedPrice()
 	{
 		TEST_ASSERT(!Bazaar::ValidatePurchasePrice(0, 0));
@@ -233,28 +341,5 @@ private:
 	void FailureSubActionPreservesSpecificFailure()
 	{
 		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
-	}
-
-	void AuditTotalCostMigrationUsesUnsignedBigint()
-	{
-		auto entry = std::find_if(manifest_entries.begin(), manifest_entries.end(), [](const ManifestEntry &e) {
-			return e.version == 9352 && e.description == "2026_07_28_trader_audit_totalcost_bigint.sql";
-		});
-
-		TEST_ASSERT(entry != manifest_entries.end());
-		TEST_ASSERT(entry->condition == "empty");
-		TEST_ASSERT(entry->check.find("information_schema") != std::string::npos);
-		TEST_ASSERT(entry->check.find("DATA_TYPE` = 'bigint'") != std::string::npos);
-		TEST_ASSERT(entry->check.find("COLUMN_TYPE` LIKE '%unsigned%'") != std::string::npos);
-		TEST_ASSERT(entry->check.find("IS_NULLABLE` = 'NO'") != std::string::npos);
-		TEST_ASSERT(entry->check.find("COLUMN_DEFAULT` = '0'") != std::string::npos);
-		TEST_ASSERT(entry->sql.find("MODIFY COLUMN `totalcost` BIGINT UNSIGNED") != std::string::npos);
-		TEST_ASSERT(DatabaseUpdate::ShouldRunMigration(*entry, ""));
-		TEST_ASSERT(!DatabaseUpdate::ShouldRunMigration(*entry, "totalcost"));
-	}
-
-	void BinaryDatabaseVersionIncludesAuditMigration()
-	{
-		TEST_ASSERT(CURRENT_BINARY_DATABASE_VERSION >= 9352);
 	}
 };
