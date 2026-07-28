@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 
 class AutoSkillUtilTest : public Test::Suite {
 	typedef void(AutoSkillUtilTest::*TestFunction)(void);
@@ -91,6 +92,20 @@ private:
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, -2, 100) == 10000);
 
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 0) == 8000);
+		TEST_ASSERT(
+			EQ::skills::autoskill::GetReuseTimeMilliseconds(
+				EQ::skills::SkillBash,
+				std::numeric_limits<int>::max(),
+				100
+			) == 1000
+		);
+		TEST_ASSERT(
+			EQ::skills::autoskill::GetReuseTimeMilliseconds(
+				EQ::skills::SkillBash,
+				std::numeric_limits<int>::min(),
+				1
+			) == std::numeric_limits<uint32>::max()
+		);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillTaunt, 0, 100) == 0);
 	}
 

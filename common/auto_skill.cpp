@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 
 namespace {
 
@@ -123,16 +124,19 @@ uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
 	}
 
 	// The one-second allowance used by the client packet pTimer is not part of the automated scheduler deadline.
-	const auto adjusted_reuse_time = std::max(
-		static_cast<int>(definition->base_reuse_time) - skill_reuse_reduction,
-		1
+	const auto adjusted_reuse_time = std::max<int64>(
+		static_cast<int64>(definition->base_reuse_time) - static_cast<int64>(skill_reuse_reduction),
+		1LL
 	);
 	// GetHaste() is 100-based after all client haste caps: 100 is unmodified speed.
 	const auto effective_haste = total_haste > 0 ? total_haste : 100;
 	const auto unscaled_reuse_time = static_cast<uint64>(adjusted_reuse_time) * 1000 * 100;
+	const auto reuse_time = (unscaled_reuse_time + effective_haste - 1) / effective_haste;
 
 	// Keep the calculation in milliseconds and round up so automated use never fires before the intended deadline.
-	return static_cast<uint32>((unscaled_reuse_time + effective_haste - 1) / effective_haste);
+	return static_cast<uint32>(
+		std::min(reuse_time, static_cast<uint64>(std::numeric_limits<uint32>::max()))
+	);
 }
 
 std::string EQ::skills::autoskill::NormalizeSkillName(const std::string &skill_name)
