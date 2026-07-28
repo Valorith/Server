@@ -119,7 +119,12 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 	return !reuse_timer.Enabled() || reuse_timer.Check(false);
 }
 
-void Client::StartAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType skill)
+void Client::StartAutoSkillReuseTimer(
+	pTimerType timer,
+	EQ::skills::SkillType skill,
+	int skill_reuse_reduction,
+	int total_haste
+)
 {
 	if (!RuleB(Combat, EnableAutoSkill)) {
 		return;
@@ -127,8 +132,8 @@ void Client::StartAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType sk
 
 	const auto reuse_time = EQ::skills::autoskill::GetReuseTimeMilliseconds(
 		skill,
-		GetSkillReuseTime(skill),
-		GetHaste()
+		skill_reuse_reduction,
+		total_haste
 	);
 	if (reuse_time == 0) {
 		return;

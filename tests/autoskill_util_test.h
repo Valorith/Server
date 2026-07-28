@@ -3,6 +3,9 @@
 #include "common/auto_skill.h"
 #include "cppunit/cpptest.h"
 
+#include <algorithm>
+#include <array>
+
 class AutoSkillUtilTest : public Test::Suite {
 	typedef void(AutoSkillUtilTest::*TestFunction)(void);
 
@@ -12,6 +15,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
 		TEST_ADD(AutoSkillUtilTest::CalculatesReuseTimes);
+		TEST_ADD(AutoSkillUtilTest::RoundsReuseTimesUpAcrossRange);
 	}
 
 	~AutoSkillUtilTest() {
@@ -82,5 +86,55 @@ private:
 
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillBash, 0, 0) == 5000);
 		TEST_ASSERT(EQ::skills::autoskill::GetReuseTimeMilliseconds(EQ::skills::SkillTaunt, 0, 100) == 0);
+	}
+
+	void RoundsReuseTimesUpAcrossRange() {
+		struct ReuseTestCase {
+			EQ::skills::SkillType skill;
+			int base_reuse_time;
+		};
+
+		const std::array<ReuseTestCase, 9> reuse_test_cases = {{
+			{ EQ::skills::SkillBackstab,    9 },
+			{ EQ::skills::SkillFrenzy,     10 },
+			{ EQ::skills::SkillFlyingKick,  7 },
+			{ EQ::skills::SkillDragonPunch, 6 },
+			{ EQ::skills::SkillEagleStrike, 5 },
+			{ EQ::skills::SkillTigerClaw,   6 },
+			{ EQ::skills::SkillRoundKick,   9 },
+			{ EQ::skills::SkillKick,        5 },
+			{ EQ::skills::SkillBash,        5 }
+		}};
+
+		for (const auto &test_case : reuse_test_cases) {
+			for (int reduction = -2; reduction <= test_case.base_reuse_time + 2; ++reduction) {
+				const auto adjusted_reuse_time = std::max(test_case.base_reuse_time - reduction, 1);
+				const auto unscaled_reuse_time = static_cast<uint64>(adjusted_reuse_time) * 1000 * 100;
+				const auto unmodified_reuse_time = static_cast<uint32>(adjusted_reuse_time * 1000);
+
+				TEST_ASSERT(
+					EQ::skills::autoskill::GetReuseTimeMilliseconds(test_case.skill, reduction, 0) ==
+					unmodified_reuse_time
+				);
+				TEST_ASSERT(
+					EQ::skills::autoskill::GetReuseTimeMilliseconds(test_case.skill, reduction, -100) ==
+					unmodified_reuse_time
+				);
+
+				for (int total_haste = 1; total_haste <= 400; ++total_haste) {
+					const auto reuse_time = EQ::skills::autoskill::GetReuseTimeMilliseconds(
+						test_case.skill,
+						reduction,
+						total_haste
+					);
+
+					TEST_ASSERT(static_cast<uint64>(reuse_time) * total_haste >= unscaled_reuse_time);
+					TEST_ASSERT(
+						reuse_time == 1 ||
+						static_cast<uint64>(reuse_time - 1) * total_haste < unscaled_reuse_time
+					);
+				}
+			}
+		}
 	}
 };

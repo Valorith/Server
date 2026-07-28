@@ -470,7 +470,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 				p_timers.Start(timer, reuse_time);
 			}
 
-			StartAutoSkillReuseTimer(timer, EQ::skills::SkillBash);
+			StartAutoSkillReuseTimer(timer, EQ::skills::SkillBash, skill_reduction, haste);
 		}
 
 		return;
@@ -515,7 +515,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 			p_timers.Start(timer, reuse_time);
 		}
 
-		StartAutoSkillReuseTimer(timer, EQ::skills::SkillFrenzy);
+		StartAutoSkillReuseTimer(timer, EQ::skills::SkillFrenzy, skill_reduction, haste);
 		return;
 	}
 
@@ -646,7 +646,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	}
 
 	if (found_skill) {
-		StartAutoSkillReuseTimer(timer, skill);
+		StartAutoSkillReuseTimer(timer, skill, skill_reduction, haste);
 	}
 }
 

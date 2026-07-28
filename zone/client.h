@@ -2069,7 +2069,12 @@ private:
 	void OPGMSummon(const EQApplicationPacket *app);
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
 	bool IsAutoSkillReuseTimerReady(pTimerType timer);
-	void StartAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType skill);
+	void StartAutoSkillReuseTimer(
+		pTimerType timer,
+		EQ::skills::SkillType skill,
+		int skill_reuse_reduction,
+		int total_haste
+	);
 
 	// Bandolier Methods
 	void CreateBandolier(const EQApplicationPacket *app);

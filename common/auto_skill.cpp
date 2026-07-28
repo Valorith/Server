@@ -151,8 +151,7 @@ uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
 			return 0;
 	}
 
-	// Automated cadence uses the configured full reuse time, matching bot and merc ability timers.
-	// The one-second allowance used by the client packet pTimer is not part of this scheduler deadline.
+	// The one-second allowance used by the client packet pTimer is not part of the automated scheduler deadline.
 	const auto adjusted_reuse_time = std::max(base_reuse_time - skill_reuse_reduction, 1);
 	// GetHaste() is 100-based after all client haste caps: 100 is unmodified speed.
 	const auto effective_haste = total_haste > 0 ? total_haste : 100;
