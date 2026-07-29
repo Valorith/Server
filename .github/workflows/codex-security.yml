@@ -29,11 +29,7 @@ jobs:
           should_scan=false
           while IFS= read -r path; do
             case "$path" in
-              AGENTS.md|*/AGENTS.md|SECURITY.md|*/SECURITY.md)
-                should_scan=true
-                break
-                ;;
-              docs/*|*.md|*.markdown)
+              .github/*|docs/*|*.md|*.markdown)
                 ;;
               *)
                 should_scan=true
@@ -52,7 +48,7 @@ jobs:
         if: steps.scope.outputs.should_scan != 'true'
         run: |
           echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
-          echo "Skipped: this pull request only changes documentation." >> "$GITHUB_STEP_SUMMARY"
+          echo "Skipped: this pull request only changes documentation or GitHub metadata excluded from the scanner's diff inventory." >> "$GITHUB_STEP_SUMMARY"
 
       # Install the trusted scanner before checking out pull-request-controlled files.
       - name: Set up Node.js
@@ -95,8 +91,40 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Scan the pull request
+      - name: Determine supported scan inventory
+        id: inventory
         if: steps.scope.outputs.should_scan == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INVENTORY_FILE: ${{ runner.temp }}/codex-security-rank-input.jsonl
+          INVENTORY_HELPER: ${{ runner.temp }}/codex-security/node_modules/@openai/codex-security/_bundled_plugin/scripts/generate_rank_input.py
+        run: |
+          set -euo pipefail
+          BASE_REVISION="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          python "$INVENTORY_HELPER" make-diff-rank-input \
+            --repo "$GITHUB_WORKSPACE" \
+            --base "$BASE_REVISION" \
+            --mode revisions \
+            --head "$HEAD_SHA" \
+            --out "$INVENTORY_FILE"
+
+          if test -s "$INVENTORY_FILE"; then
+            count="$(wc -l < "$INVENTORY_FILE")"
+            echo "should_scan=true" >> "$GITHUB_OUTPUT"
+            echo "Codex Security review inventory: $count source-like file(s)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "should_scan=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record unsupported-only skip
+        if: steps.scope.outputs.should_scan == 'true' && steps.inventory.outputs.should_scan != 'true'
+        run: |
+          echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "Skipped: the pull request has no source-like files in Codex Security's deterministic diff inventory." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan the pull request
+        if: steps.inventory.outputs.should_scan == 'true'
         env:
           CODEX_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}
           CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
@@ -122,7 +150,7 @@ jobs:
 
       - name: Export SARIF
         id: export-sarif
-        if: always() && steps.scope.outputs.should_scan == 'true'
+        if: always() && steps.inventory.outputs.should_scan == 'true'
         env:
           CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
           SCAN_DIR: ${{ runner.temp }}/codex-security-results
@@ -147,7 +175,7 @@ jobs:
           category: codex-security
 
       - name: Preserve scan results
-        if: always() && steps.scope.outputs.should_scan == 'true'
+        if: always() && steps.inventory.outputs.should_scan == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codex-security-results
