@@ -1,0 +1,210 @@
+name: Codex Security
+
+on:
+  pull_request:
+
+concurrency:
+  group: codex-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan pull request
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      security-events: write
+
+    steps:
+      - name: Determine scan scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          should_scan=false
+          changed_files="$RUNNER_TEMP/codex-security-pr-files.txt"
+          gh api \
+            --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[].filename' > "$changed_files"
+
+          while IFS= read -r path; do
+            case "$path" in
+              .github/*|docs/*|*.md|*.markdown)
+                ;;
+              *)
+                should_scan=true
+                break
+                ;;
+            esac
+          done < "$changed_files"
+          echo "should_scan=$should_scan" >> "$GITHUB_OUTPUT"
+
+      - name: Record documentation-only skip
+        if: steps.scope.outputs.should_scan != 'true'
+        run: |
+          echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "Skipped: this pull request only changes documentation or GitHub metadata excluded from the scanner's diff inventory." >> "$GITHUB_STEP_SUMMARY"
+
+      # Install the trusted scanner before checking out pull-request-controlled files.
+      - name: Set up Node.js
+        if: steps.scope.outputs.should_scan == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "26"
+
+      - name: Set up Python
+        if: steps.scope.outputs.should_scan == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Read trusted Codex Security pin
+        if: steps.scope.outputs.should_scan == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PIN_FILE: .github/codex-security-version
+        run: |
+          set -euo pipefail
+          pinned="$(
+            gh api \
+              -H "Accept: application/vnd.github.raw+json" \
+              "repos/$GITHUB_REPOSITORY/contents/$PIN_FILE?ref=$BASE_SHA"
+          )"
+          if ! [[ "$pinned" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The trusted Codex Security pin is invalid: $pinned" >&2
+            exit 1
+          fi
+          echo "CODEX_SECURITY_VERSION=$pinned" >> "$GITHUB_ENV"
+
+      - name: Install Codex Security
+        if: steps.scope.outputs.should_scan == 'true'
+        run: |
+          set -euo pipefail
+          npm install \
+            --prefix "$RUNNER_TEMP/codex-security" \
+            --ignore-scripts \
+            --no-audit \
+            --no-fund \
+            "@openai/codex-security@$CODEX_SECURITY_VERSION"
+
+      - name: Verify Codex Security
+        if: steps.scope.outputs.should_scan == 'true'
+        env:
+          CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
+        run: |
+          set -euo pipefail
+          test -x "$CODEX_SECURITY_BIN"
+          actual="$("$CODEX_SECURITY_BIN" --version)"
+          if test "$actual" != "$CODEX_SECURITY_VERSION"; then
+            echo "Expected Codex Security $CODEX_SECURITY_VERSION, received $actual." >&2
+            exit 1
+          fi
+
+      - name: Check out the pull request
+        if: steps.scope.outputs.should_scan == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine supported scan inventory
+        id: inventory
+        if: steps.scope.outputs.should_scan == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INVENTORY_FILE: ${{ runner.temp }}/codex-security-rank-input.jsonl
+          INVENTORY_HELPER: ${{ runner.temp }}/codex-security/node_modules/@openai/codex-security/_bundled_plugin/scripts/generate_rank_input.py
+        run: |
+          set -euo pipefail
+          BASE_REVISION="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          python "$INVENTORY_HELPER" make-diff-rank-input \
+            --repo "$GITHUB_WORKSPACE" \
+            --base "$BASE_REVISION" \
+            --mode revisions \
+            --head "$HEAD_SHA" \
+            --out "$INVENTORY_FILE"
+
+          if test -s "$INVENTORY_FILE"; then
+            count="$(wc -l < "$INVENTORY_FILE")"
+            echo "should_scan=true" >> "$GITHUB_OUTPUT"
+            echo "Codex Security review inventory: $count source-like file(s)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "should_scan=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record unsupported-only skip
+        if: steps.scope.outputs.should_scan == 'true' && steps.inventory.outputs.should_scan != 'true'
+        run: |
+          echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "Skipped: the pull request has no source-like files in Codex Security's deterministic diff inventory." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan the pull request
+        if: steps.inventory.outputs.should_scan == 'true'
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}
+          CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SCAN_DIR: ${{ runner.temp }}/codex-security-results
+        run: |
+          set -euo pipefail
+          if test -z "${CODEX_API_KEY:-}"; then
+            echo "Set the CODEX_SECURITY_API_KEY repository or organization secret." >&2
+            exit 1
+          fi
+          BASE_REVISION="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          "$CODEX_SECURITY_BIN" scan . \
+            --auth api-key \
+            --mode standard \
+            --model gpt-5.6-terra \
+            --codex 'model_reasoning_effort="high"' \
+            --diff "$BASE_REVISION" \
+            --head "$HEAD_SHA" \
+            --output-dir "$SCAN_DIR" \
+            --json > "$RUNNER_TEMP/codex-security.json"
+
+      - name: Export SARIF
+        id: export-sarif
+        if: always() && steps.inventory.outputs.should_scan == 'true'
+        env:
+          CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
+          SCAN_DIR: ${{ runner.temp }}/codex-security-results
+          SARIF_FILE: ${{ runner.temp }}/codex-security.sarif
+        run: |
+          set -euo pipefail
+          if test -f "$SCAN_DIR/scan-manifest.json"; then
+            "$CODEX_SECURITY_BIN" export "$SCAN_DIR" \
+              --export-format sarif \
+              --source-root "$GITHUB_WORKSPACE" \
+              --output "$SARIF_FILE"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload SARIF
+        if: always() && steps.export-sarif.outputs.available == 'true'
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          sarif_file: ${{ runner.temp }}/codex-security.sarif
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          sha: ${{ github.event.pull_request.head.sha }}
+          category: codex-security
+
+      - name: Preserve scan results
+        if: always() && steps.inventory.outputs.should_scan == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: codex-security-results
+          path: |
+            ${{ runner.temp }}/codex-security-results
+            ${{ runner.temp }}/codex-security.json
+          if-no-files-found: warn
+          retention-days: 7
