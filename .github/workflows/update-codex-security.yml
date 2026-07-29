@@ -36,14 +36,10 @@ jobs:
       - name: Check published version
         id: version
         env:
-          WORKFLOW_FILE: .github/workflows/codex-security.yml
+          PIN_FILE: .github/codex-security-version
         run: |
           set -euo pipefail
-          pinned="$(
-            sed -nE \
-              's/.*@openai\/codex-security@([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
-              "$WORKFLOW_FILE"
-          )"
+          pinned="$(tr -d '\r\n' < "$PIN_FILE")"
           latest="$(npm view @openai/codex-security version)"
 
           if ! [[ "$pinned" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -123,18 +119,16 @@ jobs:
         env:
           LATEST: ${{ needs.validate.outputs.latest }}
           PINNED: ${{ needs.validate.outputs.pinned }}
-          WORKFLOW_FILE: .github/workflows/codex-security.yml
+          PIN_FILE: .github/codex-security-version
         run: |
           set -euo pipefail
-          old="@openai/codex-security@$PINNED"
-          new="@openai/codex-security@$LATEST"
-          count="$(grep -Foc "$old" "$WORKFLOW_FILE")"
-          if test "$count" -ne 1; then
-            echo "Expected exactly one $old pin, found $count." >&2
+          current="$(tr -d '\r\n' < "$PIN_FILE")"
+          if test "$current" != "$PINNED"; then
+            echo "Expected pin $PINNED, found $current." >&2
             exit 1
           fi
-          sed -i "s|$old|$new|" "$WORKFLOW_FILE"
-          grep -Fq "$new" "$WORKFLOW_FILE"
+          printf '%s\n' "$LATEST" > "$PIN_FILE"
+          test "$(tr -d '\r\n' < "$PIN_FILE")" = "$LATEST"
           git diff --check
 
       - name: Create pull request
@@ -165,7 +159,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
-          git add .github/workflows/codex-security.yml
+          git add .github/codex-security-version
           git commit -m "chore(ci): update Codex Security to $LATEST"
           git push --set-upstream origin "$branch"
 

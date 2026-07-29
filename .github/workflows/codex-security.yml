@@ -27,6 +27,12 @@ jobs:
         run: |
           set -euo pipefail
           should_scan=false
+          changed_files="$RUNNER_TEMP/codex-security-pr-files.txt"
+          gh api \
+            --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[].filename' > "$changed_files"
+
           while IFS= read -r path; do
             case "$path" in
               .github/*|docs/*|*.md|*.markdown)
@@ -36,12 +42,7 @@ jobs:
                 break
                 ;;
             esac
-          done < <(
-            gh api \
-              --paginate \
-              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-              --jq '.[].filename'
-          )
+          done < "$changed_files"
           echo "should_scan=$should_scan" >> "$GITHUB_OUTPUT"
 
       - name: Record documentation-only skip
@@ -63,6 +64,25 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Read trusted Codex Security pin
+        if: steps.scope.outputs.should_scan == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PIN_FILE: .github/codex-security-version
+        run: |
+          set -euo pipefail
+          pinned="$(
+            gh api \
+              -H "Accept: application/vnd.github.raw+json" \
+              "repos/$GITHUB_REPOSITORY/contents/$PIN_FILE?ref=$BASE_SHA"
+          )"
+          if ! [[ "$pinned" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The trusted Codex Security pin is invalid: $pinned" >&2
+            exit 1
+          fi
+          echo "CODEX_SECURITY_VERSION=$pinned" >> "$GITHUB_ENV"
+
       - name: Install Codex Security
         if: steps.scope.outputs.should_scan == 'true'
         run: |
@@ -72,7 +92,7 @@ jobs:
             --ignore-scripts \
             --no-audit \
             --no-fund \
-            "@openai/codex-security@0.1.1"
+            "@openai/codex-security@$CODEX_SECURITY_VERSION"
 
       - name: Verify Codex Security
         if: steps.scope.outputs.should_scan == 'true'
@@ -81,7 +101,11 @@ jobs:
         run: |
           set -euo pipefail
           test -x "$CODEX_SECURITY_BIN"
-          "$CODEX_SECURITY_BIN" --version
+          actual="$("$CODEX_SECURITY_BIN" --version)"
+          if test "$actual" != "$CODEX_SECURITY_VERSION"; then
+            echo "Expected Codex Security $CODEX_SECURITY_VERSION, received $actual." >&2
+            exit 1
+          fi
 
       - name: Check out the pull request
         if: steps.scope.outputs.should_scan == 'true'
