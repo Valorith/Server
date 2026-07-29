@@ -97,6 +97,8 @@ jobs:
             --diff HEAD \
             --head HEAD \
             --mode standard \
+            --model gpt-5.6-terra \
+            --codex 'model_reasoning_effort="high"' \
             --output-dir "$scan_root" \
             --dry-run \
             --json
