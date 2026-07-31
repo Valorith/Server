@@ -25,6 +25,12 @@ bool AutoSkillNameMatches(const EQ::skills::autoskill::AutoSkillDefinition &defi
 	return false;
 }
 
+bool UsesSecondaryReuseTimer(EQ::skills::SkillType skill, bool tiger_claw_uses_secondary_timer)
+{
+	// RoF2+ clients place Tiger Claw on the secondary combat-ability lane.
+	return tiger_claw_uses_secondary_timer && skill == EQ::skills::SkillTigerClaw;
+}
+
 } // namespace
 
 const std::vector<EQ::skills::autoskill::AutoSkillDefinition> &EQ::skills::autoskill::GetSkillDefinitions()
@@ -142,6 +148,47 @@ uint32 EQ::skills::autoskill::GetReuseTimeMilliseconds(
 int EQ::skills::autoskill::ClampPersistentReuseTime(int reuse_time)
 {
 	return std::max(reuse_time, 0);
+}
+
+bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
+	uint32 enabled_mask,
+	EQ::skills::SkillType requested_skill,
+	bool tiger_claw_uses_secondary_timer
+)
+{
+	if (!IsSupported(requested_skill)) {
+		return false;
+	}
+
+	const bool requested_skill_uses_secondary_timer = UsesSecondaryReuseTimer(
+		requested_skill,
+		tiger_claw_uses_secondary_timer
+	);
+
+	for (const auto &definition : GetSkillDefinitions()) {
+		if (
+			(enabled_mask & definition.mask) != 0 &&
+			UsesSecondaryReuseTimer(definition.skill, tiger_claw_uses_secondary_timer) ==
+				requested_skill_uses_secondary_timer
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool EQ::skills::autoskill::CanUseReuseTimer(
+	uint32 enabled_mask,
+	EQ::skills::SkillType requested_skill,
+	bool tiger_claw_uses_secondary_timer,
+	bool reuse_timer_ready
+)
+{
+	return (
+		!ShouldEnforceReuseTimer(enabled_mask, requested_skill, tiger_claw_uses_secondary_timer) ||
+		reuse_timer_ready
+	);
 }
 
 bool EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(

@@ -273,7 +273,12 @@ void Client::ProcessAutoSkills()
 
 		const auto timer = GetAutoSkillTimer(this, skill);
 		if (
-			!IsAutoSkillReuseTimerReady(timer) ||
+			!EQ::skills::autoskill::CanUseReuseTimer(
+				auto_skill_enabled_mask,
+				skill,
+				ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+				IsAutoSkillReuseTimerReady(timer)
+			) ||
 			!p_timers.Expired(&database, timer, false)
 		) {
 			continue;

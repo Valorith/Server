@@ -19,6 +19,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::ValidatesObservedHasteMatrix);
 		TEST_ADD(AutoSkillUtilTest::RoundsReuseTimesUpAcrossRange);
 		TEST_ADD(AutoSkillUtilTest::ClampsPersistentReuseTimes);
+		TEST_ADD(AutoSkillUtilTest::ArbitratesReuseTimerReadiness);
 		TEST_ADD(AutoSkillUtilTest::SelectsAutoSkillProcReuseTimes);
 	}
 
@@ -205,6 +206,37 @@ private:
 			EQ::skills::autoskill::ClampPersistentReuseTime(std::numeric_limits<int>::max()) ==
 			std::numeric_limits<int>::max()
 		);
+	}
+
+	void ArbitratesReuseTimerReadiness() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		const auto kick_enabled = SetEnabled(0, SkillKick, true);
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillKick, true));
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillBash, true));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTigerClaw, true));
+		TEST_ASSERT(!CanUseReuseTimer(kick_enabled, SkillKick, true, false));
+		TEST_ASSERT(!CanUseReuseTimer(kick_enabled, SkillBash, true, false));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillKick, true, true));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTigerClaw, true, false));
+
+		const auto tiger_claw_enabled = SetEnabled(0, SkillTigerClaw, true);
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillTigerClaw, true));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(tiger_claw_enabled, SkillKick, true));
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillKick, false));
+		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillTigerClaw, true, false));
+		TEST_ASSERT(CanUseReuseTimer(tiger_claw_enabled, SkillKick, true, false));
+		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillKick, false, false));
+
+		auto both_timers_enabled = SetEnabled(kick_enabled, SkillTigerClaw, true);
+		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillKick, true));
+		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillTigerClaw, true));
+
+		TEST_ASSERT(!ShouldEnforceReuseTimer(0, SkillKick, true));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTaunt, true));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, false));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTaunt, true, false));
 	}
 
 	void SelectsAutoSkillProcReuseTimes() {
