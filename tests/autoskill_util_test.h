@@ -14,6 +14,8 @@ public:
 	AutoSkillUtilTest() {
 		TEST_ADD(AutoSkillUtilTest::FindsSkillsAndAliases);
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
+		TEST_ADD(AutoSkillUtilTest::FiltersUnavailableEnabledSkills);
+		TEST_ADD(AutoSkillUtilTest::EnforcesOneSkillPerReuseTimerGroup);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
 		TEST_ADD(AutoSkillUtilTest::CalculatesReuseTimes);
 		TEST_ADD(AutoSkillUtilTest::ValidatesObservedHasteMatrix);
@@ -56,6 +58,59 @@ private:
 		TEST_ASSERT(enabled_mask == 0);
 
 		TEST_ASSERT(EQ::skills::autoskill::SanitizeMask(0xFFFFFFFF) == 0x1FF);
+	}
+
+	void FiltersUnavailableEnabledSkills() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		const auto flying_kick_enabled = SetEnabled(0, SkillFlyingKick, true);
+		const auto kick_usable = SetEnabled(0, SkillKick, true);
+		const auto no_active_skills = GetActiveMask(flying_kick_enabled, kick_usable);
+
+		TEST_ASSERT(no_active_skills == 0);
+		TEST_ASSERT(!ShouldEnforceReuseTimer(no_active_skills, SkillKick, true));
+
+		const auto flying_kick_usable = SetEnabled(kick_usable, SkillFlyingKick, true);
+		const auto flying_kick_active = GetActiveMask(flying_kick_enabled, flying_kick_usable);
+
+		TEST_ASSERT(IsEnabled(flying_kick_active, SkillFlyingKick));
+		TEST_ASSERT(ShouldEnforceReuseTimer(flying_kick_active, SkillKick, true));
+	}
+
+	void EnforcesOneSkillPerReuseTimerGroup() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		auto enabled_mask = SetEnabled(0, SkillFlyingKick, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillKick, true);
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillBash, true, true);
+
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillFlyingKick));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillKick));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillRoundKick, true, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillRoundKick));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillBash));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, false);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillRoundKick));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillTigerClaw));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, true);
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillKick, false, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillKick));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillRoundKick));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillTigerClaw));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillKick, false, false);
+		TEST_ASSERT(enabled_mask == 0);
 	}
 
 	void KeepsPriorityOrder() {

@@ -984,6 +984,7 @@ public:
 	bool HasSkill(EQ::skills::SkillType skill_id) const;
 	bool CanHaveSkill(EQ::skills::SkillType skill_id) const;
 	uint32 GetAutoSkillEnabledMask() const { return auto_skill_enabled_mask; }
+	uint32 GetActiveAutoSkillEnabledMask() const;
 	bool IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const;
 	bool IsAutoSkillAttackInProgress() const { return auto_skill_attack_in_progress; }
 	bool IsAutoSkillUsable(EQ::skills::SkillType skill_id) const;

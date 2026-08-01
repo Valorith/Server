@@ -151,6 +151,26 @@ bool Client::IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const
 	return EQ::skills::autoskill::IsEnabled(auto_skill_enabled_mask, skill_id);
 }
 
+uint32 Client::GetActiveAutoSkillEnabledMask() const
+{
+	if (auto_skill_enabled_mask == 0) {
+		return 0;
+	}
+
+	uint32 usable_mask = 0;
+
+	for (const auto &definition : EQ::skills::autoskill::GetSkillDefinitions()) {
+		if (
+			EQ::skills::autoskill::IsEnabled(auto_skill_enabled_mask, definition.skill) &&
+			IsAutoSkillUsable(definition.skill)
+		) {
+			usable_mask |= definition.mask;
+		}
+	}
+
+	return EQ::skills::autoskill::GetActiveMask(auto_skill_enabled_mask, usable_mask);
+}
+
 bool Client::IsAutoSkillUsable(EQ::skills::SkillType skill_id) const
 {
 	if (!EQ::skills::autoskill::IsSupported(skill_id)) {
@@ -186,7 +206,12 @@ bool Client::IsAutoSkillUsable(EQ::skills::SkillType skill_id) const
 
 void Client::SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled)
 {
-	auto_skill_enabled_mask = EQ::skills::autoskill::SetEnabled(auto_skill_enabled_mask, skill_id, enabled);
+	auto_skill_enabled_mask = EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
+		auto_skill_enabled_mask,
+		skill_id,
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+		enabled
+	);
 	SaveAutoSkillSettings();
 }
 

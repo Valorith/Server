@@ -450,7 +450,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
 		!EQ::skills::autoskill::CanUseReuseTimer(
-			auto_skill_enabled_mask,
+			GetActiveAutoSkillEnabledMask(),
 			skill,
 			ClientVersion() >= EQ::versions::ClientVersion::RoF2,
 			IsAutoSkillReuseTimerReady(timer)
