@@ -119,6 +119,26 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 	return !reuse_timer.Enabled() || reuse_timer.Check(false);
 }
 
+bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill)
+{
+	const bool reuse_timer_ready = IsAutoSkillReuseTimerReady(timer);
+	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer_started_by_auto_skill :
+		auto_skill_combat_ability_timer_started_by_auto_skill;
+
+	if (reuse_timer_ready) {
+		started_by_auto_skill = false;
+	}
+
+	return EQ::skills::autoskill::CanUseReuseTimer(
+		GetActiveAutoSkillEnabledMask(),
+		requested_skill,
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+		reuse_timer_ready,
+		started_by_auto_skill
+	);
+}
+
 void Client::StartAutoSkillReuseTimer(
 	pTimerType timer,
 	EQ::skills::SkillType skill,
@@ -142,7 +162,11 @@ void Client::StartAutoSkillReuseTimer(
 	auto &reuse_timer = timer == pTimerCombatAbility2 ?
 		auto_skill_combat_ability_2_timer :
 		auto_skill_combat_ability_timer;
+	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer_started_by_auto_skill :
+		auto_skill_combat_ability_timer_started_by_auto_skill;
 
+	started_by_auto_skill = auto_skill_attack_in_progress;
 	reuse_timer.Start(reuse_time);
 }
 

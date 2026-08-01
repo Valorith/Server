@@ -2072,6 +2072,7 @@ private:
 	void OPGMSummon(const EQApplicationPacket *app);
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
 	bool IsAutoSkillReuseTimerReady(pTimerType timer);
+	bool CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill);
 	void StartAutoSkillReuseTimer(
 		pTimerType timer,
 		EQ::skills::SkillType skill,
@@ -2292,6 +2293,8 @@ private:
 	Timer auto_skill_process_timer;
 	Timer auto_skill_combat_ability_timer;
 	Timer auto_skill_combat_ability_2_timer;
+	bool  auto_skill_combat_ability_timer_started_by_auto_skill   = false;
+	bool  auto_skill_combat_ability_2_timer_started_by_auto_skill = false;
 
 	bool m_lazy_load_bank            = false;
 	int  m_lazy_load_sent_bank_slots = 0;

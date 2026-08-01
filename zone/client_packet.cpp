@@ -5815,12 +5815,7 @@ void Client::Handle_OP_Disarm(const EQApplicationPacket *app) {
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
 		ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
-		!EQ::skills::autoskill::CanUseReuseTimer(
-			GetActiveAutoSkillEnabledMask(),
-			EQ::skills::SkillTigerClaw,
-			true,
-			IsAutoSkillReuseTimerReady(pTimerCombatAbility2)
-		)
+		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillTigerClaw)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;

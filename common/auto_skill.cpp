@@ -270,11 +270,15 @@ bool EQ::skills::autoskill::CanUseReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill,
 	bool tiger_claw_uses_secondary_timer,
-	bool reuse_timer_ready
+	bool reuse_timer_ready,
+	bool auto_skill_reuse_in_flight
 )
 {
 	return (
-		!ShouldEnforceReuseTimer(enabled_mask, requested_skill, tiger_claw_uses_secondary_timer) ||
+		!(
+			ShouldEnforceReuseTimer(enabled_mask, requested_skill, tiger_claw_uses_secondary_timer) ||
+			(auto_skill_reuse_in_flight && IsSupported(requested_skill))
+		) ||
 		reuse_timer_ready
 	);
 }

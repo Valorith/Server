@@ -52,7 +52,8 @@ bool CanUseReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill,
 	bool tiger_claw_uses_secondary_timer,
-	bool reuse_timer_ready
+	bool reuse_timer_ready,
+	bool auto_skill_reuse_in_flight = false
 );
 bool ShouldUseAutoSkillProcReuseTime(bool auto_skill_attack_in_progress, bool skill_enabled);
 std::string NormalizeSkillName(const std::string &skill_name);

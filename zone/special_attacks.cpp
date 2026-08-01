@@ -449,12 +449,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	// Manual packets and scheduler-originated uses must observe the same precise cooldown lane.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
-		!EQ::skills::autoskill::CanUseReuseTimer(
-			GetActiveAutoSkillEnabledMask(),
-			skill,
-			ClientVersion() >= EQ::versions::ClientVersion::RoF2,
-			IsAutoSkillReuseTimerReady(timer)
-		)
+		!CanUseAutoSkillReuseTimer(timer, skill)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;

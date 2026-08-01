@@ -324,6 +324,9 @@ private:
 		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTaunt, true));
 		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, false));
 		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTaunt, true, false));
+		TEST_ASSERT(!CanUseReuseTimer(0, SkillKick, true, false, true));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, true, true));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillTaunt, true, false, true));
 	}
 
 	void SelectsAutoSkillProcReuseTimes() {
