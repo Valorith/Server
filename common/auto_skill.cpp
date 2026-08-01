@@ -131,38 +131,53 @@ uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 	bool tiger_claw_uses_secondary_timer
 )
 {
+	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask, tiger_claw_uses_secondary_timer);
+}
+
+uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
+	uint32 enabled_mask,
+	uint32 preferred_mask,
+	bool tiger_claw_uses_secondary_timer
+)
+{
 	enabled_mask = SanitizeMask(enabled_mask);
+	preferred_mask = SanitizeMask(preferred_mask) & enabled_mask;
 	uint32 normalized_mask = 0;
 	bool primary_timer_claimed = false;
 	bool secondary_timer_claimed = false;
 
-	// Definition order is scheduler priority; preserve the highest-priority enabled skill in each lane.
-	for (const auto &definition : GetSkillDefinitions()) {
-		if (!IsEnabled(enabled_mask, definition.skill)) {
-			continue;
-		}
-
-		const bool uses_secondary_timer = UsesSecondaryReuseTimer(
-			definition.skill,
-			tiger_claw_uses_secondary_timer
-		);
-
-		if (uses_secondary_timer) {
-			if (secondary_timer_claimed) {
+	const auto claim_timer_groups = [&](uint32 candidate_mask) {
+		// Definition order is scheduler priority within each preference tier.
+		for (const auto &definition : GetSkillDefinitions()) {
+			if (!IsEnabled(candidate_mask, definition.skill)) {
 				continue;
 			}
 
-			secondary_timer_claimed = true;
-		} else {
-			if (primary_timer_claimed) {
-				continue;
+			const bool uses_secondary_timer = UsesSecondaryReuseTimer(
+				definition.skill,
+				tiger_claw_uses_secondary_timer
+			);
+
+			if (uses_secondary_timer) {
+				if (secondary_timer_claimed) {
+					continue;
+				}
+
+				secondary_timer_claimed = true;
+			} else {
+				if (primary_timer_claimed) {
+					continue;
+				}
+
+				primary_timer_claimed = true;
 			}
 
-			primary_timer_claimed = true;
+			normalized_mask |= definition.mask;
 		}
+	};
 
-		normalized_mask |= definition.mask;
-	}
+	claim_timer_groups(preferred_mask);
+	claim_timer_groups(enabled_mask & ~preferred_mask);
 
 	return normalized_mask;
 }

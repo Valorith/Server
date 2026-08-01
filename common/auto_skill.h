@@ -30,6 +30,11 @@ uint32 SanitizeMask(uint32 enabled_mask);
 uint32 GetActiveMask(uint32 enabled_mask, uint32 usable_mask);
 bool UsesSecondaryReuseTimer(EQ::skills::SkillType skill, bool tiger_claw_uses_secondary_timer);
 uint32 NormalizeReuseTimerGroups(uint32 enabled_mask, bool tiger_claw_uses_secondary_timer);
+uint32 NormalizeReuseTimerGroups(
+	uint32 enabled_mask,
+	uint32 preferred_mask,
+	bool tiger_claw_uses_secondary_timer
+);
 uint32 SetEnabledForReuseTimerGroup(
 	uint32 enabled_mask,
 	EQ::skills::SkillType skill,

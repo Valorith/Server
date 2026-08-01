@@ -132,6 +132,17 @@ private:
 		TEST_ASSERT(!IsEnabled(legacy_mask, SkillTigerClaw));
 		TEST_ASSERT(!IsEnabled(legacy_mask, SkillKick));
 		TEST_ASSERT(NormalizeReuseTimerGroups(enabled_mask | (1u << 31), false) == legacy_mask);
+
+		const auto kick_usable_mask = SetEnabled(0, SkillKick, true);
+		const auto usable_first_mask = NormalizeReuseTimerGroups(enabled_mask, kick_usable_mask, true);
+		TEST_ASSERT(IsEnabled(usable_first_mask, SkillKick));
+		TEST_ASSERT(IsEnabled(usable_first_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(usable_first_mask, SkillFlyingKick));
+
+		const auto legacy_usable_first_mask = NormalizeReuseTimerGroups(enabled_mask, kick_usable_mask, false);
+		TEST_ASSERT(IsEnabled(legacy_usable_first_mask, SkillKick));
+		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillFlyingKick));
 	}
 
 	void KeepsPriorityOrder() {

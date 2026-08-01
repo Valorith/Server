@@ -225,14 +225,12 @@ void Client::LoadAutoSkillSettings()
 	}
 
 	const auto loaded_mask = EQ::skills::autoskill::SanitizeMask(Strings::ToUnsignedInt(auto_skill_bucket));
+	auto_skill_enabled_mask = loaded_mask;
 	auto_skill_enabled_mask = EQ::skills::autoskill::NormalizeReuseTimerGroups(
 		loaded_mask,
+		GetActiveAutoSkillEnabledMask(),
 		ClientVersion() >= EQ::versions::ClientVersion::RoF2
 	);
-
-	if (auto_skill_enabled_mask != loaded_mask) {
-		SaveAutoSkillSettings();
-	}
 }
 
 void Client::SaveAutoSkillSettings()
