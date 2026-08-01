@@ -253,4 +253,6 @@ void command_autoskill(Client *c, const Seperator *sep)
 			).c_str()
 		);
 	}
+
+	ShowAutoSkillMenu(c);
 }
