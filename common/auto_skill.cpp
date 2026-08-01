@@ -126,6 +126,47 @@ bool EQ::skills::autoskill::UsesSecondaryReuseTimer(
 	return tiger_claw_uses_secondary_timer && skill == EQ::skills::SkillTigerClaw;
 }
 
+uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
+	uint32 enabled_mask,
+	bool tiger_claw_uses_secondary_timer
+)
+{
+	enabled_mask = SanitizeMask(enabled_mask);
+	uint32 normalized_mask = 0;
+	bool primary_timer_claimed = false;
+	bool secondary_timer_claimed = false;
+
+	// Definition order is scheduler priority; preserve the highest-priority enabled skill in each lane.
+	for (const auto &definition : GetSkillDefinitions()) {
+		if (!IsEnabled(enabled_mask, definition.skill)) {
+			continue;
+		}
+
+		const bool uses_secondary_timer = UsesSecondaryReuseTimer(
+			definition.skill,
+			tiger_claw_uses_secondary_timer
+		);
+
+		if (uses_secondary_timer) {
+			if (secondary_timer_claimed) {
+				continue;
+			}
+
+			secondary_timer_claimed = true;
+		} else {
+			if (primary_timer_claimed) {
+				continue;
+			}
+
+			primary_timer_claimed = true;
+		}
+
+		normalized_mask |= definition.mask;
+	}
+
+	return normalized_mask;
+}
+
 uint32 EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 	uint32 enabled_mask,
 	EQ::skills::SkillType skill,

@@ -16,6 +16,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
 		TEST_ADD(AutoSkillUtilTest::FiltersUnavailableEnabledSkills);
 		TEST_ADD(AutoSkillUtilTest::EnforcesOneSkillPerReuseTimerGroup);
+		TEST_ADD(AutoSkillUtilTest::NormalizesPersistedReuseTimerGroups);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
 		TEST_ADD(AutoSkillUtilTest::CalculatesReuseTimes);
 		TEST_ADD(AutoSkillUtilTest::ValidatesObservedHasteMatrix);
@@ -111,6 +112,26 @@ private:
 
 		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillKick, false, false);
 		TEST_ASSERT(enabled_mask == 0);
+	}
+
+	void NormalizesPersistedReuseTimerGroups() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		auto enabled_mask = SetEnabled(0, SkillFlyingKick, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillTigerClaw, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillKick, true);
+
+		const auto rof2_mask = NormalizeReuseTimerGroups(enabled_mask, true);
+		TEST_ASSERT(IsEnabled(rof2_mask, SkillFlyingKick));
+		TEST_ASSERT(IsEnabled(rof2_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(rof2_mask, SkillKick));
+
+		const auto legacy_mask = NormalizeReuseTimerGroups(enabled_mask, false);
+		TEST_ASSERT(IsEnabled(legacy_mask, SkillFlyingKick));
+		TEST_ASSERT(!IsEnabled(legacy_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(legacy_mask, SkillKick));
+		TEST_ASSERT(NormalizeReuseTimerGroups(enabled_mask | (1u << 31), false) == legacy_mask);
 	}
 
 	void KeepsPriorityOrder() {
