@@ -143,6 +143,20 @@ private:
 		TEST_ASSERT(IsEnabled(legacy_usable_first_mask, SkillKick));
 		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillTigerClaw));
 		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillFlyingKick));
+
+		const auto kick_and_tiger_claw_usable_mask = SetEnabled(kick_usable_mask, SkillTigerClaw, true);
+		const auto current_session_mask = NormalizeReuseTimerGroups(kick_and_tiger_claw_usable_mask, true);
+		TEST_ASSERT(IsEnabled(current_session_mask, SkillKick));
+		TEST_ASSERT(IsEnabled(current_session_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(current_session_mask, SkillFlyingKick));
+
+		const auto after_level_up_usable_mask = SetEnabled(kick_and_tiger_claw_usable_mask, SkillFlyingKick, true);
+		const auto after_level_up_mask = NormalizeReuseTimerGroups(after_level_up_usable_mask, true);
+		TEST_ASSERT(IsEnabled(after_level_up_mask, SkillFlyingKick));
+		TEST_ASSERT(IsEnabled(after_level_up_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(after_level_up_mask, SkillKick));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillFlyingKick));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillKick));
 	}
 
 	void KeepsPriorityOrder() {
