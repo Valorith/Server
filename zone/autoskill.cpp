@@ -119,6 +119,26 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 	return !reuse_timer.Enabled() || reuse_timer.Check(false);
 }
 
+bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill)
+{
+	const bool reuse_timer_ready = IsAutoSkillReuseTimerReady(timer);
+	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer_started_by_auto_skill :
+		auto_skill_combat_ability_timer_started_by_auto_skill;
+
+	if (reuse_timer_ready) {
+		started_by_auto_skill = false;
+	}
+
+	return EQ::skills::autoskill::CanUseReuseTimer(
+		GetActiveAutoSkillEnabledMask(),
+		requested_skill,
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+		reuse_timer_ready,
+		started_by_auto_skill
+	);
+}
+
 void Client::StartAutoSkillReuseTimer(
 	pTimerType timer,
 	EQ::skills::SkillType skill,
@@ -142,13 +162,41 @@ void Client::StartAutoSkillReuseTimer(
 	auto &reuse_timer = timer == pTimerCombatAbility2 ?
 		auto_skill_combat_ability_2_timer :
 		auto_skill_combat_ability_timer;
+	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer_started_by_auto_skill :
+		auto_skill_combat_ability_timer_started_by_auto_skill;
 
+	started_by_auto_skill = auto_skill_attack_in_progress;
 	reuse_timer.Start(reuse_time);
 }
 
 bool Client::IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const
 {
-	return EQ::skills::autoskill::IsEnabled(auto_skill_enabled_mask, skill_id);
+	return EQ::skills::autoskill::IsEnabled(GetActiveAutoSkillEnabledMask(), skill_id);
+}
+
+uint32 Client::GetActiveAutoSkillEnabledMask() const
+{
+	if (auto_skill_enabled_mask == 0) {
+		return 0;
+	}
+
+	uint32 usable_mask = 0;
+
+	for (const auto &definition : EQ::skills::autoskill::GetSkillDefinitions()) {
+		if (
+			EQ::skills::autoskill::IsEnabled(auto_skill_enabled_mask, definition.skill) &&
+			IsAutoSkillUsable(definition.skill)
+		) {
+			usable_mask |= definition.mask;
+		}
+	}
+
+	// Keep the persisted preference mask intact and select the active lane winners from current usability.
+	return EQ::skills::autoskill::NormalizeReuseTimerGroups(
+		usable_mask,
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2
+	);
 }
 
 bool Client::IsAutoSkillUsable(EQ::skills::SkillType skill_id) const
@@ -186,7 +234,12 @@ bool Client::IsAutoSkillUsable(EQ::skills::SkillType skill_id) const
 
 void Client::SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled)
 {
-	auto_skill_enabled_mask = EQ::skills::autoskill::SetEnabled(auto_skill_enabled_mask, skill_id, enabled);
+	auto_skill_enabled_mask = EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
+		auto_skill_enabled_mask,
+		skill_id,
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+		enabled
+	);
 	SaveAutoSkillSettings();
 }
 
@@ -246,6 +299,10 @@ void Client::ProcessAutoSkills()
 	}
 
 	auto_skill_enabled_mask = EQ::skills::autoskill::SanitizeMask(auto_skill_enabled_mask);
+	const auto active_auto_skill_enabled_mask = GetActiveAutoSkillEnabledMask();
+	if (active_auto_skill_enabled_mask == 0) {
+		return;
+	}
 
 	Mob *target = GetTarget();
 	if (!IsValidAutoSkillTarget(this, target)) {
@@ -255,7 +312,7 @@ void Client::ProcessAutoSkills()
 	for (const auto &definition : EQ::skills::autoskill::GetSkillDefinitions()) {
 		const auto skill = definition.skill;
 
-		if (!EQ::skills::autoskill::IsEnabled(auto_skill_enabled_mask, skill)) {
+		if (!EQ::skills::autoskill::IsEnabled(active_auto_skill_enabled_mask, skill)) {
 			continue;
 		}
 
@@ -273,7 +330,12 @@ void Client::ProcessAutoSkills()
 
 		const auto timer = GetAutoSkillTimer(this, skill);
 		if (
-			!IsAutoSkillReuseTimerReady(timer) ||
+			!EQ::skills::autoskill::CanUseReuseTimer(
+				active_auto_skill_enabled_mask,
+				skill,
+				ClientVersion() >= EQ::versions::ClientVersion::RoF2,
+				IsAutoSkillReuseTimerReady(timer)
+			) ||
 			!p_timers.Expired(&database, timer, false)
 		) {
 			continue;

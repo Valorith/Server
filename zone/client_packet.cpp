@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <algorithm>
 #include <cctype>
+#include "common/auto_skill.h"
 #include "common/data_bucket.h"
 #include "common/data_verification.h"
 #include "common/eqemu_logsys.h"
@@ -5809,6 +5810,16 @@ void Client::Handle_OP_Disarm(const EQApplicationPacket *app) {
 	}
 
 	Disarm_Struct *disarm = (Disarm_Struct *)app->pBuffer;
+
+	// RoF2+ Disarm shares the secondary combat-ability lane with Tiger Claw.
+	if (
+		RuleB(Combat, EnableAutoSkill) &&
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
+		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillTigerClaw)
+	) {
+		Message(Chat::Red, "Ability recovery time not yet met.");
+		return;
+	}
 
 	if (!p_timers.Expired(&database, pTimerCombatAbility2, false)) {
 		Message(Chat::Red, "Ability recovery time not yet met.");

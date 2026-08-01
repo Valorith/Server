@@ -83,14 +83,6 @@ std::string GetApplicableSkillsList(Client *client)
 	return Strings::Join(skill_names, ", ");
 }
 
-bool UsesSecondaryCombatAbilityCooldown(Client *client, EQ::skills::SkillType skill)
-{
-	return (
-		client->ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
-		skill == EQ::skills::SkillTigerClaw
-	);
-}
-
 void ShowAutoSkillMenuEntry(Client *client, EQ::skills::SkillType skill)
 {
 	const auto *definition = EQ::skills::autoskill::GetSkillDefinition(skill);
@@ -109,7 +101,7 @@ void ShowAutoSkillMenuEntry(Client *client, EQ::skills::SkillType skill)
 	);
 
 	client->Message(
-		Chat::White,
+		enabled ? Chat::Green : Chat::White,
 		fmt::format(
 			"  {}: {} {}",
 			definition->name,
@@ -148,7 +140,10 @@ void ShowAutoSkillMenu(Client *client)
 	std::vector<EQ::skills::SkillType> secondary_cooldown_skills;
 
 	for (const auto skill : applicable_skills) {
-		if (UsesSecondaryCombatAbilityCooldown(client, skill)) {
+		if (EQ::skills::autoskill::UsesSecondaryReuseTimer(
+			skill,
+			client->ClientVersion() >= EQ::versions::ClientVersion::RoF2
+		)) {
 			secondary_cooldown_skills.push_back(skill);
 			continue;
 		}
@@ -157,10 +152,13 @@ void ShowAutoSkillMenu(Client *client)
 	}
 
 	client->Message(Chat::White, "Autoskill settings:");
-	client->Message(Chat::White, "Skills grouped together share a cooldown. In a shared group, the first enabled skill listed has priority.");
+	client->Message(
+		Chat::White,
+		"Choose one skill per cooldown group. Turning one on automatically turns the others in that group off."
+	);
 
-	ShowAutoSkillMenuGroup(client, "Shared Combat Ability Cooldown:", shared_cooldown_skills);
-	ShowAutoSkillMenuGroup(client, "Secondary Combat Ability Cooldown:", secondary_cooldown_skills);
+	ShowAutoSkillMenuGroup(client, "Combat Ability Cooldown Group (choose one):", shared_cooldown_skills);
+	ShowAutoSkillMenuGroup(client, "Tiger Claw Cooldown Group (choose one):", secondary_cooldown_skills);
 }
 
 } // namespace
@@ -208,7 +206,8 @@ void command_autoskill(Client *c, const Seperator *sep)
 		return;
 	}
 
-	if (!c->IsAutoSkillUsable(definition->skill)) {
+	const bool enabled = has_requested_state ? requested_state : !c->IsAutoSkillEnabled(definition->skill);
+	if (enabled && !c->IsAutoSkillUsable(definition->skill)) {
 		c->Message(
 			Chat::White,
 			fmt::format(
@@ -219,8 +218,21 @@ void command_autoskill(Client *c, const Seperator *sep)
 		return;
 	}
 
-	const bool enabled = has_requested_state ? requested_state : !c->IsAutoSkillEnabled(definition->skill);
+	const auto previously_enabled_mask = c->GetAutoSkillEnabledMask();
 	c->SetAutoSkillEnabled(definition->skill, enabled);
+
+	std::vector<std::string> automatically_disabled_skills;
+	if (enabled) {
+		for (const auto &other_definition : EQ::skills::autoskill::GetSkillDefinitions()) {
+			if (
+				other_definition.skill != definition->skill &&
+				EQ::skills::autoskill::IsEnabled(previously_enabled_mask, other_definition.skill) &&
+				!c->IsAutoSkillEnabled(other_definition.skill)
+			) {
+				automatically_disabled_skills.emplace_back(other_definition.name);
+			}
+		}
+	}
 
 	c->Message(
 		Chat::White,
@@ -230,4 +242,17 @@ void command_autoskill(Client *c, const Seperator *sep)
 			enabled ? "on" : "off"
 		).c_str()
 	);
+
+	if (!automatically_disabled_skills.empty()) {
+		c->Message(
+			Chat::White,
+			fmt::format(
+				"Automatically disabled {} because {} the same cooldown.",
+				Strings::Join(automatically_disabled_skills, ", "),
+				automatically_disabled_skills.size() == 1 ? "it shares" : "they share"
+			).c_str()
+		);
+	}
+
+	ShowAutoSkillMenu(c);
 }

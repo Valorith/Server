@@ -381,10 +381,11 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		return;
 	}
 
+	const auto skill = static_cast<EQ::skills::SkillType>(ca_atk->m_skill);
 	pTimerType timer = pTimerCombatAbility;
 	// RoF2+ Tiger Claw is unlinked from other monk skills, if they ever do that for other classes there will need
 	// to be more checks here
-	if (ClientVersion() >= EQ::versions::ClientVersion::RoF2 && ca_atk->m_skill == EQ::skills::SkillTigerClaw) {
+	if (ClientVersion() >= EQ::versions::ClientVersion::RoF2 && skill == EQ::skills::SkillTigerClaw) {
 		timer = pTimerCombatAbility2;
 	}
 
@@ -442,6 +443,15 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	// check range for all these abilities, they are all close combat stuff
 	if (!CombatRange(GetTarget())) {
+		return;
+	}
+
+	// Manual packets and scheduler-originated uses must observe the same precise cooldown lane.
+	if (
+		RuleB(Combat, EnableAutoSkill) &&
+		!CanUseAutoSkillReuseTimer(timer, skill)
+	) {
+		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;
 	}
 
@@ -543,7 +553,6 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	}
 
 	const uint8 class_id = GetClass();
-	const auto skill = static_cast<EQ::skills::SkillType>(ca_atk->m_skill);
 	const bool is_kick = skill == EQ::skills::SkillKick;
 	const bool is_monk_special_attack = IsMonkSpecialAttack(skill);
 
