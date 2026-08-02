@@ -57,6 +57,11 @@ enum : int {	//values for pTimerType
 	pTimerPeqzoneReuse = 900,
 	pTimerMercReuse = 901,
 	pTimerMercSuspend = 902,
+	// Persist source-specific reuse bridges for skills whose manual and autoskill lanes differ.
+	pTimerAutoSkillManualCrossPathStart = 903,
+	pTimerAutoSkillManualCrossPathEnd = 906,
+	pTimerAutoSkillSchedulerCrossPathStart = 907,
+	pTimerAutoSkillSchedulerCrossPathEnd = 910,
 	pTimerAAStart = 1000,		//AA re-use timers
 	pTimerAAEnd = 2999,
 	pTimerAAEffectStart = 3001,	//AA effect timers

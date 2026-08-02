@@ -455,7 +455,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		RuleB(Combat, EnableAutoSkill) &&
 		(
 			!CanUseAutoSkillReuseTimer(timer, skill) ||
-			!CanUseCrossPathAutoSkillReuseTimer(skill)
+			!CanUseCrossPathAutoSkillReuseTimer(skill, auto_skill_attack_in_progress)
 		)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
