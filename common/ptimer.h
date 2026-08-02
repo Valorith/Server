@@ -41,7 +41,7 @@ enum : int {	//values for pTimerType
 	pTimerDisciplineReuseStart = 14,
 	pTimerDisciplineReuseEnd = 24, // client actually has 20 ids, but still no disc go that high even on live
 	pTimerCombatAbility = 25,
-	pTimerCombatAbility2 = 26, // RoF2+ Tiger Claw; also used for the autoskill Punch/Bash cooldown lane
+	pTimerCombatAbility2 = 26, // Disarm and RoF2+ Tiger Claw; also used for the autoskill Punch/Bash cooldown lane
 	pTimerBeggingPickPocket = 27,
 	pTimerLinkedSpellReuseStart = 28,
 	pTimerLinkedSpellReuseEnd = 48,

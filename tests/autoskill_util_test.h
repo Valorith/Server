@@ -395,6 +395,8 @@ private:
 
 		TEST_ASSERT(CanUseCrossPathReuseTimer(true, false, false));
 		TEST_ASSERT(CanUseCrossPathReuseTimer(true, false, true));
+		TEST_ASSERT(CanUseCrossPathReuseTimer(true, true, false));
+		TEST_ASSERT(CanUseCrossPathReuseTimer(true, true, true));
 		TEST_ASSERT(CanUseCrossPathReuseTimer(false, false, false));
 		TEST_ASSERT(CanUseCrossPathReuseTimer(false, true, true));
 		TEST_ASSERT(!CanUseCrossPathReuseTimer(false, false, true));

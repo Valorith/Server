@@ -191,28 +191,25 @@ bool Client::CanUseCrossPathAutoSkillReuseTimer(
 		return true;
 	}
 
-	const auto opposite_path_timer = GetCrossPathPersistentTimer(skill, !auto_skill_activation);
-	if (opposite_path_timer && !p_timers.Expired(&database, opposite_path_timer, false)) {
-		return false;
-	}
-
 	const auto timer_entry = auto_skill_cross_path_reuse_timers.find(skill);
-	if (timer_entry == auto_skill_cross_path_reuse_timers.end()) {
-		return true;
+	if (timer_entry != auto_skill_cross_path_reuse_timers.end()) {
+		auto &reuse_timer = timer_entry->second.timer;
+		const bool reuse_timer_ready = !reuse_timer.Enabled() || reuse_timer.Check(false);
+		if (reuse_timer_ready) {
+			auto_skill_cross_path_reuse_timers.erase(timer_entry);
+			return true;
+		}
+
+		return EQ::skills::autoskill::CanUseCrossPathReuseTimer(
+			false,
+			timer_entry->second.started_by_auto_skill,
+			auto_skill_activation
+		);
 	}
 
-	auto &reuse_timer = timer_entry->second.timer;
-	const bool reuse_timer_ready = !reuse_timer.Enabled() || reuse_timer.Check(false);
-	if (reuse_timer_ready) {
-		auto_skill_cross_path_reuse_timers.erase(timer_entry);
-		return true;
-	}
-
-	return EQ::skills::autoskill::CanUseCrossPathReuseTimer(
-		false,
-		timer_entry->second.started_by_auto_skill,
-		auto_skill_activation
-	);
+	// The conservative persistent timer is only a fallback after zoning discards the precise in-memory timer.
+	const auto opposite_path_timer = GetCrossPathPersistentTimer(skill, !auto_skill_activation);
+	return !opposite_path_timer || p_timers.Expired(&database, opposite_path_timer, false);
 }
 
 void Client::StartAutoSkillReuseTimer(
