@@ -1,0 +1,169 @@
+name: Codex Security Advisory Comment
+
+on:
+  workflow_run:
+    workflows: ["Codex Security"]
+    types: [completed]
+
+concurrency:
+  group: codex-security-advisory-comment-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    name: Publish PR advisory
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+
+    steps:
+      # This trusted workflow consumes data only. It never checks out or executes pull-request code.
+      - name: Download advisory result
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-security-advisory
+          path: ${{ runner.temp }}/codex-security-advisory
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Create or update advisory comment
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ADVISORY_FILE: ${{ runner.temp }}/codex-security-advisory/advisory-result.json
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const marker = '<!-- codex-security-advisory -->';
+            const sourceRun = context.payload.workflow_run;
+            const pullRequest = sourceRun.pull_requests?.[0];
+            if (!pullRequest?.number) {
+              core.notice('The source workflow run is not associated with a pull request; no comment was published.');
+              return;
+            }
+
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.SOURCE_RUN_ID}`;
+            let advisory = {
+              status: 'unavailable',
+              detail: 'artifact_unavailable',
+              findings_count: null
+            };
+
+            try {
+              const expectedRepository = `${context.repo.owner}/${context.repo.repo}`;
+              if (sourceRun.head_repository?.full_name !== expectedRepository) {
+                throw new Error('artifacts from fork pull requests are not trusted');
+              }
+              if (process.env.DOWNLOAD_OUTCOME !== 'success') {
+                throw new Error('the advisory result artifact could not be downloaded');
+              }
+
+              const stat = fs.statSync(process.env.ADVISORY_FILE);
+              if (!stat.isFile() || stat.size > 65536) {
+                throw new Error('the advisory result is missing or too large');
+              }
+
+              const candidate = JSON.parse(fs.readFileSync(process.env.ADVISORY_FILE, 'utf8'));
+              const statuses = new Set(['clean', 'findings', 'unavailable']);
+              const details = new Set([
+                'documentation_only',
+                'unsupported_only',
+                'scan_complete',
+                'scope_failed',
+                'inventory_failed',
+                'scan_failed',
+                'sarif_unavailable',
+                'sarif_invalid',
+                'scan_unavailable'
+              ]);
+              const validFindingsCount = candidate.findings_count === null || (
+                Number.isInteger(candidate.findings_count) &&
+                candidate.findings_count >= 0 &&
+                candidate.findings_count <= 100000
+              );
+              if (
+                candidate.schema_version !== 1 ||
+                !statuses.has(candidate.status) ||
+                !details.has(candidate.detail) ||
+                !validFindingsCount ||
+                candidate.pr_number !== pullRequest.number ||
+                candidate.head_sha !== process.env.SOURCE_HEAD_SHA ||
+                (candidate.status === 'findings' && !(candidate.findings_count > 0))
+              ) {
+                throw new Error('the advisory result failed schema or workflow-run validation');
+              }
+
+              advisory = candidate;
+            } catch (error) {
+              core.warning(`Publishing an unavailable advisory: ${error.message}`);
+            }
+
+            let headline;
+            let detail;
+            if (advisory.status === 'findings') {
+              headline = `Potential findings reported (${advisory.findings_count})`;
+              detail = 'Review the source run, preserved result artifact, and any SARIF annotations before merging.';
+            } else if (advisory.status === 'clean') {
+              headline = 'No findings reported';
+              if (advisory.detail === 'documentation_only') {
+                detail = 'No scan was required because the pull request only changes excluded documentation or GitHub metadata.';
+              } else if (advisory.detail === 'unsupported_only') {
+                detail = 'No scan was required because the pull request has no supported source-like files.';
+              } else {
+                detail = 'The advisory scanner completed and reported no findings.';
+              }
+            } else {
+              headline = 'Scan unavailable';
+              detail = 'The advisory scanner or its result-publishing infrastructure did not complete, so no security conclusion was produced.';
+            }
+
+            const body = [
+              marker,
+              '## Codex Security advisory',
+              '',
+              `**${headline}**`,
+              '',
+              detail,
+              '',
+              'This review is advisory and is not a required merge gate. Scanner or comment-publishing failures must not block merging.',
+              '',
+              `[View the source workflow run](${runUrl})`
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pullRequest.number,
+              per_page: 100
+            });
+            const existing = comments.find(comment =>
+              comment.user?.login === 'github-actions[bot]' &&
+              comment.body?.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+              core.info(`Updated advisory comment ${existing.html_url}.`);
+            } else {
+              const { data: created } = await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pullRequest.number,
+                body
+              });
+              core.info(`Created advisory comment ${created.html_url}.`);
+            }
