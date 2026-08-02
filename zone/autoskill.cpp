@@ -144,6 +144,31 @@ bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType r
 	);
 }
 
+bool Client::CanUseCrossPathAutoSkillReuseTimer(EQ::skills::SkillType skill)
+{
+	if (!EQ::skills::autoskill::IsSupported(skill)) {
+		return true;
+	}
+
+	const auto timer_entry = auto_skill_cross_path_reuse_timers.find(skill);
+	if (timer_entry == auto_skill_cross_path_reuse_timers.end()) {
+		return true;
+	}
+
+	auto &reuse_timer = timer_entry->second.timer;
+	const bool reuse_timer_ready = !reuse_timer.Enabled() || reuse_timer.Check(false);
+	if (reuse_timer_ready) {
+		auto_skill_cross_path_reuse_timers.erase(timer_entry);
+		return true;
+	}
+
+	return EQ::skills::autoskill::CanUseCrossPathReuseTimer(
+		false,
+		timer_entry->second.started_by_auto_skill,
+		auto_skill_attack_in_progress
+	);
+}
+
 void Client::StartAutoSkillReuseTimer(
 	pTimerType timer,
 	EQ::skills::SkillType skill,
@@ -173,6 +198,12 @@ void Client::StartAutoSkillReuseTimer(
 
 	started_by_auto_skill = auto_skill_attack_in_progress;
 	reuse_timer.Start(reuse_time);
+
+	// Manual and scheduler activations keep their own lane layouts, but the same skill may not bypass
+	// its precise reuse deadline by switching activation paths.
+	auto &cross_path_reuse_timer = auto_skill_cross_path_reuse_timers[skill];
+	cross_path_reuse_timer.started_by_auto_skill = auto_skill_attack_in_progress;
+	cross_path_reuse_timer.timer.Start(reuse_time);
 }
 
 bool Client::IsAutoSkillEnabled(EQ::skills::SkillType skill_id) const

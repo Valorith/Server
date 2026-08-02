@@ -25,6 +25,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::RoundsReuseTimesUpAcrossRange);
 		TEST_ADD(AutoSkillUtilTest::ClampsPersistentReuseTimes);
 		TEST_ADD(AutoSkillUtilTest::ArbitratesReuseTimerReadiness);
+		TEST_ADD(AutoSkillUtilTest::PreventsCrossPathReuseBypass);
 		TEST_ADD(AutoSkillUtilTest::SelectsAutoSkillProcReuseTimes);
 	}
 
@@ -106,6 +107,8 @@ private:
 		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillDragonPunch, true, true));
 		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillFlyingKick, true, true));
 		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillBash, true, false));
+		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillTigerClaw, true, false));
+		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillTigerClaw, true, true));
 
 		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillDragonPunch, false, true));
 		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillTailRake, false, true));
@@ -374,6 +377,17 @@ private:
 		TEST_ASSERT(!CanUseReuseTimer(0, SkillKick, false, true));
 		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, true));
 		TEST_ASSERT(CanUseReuseTimer(0, SkillTaunt, false, true));
+	}
+
+	void PreventsCrossPathReuseBypass() {
+		using namespace EQ::skills::autoskill;
+
+		TEST_ASSERT(CanUseCrossPathReuseTimer(true, false, false));
+		TEST_ASSERT(CanUseCrossPathReuseTimer(true, false, true));
+		TEST_ASSERT(CanUseCrossPathReuseTimer(false, false, false));
+		TEST_ASSERT(CanUseCrossPathReuseTimer(false, true, true));
+		TEST_ASSERT(!CanUseCrossPathReuseTimer(false, false, true));
+		TEST_ASSERT(!CanUseCrossPathReuseTimer(false, true, false));
 	}
 
 	void SelectsAutoSkillProcReuseTimes() {

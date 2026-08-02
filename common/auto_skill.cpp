@@ -288,6 +288,17 @@ bool EQ::skills::autoskill::CanUseReuseTimer(
 	);
 }
 
+bool EQ::skills::autoskill::CanUseCrossPathReuseTimer(
+	bool reuse_timer_ready,
+	bool reuse_timer_started_by_auto_skill,
+	bool auto_skill_activation
+)
+{
+	// Existing lane timers remain authoritative within one activation path. This guard only prevents
+	// switching paths from reusing the same skill before its precise deadline.
+	return reuse_timer_ready || reuse_timer_started_by_auto_skill == auto_skill_activation;
+}
+
 bool EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(
 	bool auto_skill_attack_in_progress,
 	bool skill_enabled

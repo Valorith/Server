@@ -453,7 +453,10 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	// Observe the precise timer selected for this manual or scheduler-originated activation.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
-		!CanUseAutoSkillReuseTimer(timer, skill)
+		(
+			!CanUseAutoSkillReuseTimer(timer, skill) ||
+			!CanUseCrossPathAutoSkillReuseTimer(skill)
+		)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;

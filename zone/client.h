@@ -2073,6 +2073,7 @@ private:
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
 	bool IsAutoSkillReuseTimerReady(pTimerType timer);
 	bool CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill);
+	bool CanUseCrossPathAutoSkillReuseTimer(EQ::skills::SkillType skill);
 	void StartAutoSkillReuseTimer(
 		pTimerType timer,
 		EQ::skills::SkillType skill,
@@ -2295,6 +2296,11 @@ private:
 	Timer auto_skill_combat_ability_2_timer;
 	bool  auto_skill_combat_ability_timer_started_by_auto_skill   = false;
 	bool  auto_skill_combat_ability_2_timer_started_by_auto_skill = false;
+	struct AutoSkillCrossPathReuseTimer {
+		Timer timer;
+		bool  started_by_auto_skill = false;
+	};
+	std::map<EQ::skills::SkillType, AutoSkillCrossPathReuseTimer> auto_skill_cross_path_reuse_timers;
 
 	bool m_lazy_load_bank            = false;
 	int  m_lazy_load_sent_bank_slots = 0;

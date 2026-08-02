@@ -56,6 +56,11 @@ bool CanUseReuseTimer(
 	bool reuse_timer_ready,
 	bool auto_skill_reuse_in_flight = false
 );
+bool CanUseCrossPathReuseTimer(
+	bool reuse_timer_ready,
+	bool reuse_timer_started_by_auto_skill,
+	bool auto_skill_activation
+);
 bool ShouldUseAutoSkillProcReuseTime(bool auto_skill_attack_in_progress, bool skill_enabled);
 std::string NormalizeSkillName(const std::string &skill_name);
 
