@@ -5814,7 +5814,7 @@ void Client::Handle_OP_Disarm(const EQApplicationPacket *app) {
 	// Disarm shares the secondary combat-ability lane with Punch/Bash abilities.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
-		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillTigerClaw)
+		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillBash)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;
