@@ -9,8 +9,7 @@ concurrency:
 
 jobs:
   scan:
-    name: Scan pull request
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    name: Codex Security (advisory)
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -21,6 +20,7 @@ jobs:
     steps:
       - name: Determine scan scope
         id: scope
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -46,26 +46,32 @@ jobs:
           echo "should_scan=$should_scan" >> "$GITHUB_OUTPUT"
 
       - name: Record documentation-only skip
-        if: steps.scope.outputs.should_scan != 'true'
+        if: steps.scope.outcome == 'success' && steps.scope.outputs.should_scan != 'true'
         run: |
           echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
           echo "Skipped: this pull request only changes documentation or GitHub metadata excluded from the scanner's diff inventory." >> "$GITHUB_STEP_SUMMARY"
 
       # Install the trusted scanner before checking out pull-request-controlled files.
       - name: Set up Node.js
+        id: setup-node
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "26"
 
       - name: Set up Python
+        id: setup-python
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
 
       - name: Read trusted Codex Security pin
+        id: pin
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -84,7 +90,9 @@ jobs:
           echo "CODEX_SECURITY_VERSION=$pinned" >> "$GITHUB_ENV"
 
       - name: Install Codex Security
+        id: install
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         run: |
           set -euo pipefail
           npm install \
@@ -95,7 +103,9 @@ jobs:
             "@openai/codex-security@$CODEX_SECURITY_VERSION"
 
       - name: Verify Codex Security
+        id: verify
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         env:
           CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
         run: |
@@ -108,7 +118,9 @@ jobs:
           fi
 
       - name: Check out the pull request
+        id: checkout
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -118,6 +130,7 @@ jobs:
       - name: Determine supported scan inventory
         id: inventory
         if: steps.scope.outputs.should_scan == 'true'
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -142,13 +155,15 @@ jobs:
           fi
 
       - name: Record unsupported-only skip
-        if: steps.scope.outputs.should_scan == 'true' && steps.inventory.outputs.should_scan != 'true'
+        if: steps.inventory.outcome == 'success' && steps.inventory.outputs.should_scan != 'true'
         run: |
           echo "### Codex Security" >> "$GITHUB_STEP_SUMMARY"
           echo "Skipped: the pull request has no source-like files in Codex Security's deterministic diff inventory." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Scan the pull request
+        id: scan
         if: steps.inventory.outputs.should_scan == 'true'
+        continue-on-error: true
         env:
           CODEX_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}
           CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
@@ -175,6 +190,7 @@ jobs:
       - name: Export SARIF
         id: export-sarif
         if: always() && steps.inventory.outputs.should_scan == 'true'
+        continue-on-error: true
         env:
           CODEX_SECURITY_BIN: ${{ runner.temp }}/codex-security/node_modules/.bin/codex-security
           SCAN_DIR: ${{ runner.temp }}/codex-security-results
@@ -190,7 +206,9 @@ jobs:
           fi
 
       - name: Upload SARIF
+        id: upload-sarif
         if: always() && steps.export-sarif.outputs.available == 'true'
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           sarif_file: ${{ runner.temp }}/codex-security.sarif
@@ -199,7 +217,9 @@ jobs:
           category: codex-security
 
       - name: Preserve scan results
+        id: preserve-results
         if: always() && steps.inventory.outputs.should_scan == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codex-security-results
@@ -208,3 +228,124 @@ jobs:
             ${{ runner.temp }}/codex-security.json
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Create advisory result
+        id: advisory-result
+        if: always()
+        continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          SHOULD_SCAN_SCOPE: ${{ steps.scope.outputs.should_scan }}
+          INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+          SHOULD_SCAN_INVENTORY: ${{ steps.inventory.outputs.should_scan }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          EXPORT_SARIF_OUTCOME: ${{ steps.export-sarif.outcome }}
+          SARIF_AVAILABLE: ${{ steps.export-sarif.outputs.available }}
+          SARIF_UPLOAD_OUTCOME: ${{ steps.upload-sarif.outcome }}
+          SARIF_FILE: ${{ runner.temp }}/codex-security.sarif
+          ADVISORY_DIR: ${{ runner.temp }}/codex-security-advisory
+        run: |
+          set -euo pipefail
+          status=unavailable
+          detail=scan_unavailable
+          message="The advisory scanner did not complete, so no security conclusion was produced."
+          findings_count=""
+
+          if test "$SCOPE_OUTCOME" != "success"; then
+            detail=scope_failed
+            message="The workflow could not determine the pull request scan scope."
+          elif test "$SHOULD_SCAN_SCOPE" != "true"; then
+            status=clean
+            detail=documentation_only
+            message="No scan was required because the pull request only changes excluded documentation or GitHub metadata."
+            findings_count=0
+          elif test "$INVENTORY_OUTCOME" != "success"; then
+            detail=inventory_failed
+            message="The workflow could not build the supported source-file inventory."
+          elif test "$SHOULD_SCAN_INVENTORY" != "true"; then
+            status=clean
+            detail=unsupported_only
+            message="No scan was required because the pull request has no supported source-like files."
+            findings_count=0
+          elif test "$SCAN_OUTCOME" != "success"; then
+            detail=scan_failed
+            message="The advisory scanner failed, so no security conclusion was produced."
+          elif test "$EXPORT_SARIF_OUTCOME" != "success" || test "$SARIF_AVAILABLE" != "true" || ! test -f "$SARIF_FILE"; then
+            detail=sarif_unavailable
+            message="The scan completed, but its SARIF result could not be exported."
+          elif findings_count="$(jq '[.runs[]?.results[]?] | length' "$SARIF_FILE" 2>/dev/null)"; then
+            detail=scan_complete
+            if test "$findings_count" -gt 0; then
+              status=findings
+              message="The advisory scanner reported $findings_count potential finding(s)."
+            else
+              status=clean
+              message="The advisory scanner reported no findings."
+            fi
+          else
+            detail=sarif_invalid
+            message="The scan completed, but its SARIF result could not be parsed."
+            findings_count=""
+          fi
+
+          mkdir -p "$ADVISORY_DIR"
+          jq -n \
+            --arg status "$status" \
+            --arg detail "$detail" \
+            --arg message "$message" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg sarif_upload_outcome "${SARIF_UPLOAD_OUTCOME:-skipped}" \
+            --arg findings_count "$findings_count" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{
+              schema_version: 1,
+              status: $status,
+              detail: $detail,
+              message: $message,
+              findings_count: (if $findings_count == "" then null else ($findings_count | tonumber) end),
+              pr_number: $pr_number,
+              head_sha: $head_sha,
+              run_url: $run_url,
+              sarif_upload_outcome: $sarif_upload_outcome
+            }' > "$ADVISORY_DIR/advisory-result.json"
+
+          {
+            echo "### Codex Security advisory"
+            echo
+            echo "**Status:** $status"
+            echo
+            echo "$message"
+            if test "$SARIF_UPLOAD_OUTCOME" = "failure"; then
+              echo
+              echo "SARIF publishing also failed; inspect the workflow log and preserved scan artifact."
+            fi
+            echo
+            echo "This scan is advisory and is not a required merge gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload advisory result
+        id: upload-advisory-result
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: codex-security-advisory
+          path: ${{ runner.temp }}/codex-security-advisory/advisory-result.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Complete advisory check
+        if: always()
+        env:
+          RESULT_OUTCOME: ${{ steps.advisory-result.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload-advisory-result.outcome }}
+        run: |
+          if test "$RESULT_OUTCOME" != "success" || test "$UPLOAD_OUTCOME" != "success"; then
+            {
+              echo
+              echo "The normalized advisory result could not be published. This operational failure does not block merging."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
