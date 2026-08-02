@@ -7,8 +7,6 @@
 #include "common/rulesys.h"
 #include "common/strings.h"
 
-#include <algorithm>
-
 namespace {
 
 constexpr const char *AutoSkillBucketKey = "autoskill.enabled_mask";
@@ -261,10 +259,8 @@ void Client::StartAutoSkillReuseTimer(
 
 		const auto persistent_timer = GetCrossPathPersistentTimer(skill, auto_skill_attack_in_progress);
 		if (persistent_timer) {
-			const auto persistent_reuse_time = std::max<uint32>(
-				static_cast<uint32>((static_cast<uint64>(reuse_time) + 999) / 1000),
-				1
-			);
+			const auto persistent_reuse_time =
+				EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(reuse_time);
 			p_timers.Start(persistent_timer, persistent_reuse_time);
 		}
 	}

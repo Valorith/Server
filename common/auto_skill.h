@@ -46,6 +46,7 @@ uint32 SetEnabledForReuseTimerGroup(
 );
 uint32 GetReuseTimeMilliseconds(EQ::skills::SkillType skill, int skill_reuse_reduction, int total_haste);
 int ClampPersistentReuseTime(int reuse_time);
+uint32 GetConservativePersistentReuseTimeSeconds(uint32 reuse_time_milliseconds);
 bool ShouldEnforceReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill

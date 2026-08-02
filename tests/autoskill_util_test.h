@@ -338,6 +338,17 @@ private:
 			EQ::skills::autoskill::ClampPersistentReuseTime(std::numeric_limits<int>::max()) ==
 			std::numeric_limits<int>::max()
 		);
+
+		TEST_ASSERT(EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(0) == 0);
+		TEST_ASSERT(EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(1) == 2);
+		TEST_ASSERT(EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(999) == 2);
+		TEST_ASSERT(EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(1000) == 2);
+		TEST_ASSERT(EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(1001) == 3);
+		TEST_ASSERT(
+			EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(
+				std::numeric_limits<uint32>::max()
+			) == 4294969
+		);
 	}
 
 	void ArbitratesReuseTimerReadiness() {

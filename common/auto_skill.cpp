@@ -248,6 +248,19 @@ int EQ::skills::autoskill::ClampPersistentReuseTime(int reuse_time)
 	return std::max(reuse_time, 0);
 }
 
+uint32 EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(uint32 reuse_time_milliseconds)
+{
+	if (reuse_time_milliseconds == 0) {
+		return 0;
+	}
+
+	// PersistentTimer records its start at whole-second precision. Add one full second after rounding up
+	// so zoning cannot make the persisted bridge expire before the millisecond deadline.
+	return static_cast<uint32>(
+		(static_cast<uint64>(reuse_time_milliseconds) + 999) / 1000 + 1
+	);
+}
+
 bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill
