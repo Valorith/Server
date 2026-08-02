@@ -28,30 +28,26 @@ bool IsEnabled(uint32 enabled_mask, EQ::skills::SkillType skill);
 uint32 SetEnabled(uint32 enabled_mask, EQ::skills::SkillType skill, bool enabled);
 uint32 SanitizeMask(uint32 enabled_mask);
 uint32 GetActiveMask(uint32 enabled_mask, uint32 usable_mask);
-bool UsesSecondaryReuseTimer(EQ::skills::SkillType skill, bool tiger_claw_uses_secondary_timer);
-uint32 NormalizeReuseTimerGroups(uint32 enabled_mask, bool tiger_claw_uses_secondary_timer);
+bool UsesSecondaryReuseTimer(EQ::skills::SkillType skill);
+uint32 NormalizeReuseTimerGroups(uint32 enabled_mask);
 uint32 NormalizeReuseTimerGroups(
 	uint32 enabled_mask,
-	uint32 preferred_mask,
-	bool tiger_claw_uses_secondary_timer
+	uint32 preferred_mask
 );
 uint32 SetEnabledForReuseTimerGroup(
 	uint32 enabled_mask,
 	EQ::skills::SkillType skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool enabled
 );
 uint32 GetReuseTimeMilliseconds(EQ::skills::SkillType skill, int skill_reuse_reduction, int total_haste);
 int ClampPersistentReuseTime(int reuse_time);
 bool ShouldEnforceReuseTimer(
 	uint32 enabled_mask,
-	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer
+	EQ::skills::SkillType requested_skill
 );
 bool CanUseReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool reuse_timer_ready,
 	bool auto_skill_reuse_in_flight = false
 );

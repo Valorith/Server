@@ -136,19 +136,16 @@ void ShowAutoSkillMenu(Client *client)
 		return;
 	}
 
-	std::vector<EQ::skills::SkillType> shared_cooldown_skills;
+	std::vector<EQ::skills::SkillType> general_cooldown_skills;
 	std::vector<EQ::skills::SkillType> secondary_cooldown_skills;
 
 	for (const auto skill : applicable_skills) {
-		if (EQ::skills::autoskill::UsesSecondaryReuseTimer(
-			skill,
-			client->ClientVersion() >= EQ::versions::ClientVersion::RoF2
-		)) {
+		if (EQ::skills::autoskill::UsesSecondaryReuseTimer(skill)) {
 			secondary_cooldown_skills.push_back(skill);
 			continue;
 		}
 
-		shared_cooldown_skills.push_back(skill);
+		general_cooldown_skills.push_back(skill);
 	}
 
 	client->Message(Chat::White, "Autoskill settings:");
@@ -157,8 +154,8 @@ void ShowAutoSkillMenu(Client *client)
 		"Choose one skill per cooldown group. Turning one on automatically turns the others in that group off."
 	);
 
-	ShowAutoSkillMenuGroup(client, "Combat Ability Cooldown Group (choose one):", shared_cooldown_skills);
-	ShowAutoSkillMenuGroup(client, "Tiger Claw Cooldown Group (choose one):", secondary_cooldown_skills);
+	ShowAutoSkillMenuGroup(client, "General Cooldown Group (choose one):", general_cooldown_skills);
+	ShowAutoSkillMenuGroup(client, "Punch/Bash Cooldown Group (choose one):", secondary_cooldown_skills);
 }
 
 } // namespace

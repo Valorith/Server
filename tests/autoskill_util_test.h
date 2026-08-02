@@ -15,6 +15,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::FindsSkillsAndAliases);
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
 		TEST_ADD(AutoSkillUtilTest::FiltersUnavailableEnabledSkills);
+		TEST_ADD(AutoSkillUtilTest::ClassifiesReuseTimerGroups);
 		TEST_ADD(AutoSkillUtilTest::EnforcesOneSkillPerReuseTimerGroup);
 		TEST_ADD(AutoSkillUtilTest::NormalizesPersistedReuseTimerGroups);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
@@ -70,13 +71,31 @@ private:
 		const auto no_active_skills = GetActiveMask(flying_kick_enabled, kick_usable);
 
 		TEST_ASSERT(no_active_skills == 0);
-		TEST_ASSERT(!ShouldEnforceReuseTimer(no_active_skills, SkillKick, true));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(no_active_skills, SkillKick));
 
 		const auto flying_kick_usable = SetEnabled(kick_usable, SkillFlyingKick, true);
 		const auto flying_kick_active = GetActiveMask(flying_kick_enabled, flying_kick_usable);
 
 		TEST_ASSERT(IsEnabled(flying_kick_active, SkillFlyingKick));
-		TEST_ASSERT(ShouldEnforceReuseTimer(flying_kick_active, SkillKick, true));
+		TEST_ASSERT(ShouldEnforceReuseTimer(flying_kick_active, SkillKick));
+	}
+
+	void ClassifiesReuseTimerGroups() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		TEST_ASSERT(UsesSecondaryReuseTimer(SkillDragonPunch));
+		TEST_ASSERT(UsesSecondaryReuseTimer(SkillTailRake));
+		TEST_ASSERT(UsesSecondaryReuseTimer(SkillEagleStrike));
+		TEST_ASSERT(UsesSecondaryReuseTimer(SkillTigerClaw));
+		TEST_ASSERT(UsesSecondaryReuseTimer(SkillBash));
+
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillFlyingKick));
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillRoundKick));
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillKick));
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillBackstab));
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillFrenzy));
+		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillTaunt));
 	}
 
 	void EnforcesOneSkillPerReuseTimerGroup() {
@@ -84,34 +103,36 @@ private:
 		using namespace EQ::skills::autoskill;
 
 		auto enabled_mask = SetEnabled(0, SkillFlyingKick, true);
-		enabled_mask = SetEnabled(enabled_mask, SkillKick, true);
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillBash, true, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillBash, true);
 
-		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
-		TEST_ASSERT(!IsEnabled(enabled_mask, SkillFlyingKick));
-		TEST_ASSERT(!IsEnabled(enabled_mask, SkillKick));
-
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, true);
-		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
-		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
-
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillRoundKick, true, true);
-		TEST_ASSERT(IsEnabled(enabled_mask, SkillRoundKick));
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true);
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
 		TEST_ASSERT(!IsEnabled(enabled_mask, SkillBash));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillFlyingKick));
 
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, false);
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillRoundKick, true);
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillRoundKick));
-		TEST_ASSERT(!IsEnabled(enabled_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillFlyingKick));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
 
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillTigerClaw, true, true);
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillKick, false, true);
-		TEST_ASSERT(IsEnabled(enabled_mask, SkillKick));
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillBackstab, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillBackstab));
 		TEST_ASSERT(!IsEnabled(enabled_mask, SkillRoundKick));
-		TEST_ASSERT(!IsEnabled(enabled_mask, SkillTigerClaw));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
 
-		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillKick, false, false);
-		TEST_ASSERT(enabled_mask == 0);
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillFrenzy, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillFrenzy));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillBackstab));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillTigerClaw));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillBash, true);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillTigerClaw));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillFrenzy));
+
+		enabled_mask = SetEnabledForReuseTimerGroup(enabled_mask, SkillBash, false);
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillFrenzy));
+		TEST_ASSERT(!IsEnabled(enabled_mask, SkillBash));
 	}
 
 	void NormalizesPersistedReuseTimerGroups() {
@@ -119,44 +140,33 @@ private:
 		using namespace EQ::skills::autoskill;
 
 		auto enabled_mask = SetEnabled(0, SkillFlyingKick, true);
-		enabled_mask = SetEnabled(enabled_mask, SkillTigerClaw, true);
 		enabled_mask = SetEnabled(enabled_mask, SkillKick, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillDragonPunch, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillEagleStrike, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillTigerClaw, true);
+		enabled_mask = SetEnabled(enabled_mask, SkillBash, true);
 
-		const auto rof2_mask = NormalizeReuseTimerGroups(enabled_mask, true);
-		TEST_ASSERT(IsEnabled(rof2_mask, SkillFlyingKick));
-		TEST_ASSERT(IsEnabled(rof2_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(rof2_mask, SkillKick));
+		const auto normalized_mask = NormalizeReuseTimerGroups(enabled_mask);
+		TEST_ASSERT(IsEnabled(normalized_mask, SkillFlyingKick));
+		TEST_ASSERT(!IsEnabled(normalized_mask, SkillKick));
+		TEST_ASSERT(IsEnabled(normalized_mask, SkillDragonPunch));
+		TEST_ASSERT(!IsEnabled(normalized_mask, SkillEagleStrike));
+		TEST_ASSERT(!IsEnabled(normalized_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(normalized_mask, SkillBash));
+		TEST_ASSERT(NormalizeReuseTimerGroups(enabled_mask | (1u << 31)) == normalized_mask);
 
-		const auto legacy_mask = NormalizeReuseTimerGroups(enabled_mask, false);
-		TEST_ASSERT(IsEnabled(legacy_mask, SkillFlyingKick));
-		TEST_ASSERT(!IsEnabled(legacy_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(legacy_mask, SkillKick));
-		TEST_ASSERT(NormalizeReuseTimerGroups(enabled_mask | (1u << 31), false) == legacy_mask);
+		auto preferred_mask = SetEnabled(0, SkillKick, true);
+		preferred_mask = SetEnabled(preferred_mask, SkillBash, true);
+		const auto preferred_normalized_mask = NormalizeReuseTimerGroups(enabled_mask, preferred_mask);
+		TEST_ASSERT(IsEnabled(preferred_normalized_mask, SkillKick));
+		TEST_ASSERT(!IsEnabled(preferred_normalized_mask, SkillFlyingKick));
+		TEST_ASSERT(IsEnabled(preferred_normalized_mask, SkillBash));
+		TEST_ASSERT(!IsEnabled(preferred_normalized_mask, SkillDragonPunch));
 
-		const auto kick_usable_mask = SetEnabled(0, SkillKick, true);
-		const auto usable_first_mask = NormalizeReuseTimerGroups(enabled_mask, kick_usable_mask, true);
-		TEST_ASSERT(IsEnabled(usable_first_mask, SkillKick));
-		TEST_ASSERT(IsEnabled(usable_first_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(usable_first_mask, SkillFlyingKick));
-
-		const auto legacy_usable_first_mask = NormalizeReuseTimerGroups(enabled_mask, kick_usable_mask, false);
-		TEST_ASSERT(IsEnabled(legacy_usable_first_mask, SkillKick));
-		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(legacy_usable_first_mask, SkillFlyingKick));
-
-		const auto kick_and_tiger_claw_usable_mask = SetEnabled(kick_usable_mask, SkillTigerClaw, true);
-		const auto current_session_mask = NormalizeReuseTimerGroups(kick_and_tiger_claw_usable_mask, true);
-		TEST_ASSERT(IsEnabled(current_session_mask, SkillKick));
-		TEST_ASSERT(IsEnabled(current_session_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(current_session_mask, SkillFlyingKick));
-
-		const auto after_level_up_usable_mask = SetEnabled(kick_and_tiger_claw_usable_mask, SkillFlyingKick, true);
-		const auto after_level_up_mask = NormalizeReuseTimerGroups(after_level_up_usable_mask, true);
-		TEST_ASSERT(IsEnabled(after_level_up_mask, SkillFlyingKick));
-		TEST_ASSERT(IsEnabled(after_level_up_mask, SkillTigerClaw));
-		TEST_ASSERT(!IsEnabled(after_level_up_mask, SkillKick));
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillFlyingKick));
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillKick));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillDragonPunch));
+		TEST_ASSERT(IsEnabled(enabled_mask, SkillBash));
 	}
 
 	void KeepsPriorityOrder() {
@@ -314,33 +324,38 @@ private:
 		using namespace EQ::skills::autoskill;
 
 		const auto kick_enabled = SetEnabled(0, SkillKick, true);
-		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillKick, true));
-		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillBash, true));
-		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTigerClaw, true));
-		TEST_ASSERT(!CanUseReuseTimer(kick_enabled, SkillKick, true, false));
-		TEST_ASSERT(!CanUseReuseTimer(kick_enabled, SkillBash, true, false));
-		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillKick, true, true));
-		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTigerClaw, true, false));
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillKick));
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillFlyingKick));
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillBackstab));
+		TEST_ASSERT(ShouldEnforceReuseTimer(kick_enabled, SkillFrenzy));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillBash));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTigerClaw));
+		TEST_ASSERT(!CanUseReuseTimer(kick_enabled, SkillKick, false));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillBash, false));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillKick, true));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTigerClaw, false));
 
 		const auto tiger_claw_enabled = SetEnabled(0, SkillTigerClaw, true);
-		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillTigerClaw, true));
-		TEST_ASSERT(!ShouldEnforceReuseTimer(tiger_claw_enabled, SkillKick, true));
-		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillKick, false));
-		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillTigerClaw, true, false));
-		TEST_ASSERT(CanUseReuseTimer(tiger_claw_enabled, SkillKick, true, false));
-		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillKick, false, false));
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillTigerClaw));
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillDragonPunch));
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillEagleStrike));
+		TEST_ASSERT(ShouldEnforceReuseTimer(tiger_claw_enabled, SkillBash));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(tiger_claw_enabled, SkillKick));
+		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillTigerClaw, false));
+		TEST_ASSERT(!CanUseReuseTimer(tiger_claw_enabled, SkillBash, false));
+		TEST_ASSERT(CanUseReuseTimer(tiger_claw_enabled, SkillKick, false));
 
 		auto both_timers_enabled = SetEnabled(kick_enabled, SkillTigerClaw, true);
-		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillKick, true));
-		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillTigerClaw, true));
+		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillKick));
+		TEST_ASSERT(ShouldEnforceReuseTimer(both_timers_enabled, SkillTigerClaw));
 
-		TEST_ASSERT(!ShouldEnforceReuseTimer(0, SkillKick, true));
-		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTaunt, true));
-		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, false));
-		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTaunt, true, false));
-		TEST_ASSERT(!CanUseReuseTimer(0, SkillKick, true, false, true));
-		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, true, true));
-		TEST_ASSERT(CanUseReuseTimer(0, SkillTaunt, true, false, true));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(0, SkillKick));
+		TEST_ASSERT(!ShouldEnforceReuseTimer(kick_enabled, SkillTaunt));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, false));
+		TEST_ASSERT(CanUseReuseTimer(kick_enabled, SkillTaunt, false));
+		TEST_ASSERT(!CanUseReuseTimer(0, SkillKick, false, true));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillKick, true, true));
+		TEST_ASSERT(CanUseReuseTimer(0, SkillTaunt, false, true));
 	}
 
 	void SelectsAutoSkillProcReuseTimes() {

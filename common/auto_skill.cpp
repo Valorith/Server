@@ -117,27 +117,27 @@ uint32 EQ::skills::autoskill::GetActiveMask(uint32 enabled_mask, uint32 usable_m
 	return SanitizeMask(enabled_mask) & SanitizeMask(usable_mask);
 }
 
-bool EQ::skills::autoskill::UsesSecondaryReuseTimer(
-	EQ::skills::SkillType skill,
-	bool tiger_claw_uses_secondary_timer
-)
+bool EQ::skills::autoskill::UsesSecondaryReuseTimer(EQ::skills::SkillType skill)
 {
-	// RoF2+ clients place Tiger Claw on the secondary combat-ability lane.
-	return tiger_claw_uses_secondary_timer && skill == EQ::skills::SkillTigerClaw;
+	switch (skill) {
+		case EQ::skills::SkillDragonPunch: // Tail Rake uses the same skill ID
+		case EQ::skills::SkillEagleStrike:
+		case EQ::skills::SkillTigerClaw:
+		case EQ::skills::SkillBash: // Slam uses Bash
+			return true;
+		default:
+			return false;
+	}
+}
+
+uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(uint32 enabled_mask)
+{
+	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask);
 }
 
 uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 	uint32 enabled_mask,
-	bool tiger_claw_uses_secondary_timer
-)
-{
-	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask, tiger_claw_uses_secondary_timer);
-}
-
-uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
-	uint32 enabled_mask,
-	uint32 preferred_mask,
-	bool tiger_claw_uses_secondary_timer
+	uint32 preferred_mask
 )
 {
 	enabled_mask = SanitizeMask(enabled_mask);
@@ -153,10 +153,7 @@ uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 				continue;
 			}
 
-			const bool uses_secondary_timer = UsesSecondaryReuseTimer(
-				definition.skill,
-				tiger_claw_uses_secondary_timer
-			);
+			const bool uses_secondary_timer = UsesSecondaryReuseTimer(definition.skill);
 
 			if (uses_secondary_timer) {
 				if (secondary_timer_claimed) {
@@ -185,7 +182,6 @@ uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 uint32 EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 	uint32 enabled_mask,
 	EQ::skills::SkillType skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool enabled
 )
 {
@@ -194,11 +190,11 @@ uint32 EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 		return SetEnabled(enabled_mask, skill, enabled);
 	}
 
-	const bool uses_secondary_timer = UsesSecondaryReuseTimer(skill, tiger_claw_uses_secondary_timer);
+	const bool uses_secondary_timer = UsesSecondaryReuseTimer(skill);
 	uint32 reuse_timer_group_mask = 0;
 
 	for (const auto &definition : GetSkillDefinitions()) {
-		if (UsesSecondaryReuseTimer(definition.skill, tiger_claw_uses_secondary_timer) == uses_secondary_timer) {
+		if (UsesSecondaryReuseTimer(definition.skill) == uses_secondary_timer) {
 			reuse_timer_group_mask |= definition.mask;
 		}
 	}
@@ -240,23 +236,19 @@ int EQ::skills::autoskill::ClampPersistentReuseTime(int reuse_time)
 
 bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
 	uint32 enabled_mask,
-	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer
+	EQ::skills::SkillType requested_skill
 )
 {
 	if (!IsSupported(requested_skill)) {
 		return false;
 	}
 
-	const bool requested_skill_uses_secondary_timer = UsesSecondaryReuseTimer(
-		requested_skill,
-		tiger_claw_uses_secondary_timer
-	);
+	const bool requested_skill_uses_secondary_timer = UsesSecondaryReuseTimer(requested_skill);
 
 	for (const auto &definition : GetSkillDefinitions()) {
 		if (
 			(enabled_mask & definition.mask) != 0 &&
-			UsesSecondaryReuseTimer(definition.skill, tiger_claw_uses_secondary_timer) ==
+			UsesSecondaryReuseTimer(definition.skill) ==
 				requested_skill_uses_secondary_timer
 		) {
 			return true;
@@ -269,14 +261,13 @@ bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
 bool EQ::skills::autoskill::CanUseReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool reuse_timer_ready,
 	bool auto_skill_reuse_in_flight
 )
 {
 	return (
 		!(
-			ShouldEnforceReuseTimer(enabled_mask, requested_skill, tiger_claw_uses_secondary_timer) ||
+			ShouldEnforceReuseTimer(enabled_mask, requested_skill) ||
 			(auto_skill_reuse_in_flight && IsSupported(requested_skill))
 		) ||
 		reuse_timer_ready

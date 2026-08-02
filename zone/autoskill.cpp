@@ -82,12 +82,9 @@ bool CanAutoSkillBackstab(const Client *client, Mob *target)
 	);
 }
 
-pTimerType GetAutoSkillTimer(const Client *client, EQ::skills::SkillType skill)
+pTimerType GetAutoSkillTimer(EQ::skills::SkillType skill)
 {
-	if (
-		client->ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
-		skill == EQ::skills::SkillTigerClaw
-	) {
+	if (EQ::skills::autoskill::UsesSecondaryReuseTimer(skill)) {
 		return pTimerCombatAbility2;
 	}
 
@@ -133,7 +130,6 @@ bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType r
 	return EQ::skills::autoskill::CanUseReuseTimer(
 		GetActiveAutoSkillEnabledMask(),
 		requested_skill,
-		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
 		reuse_timer_ready,
 		started_by_auto_skill
 	);
@@ -193,10 +189,7 @@ uint32 Client::GetActiveAutoSkillEnabledMask() const
 	}
 
 	// Keep the persisted preference mask intact and select the active lane winners from current usability.
-	return EQ::skills::autoskill::NormalizeReuseTimerGroups(
-		usable_mask,
-		ClientVersion() >= EQ::versions::ClientVersion::RoF2
-	);
+	return EQ::skills::autoskill::NormalizeReuseTimerGroups(usable_mask);
 }
 
 bool Client::IsAutoSkillUsable(EQ::skills::SkillType skill_id) const
@@ -237,7 +230,6 @@ void Client::SetAutoSkillEnabled(EQ::skills::SkillType skill_id, bool enabled)
 	auto_skill_enabled_mask = EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 		auto_skill_enabled_mask,
 		skill_id,
-		ClientVersion() >= EQ::versions::ClientVersion::RoF2,
 		enabled
 	);
 	SaveAutoSkillSettings();
@@ -328,12 +320,11 @@ void Client::ProcessAutoSkills()
 			return;
 		}
 
-		const auto timer = GetAutoSkillTimer(this, skill);
+		const auto timer = GetAutoSkillTimer(skill);
 		if (
 			!EQ::skills::autoskill::CanUseReuseTimer(
 				active_auto_skill_enabled_mask,
 				skill,
-				ClientVersion() >= EQ::versions::ClientVersion::RoF2,
 				IsAutoSkillReuseTimerReady(timer)
 			) ||
 			!p_timers.Expired(&database, timer, false)

@@ -383,9 +383,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	const auto skill = static_cast<EQ::skills::SkillType>(ca_atk->m_skill);
 	pTimerType timer = pTimerCombatAbility;
-	// RoF2+ Tiger Claw is unlinked from other monk skills, if they ever do that for other classes there will need
-	// to be more checks here
-	if (ClientVersion() >= EQ::versions::ClientVersion::RoF2 && skill == EQ::skills::SkillTigerClaw) {
+	if (EQ::skills::autoskill::UsesSecondaryReuseTimer(skill)) {
 		timer = pTimerCombatAbility2;
 	}
 
