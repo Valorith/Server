@@ -16,6 +16,7 @@ public:
 		TEST_ADD(AutoSkillUtilTest::HandlesEnabledMask);
 		TEST_ADD(AutoSkillUtilTest::FiltersUnavailableEnabledSkills);
 		TEST_ADD(AutoSkillUtilTest::ClassifiesReuseTimerGroups);
+		TEST_ADD(AutoSkillUtilTest::KeepsManualTimerRoutingClientCompatible);
 		TEST_ADD(AutoSkillUtilTest::EnforcesOneSkillPerReuseTimerGroup);
 		TEST_ADD(AutoSkillUtilTest::NormalizesPersistedReuseTimerGroups);
 		TEST_ADD(AutoSkillUtilTest::KeepsPriorityOrder);
@@ -96,6 +97,23 @@ private:
 		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillBackstab));
 		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillFrenzy));
 		TEST_ASSERT(!UsesSecondaryReuseTimer(SkillTaunt));
+	}
+
+	void KeepsManualTimerRoutingClientCompatible() {
+		using namespace EQ::skills;
+		using namespace EQ::skills::autoskill;
+
+		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillDragonPunch, true, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillFlyingKick, true, true));
+		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillBash, true, false));
+
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillDragonPunch, false, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillTailRake, false, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillEagleStrike, false, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillFlyingKick, false, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillBash, false, true));
+		TEST_ASSERT(UsesSecondaryCombatAbilityTimer(SkillTigerClaw, false, true));
+		TEST_ASSERT(!UsesSecondaryCombatAbilityTimer(SkillTigerClaw, false, false));
 	}
 
 	void EnforcesOneSkillPerReuseTimerGroup() {

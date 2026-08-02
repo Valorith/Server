@@ -383,7 +383,13 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	const auto skill = static_cast<EQ::skills::SkillType>(ca_atk->m_skill);
 	pTimerType timer = pTimerCombatAbility;
-	if (EQ::skills::autoskill::UsesSecondaryReuseTimer(skill)) {
+	if (
+		EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
+			skill,
+			auto_skill_attack_in_progress,
+			ClientVersion() >= EQ::versions::ClientVersion::RoF2
+		)
+	) {
 		timer = pTimerCombatAbility2;
 	}
 
@@ -444,7 +450,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		return;
 	}
 
-	// Manual packets and scheduler-originated uses must observe the same precise cooldown lane.
+	// Observe the precise timer selected for this manual or scheduler-originated activation.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
 		!CanUseAutoSkillReuseTimer(timer, skill)
@@ -2120,6 +2126,10 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 		return;
 	}
 
+	if(!IsRiposte && (!p_timers.Expired(&database, pTimerCombatAbility, false))) {
+		return;
+	}
+
 	int ReuseTime = 0;
 	float HasteMod = GetHaste() * 0.01f;
 
@@ -2177,16 +2187,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 	if(skill_to_use == -1)
 		return;
 
-	const auto skill_type = static_cast<EQ::skills::SkillType>(skill_to_use);
-	const auto timer = EQ::skills::autoskill::UsesSecondaryReuseTimer(skill_type) ?
-		pTimerCombatAbility2 :
-		pTimerCombatAbility;
-
-	if (!IsRiposte && !p_timers.Expired(&database, timer, false)) {
-		return;
-	}
-
-	int64 dmg = GetBaseSkillDamage(skill_type, GetTarget());
+	int64 dmg = GetBaseSkillDamage(static_cast<EQ::skills::SkillType>(skill_to_use), GetTarget());
 
 	if (skill_to_use == EQ::skills::SkillBash) {
 		if (ca_target!=this) {
@@ -2200,7 +2201,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 			DoSpecialAttackDamage(ca_target, EQ::skills::SkillBash, dmg, 0, -1, ReuseTime);
 
 			if(ReuseTime > 0 && !IsRiposte) {
-				p_timers.Start(timer, ReuseTime);
+				p_timers.Start(pTimerCombatAbility, ReuseTime);
 			}
 		}
 		return;
@@ -2229,7 +2230,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 		}
 
 		if(ReuseTime > 0 && !IsRiposte) {
-			p_timers.Start(timer, ReuseTime);
+			p_timers.Start(pTimerCombatAbility, ReuseTime);
 		}
 		return;
 	}
@@ -2294,7 +2295,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 
 	ReuseTime = ReuseTime / HasteMod;
 	if(ReuseTime > 0 && !IsRiposte){
-		p_timers.Start(timer, ReuseTime);
+		p_timers.Start(pTimerCombatAbility, ReuseTime);
 	}
 }
 

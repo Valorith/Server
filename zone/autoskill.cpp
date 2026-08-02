@@ -118,6 +118,10 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 
 bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill)
 {
+	if (!EQ::skills::autoskill::IsSupported(requested_skill)) {
+		return true;
+	}
+
 	const bool reuse_timer_ready = IsAutoSkillReuseTimerReady(timer);
 	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
 		auto_skill_combat_ability_2_timer_started_by_auto_skill :
@@ -127,9 +131,14 @@ bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType r
 		started_by_auto_skill = false;
 	}
 
+	// The selected timer is authoritative because manual client grouping can differ from autoskill grouping.
+	const auto timer_group_skill = timer == pTimerCombatAbility2 ?
+		EQ::skills::SkillTigerClaw :
+		EQ::skills::SkillKick;
+
 	return EQ::skills::autoskill::CanUseReuseTimer(
 		GetActiveAutoSkillEnabledMask(),
-		requested_skill,
+		timer_group_skill,
 		reuse_timer_ready,
 		started_by_auto_skill
 	);

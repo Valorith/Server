@@ -5811,10 +5811,11 @@ void Client::Handle_OP_Disarm(const EQApplicationPacket *app) {
 
 	Disarm_Struct *disarm = (Disarm_Struct *)app->pBuffer;
 
-	// Disarm shares the secondary combat-ability lane with Punch/Bash abilities.
+	// RoF2+ Disarm shares the secondary combat-ability lane with Tiger Claw.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
-		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillBash)
+		ClientVersion() >= EQ::versions::ClientVersion::RoF2 &&
+		!CanUseAutoSkillReuseTimer(pTimerCombatAbility2, EQ::skills::SkillTigerClaw)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;

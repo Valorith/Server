@@ -130,6 +130,20 @@ bool EQ::skills::autoskill::UsesSecondaryReuseTimer(EQ::skills::SkillType skill)
 	}
 }
 
+bool EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
+	EQ::skills::SkillType skill,
+	bool auto_skill_activation,
+	bool tiger_claw_uses_secondary_timer
+)
+{
+	// Manual packets must retain the client's timer layout; only autoskill activations use semantic lanes.
+	if (auto_skill_activation) {
+		return UsesSecondaryReuseTimer(skill);
+	}
+
+	return tiger_claw_uses_secondary_timer && skill == EQ::skills::SkillTigerClaw;
+}
+
 uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(uint32 enabled_mask)
 {
 	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask);
