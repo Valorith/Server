@@ -443,6 +443,12 @@ void Client::ProcessAutoSkills()
 		OPCombatAbility(&combat_ability);
 		auto_skill_attack_in_progress = false;
 
+		// DoAnim rate-limits combat animation packets. Yield after a successful activation so another
+		// ready cooldown lane runs on the next scheduler tick instead of losing its animation in this one.
+		if (!IsAutoSkillReuseTimerReady(timer)) {
+			return;
+		}
+
 		if (GetTarget() != target || target->GetHP() <= -10) {
 			return;
 		}
