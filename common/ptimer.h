@@ -41,7 +41,7 @@ enum : int {	//values for pTimerType
 	pTimerDisciplineReuseStart = 14,
 	pTimerDisciplineReuseEnd = 24, // client actually has 20 ids, but still no disc go that high even on live
 	pTimerCombatAbility = 25,
-	pTimerCombatAbility2 = 26, // RoF2+ Tiger Claw is unlinked from other monk skills, generic in case other classes ever need it
+	pTimerCombatAbility2 = 26, // Disarm and RoF2+ Tiger Claw; also used for the autoskill Punch/Bash cooldown lane
 	pTimerBeggingPickPocket = 27,
 	pTimerLinkedSpellReuseStart = 28,
 	pTimerLinkedSpellReuseEnd = 48,
@@ -57,6 +57,17 @@ enum : int {	//values for pTimerType
 	pTimerPeqzoneReuse = 900,
 	pTimerMercReuse = 901,
 	pTimerMercSuspend = 902,
+	// Persist source-specific reuse bridges for skills whose manual and autoskill lanes differ.
+	pTimerAutoSkillManualCrossPathStart = 903,
+	pTimerAutoSkillManualCrossPathEnd = 906,
+	pTimerAutoSkillSchedulerCrossPathStart = 907,
+	pTimerAutoSkillSchedulerCrossPathEnd = 910,
+	// Preserve scheduler lane deadlines across zoning without changing manual combat-ability timers.
+	pTimerAutoSkillSchedulerGeneralReuse = 911,
+	pTimerAutoSkillSchedulerPunchBashReuse = 912,
+	// Preserve manual-origin deadlines only for a later scheduler activation; manual pTimer routing is unchanged.
+	pTimerAutoSkillManualGeneralReuse = 913,
+	pTimerAutoSkillManualPunchBashReuse = 914,
 	pTimerAAStart = 1000,		//AA re-use timers
 	pTimerAAEnd = 2999,
 	pTimerAAEffectStart = 3001,	//AA effect timers

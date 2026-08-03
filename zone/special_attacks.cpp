@@ -383,9 +383,13 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	const auto skill = static_cast<EQ::skills::SkillType>(ca_atk->m_skill);
 	pTimerType timer = pTimerCombatAbility;
-	// RoF2+ Tiger Claw is unlinked from other monk skills, if they ever do that for other classes there will need
-	// to be more checks here
-	if (ClientVersion() >= EQ::versions::ClientVersion::RoF2 && skill == EQ::skills::SkillTigerClaw) {
+	if (
+		EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
+			skill,
+			auto_skill_attack_in_progress,
+			ClientVersion() >= EQ::versions::ClientVersion::RoF2
+		)
+	) {
 		timer = pTimerCombatAbility2;
 	}
 
@@ -446,10 +450,13 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		return;
 	}
 
-	// Manual packets and scheduler-originated uses must observe the same precise cooldown lane.
+	// Observe the precise timer selected for this manual or scheduler-originated activation.
 	if (
 		RuleB(Combat, EnableAutoSkill) &&
-		!CanUseAutoSkillReuseTimer(timer, skill)
+		(
+			!CanUseAutoSkillReuseTimer(timer, skill) ||
+			!CanUseCrossPathAutoSkillReuseTimer(skill, auto_skill_attack_in_progress)
+		)
 	) {
 		Message(Chat::Red, "Ability recovery time not yet met.");
 		return;

@@ -117,27 +117,41 @@ uint32 EQ::skills::autoskill::GetActiveMask(uint32 enabled_mask, uint32 usable_m
 	return SanitizeMask(enabled_mask) & SanitizeMask(usable_mask);
 }
 
-bool EQ::skills::autoskill::UsesSecondaryReuseTimer(
+bool EQ::skills::autoskill::UsesSecondaryReuseTimer(EQ::skills::SkillType skill)
+{
+	switch (skill) {
+		case EQ::skills::SkillDragonPunch: // Tail Rake uses the same skill ID
+		case EQ::skills::SkillEagleStrike:
+		case EQ::skills::SkillTigerClaw:
+		case EQ::skills::SkillBash: // Slam uses Bash
+			return true;
+		default:
+			return false;
+	}
+}
+
+bool EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
 	EQ::skills::SkillType skill,
+	bool auto_skill_activation,
 	bool tiger_claw_uses_secondary_timer
 )
 {
-	// RoF2+ clients place Tiger Claw on the secondary combat-ability lane.
+	// Manual packets must retain the client's timer layout; only autoskill activations use semantic lanes.
+	if (auto_skill_activation) {
+		return UsesSecondaryReuseTimer(skill);
+	}
+
 	return tiger_claw_uses_secondary_timer && skill == EQ::skills::SkillTigerClaw;
 }
 
-uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
-	uint32 enabled_mask,
-	bool tiger_claw_uses_secondary_timer
-)
+uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(uint32 enabled_mask)
 {
-	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask, tiger_claw_uses_secondary_timer);
+	return NormalizeReuseTimerGroups(enabled_mask, enabled_mask);
 }
 
 uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 	uint32 enabled_mask,
-	uint32 preferred_mask,
-	bool tiger_claw_uses_secondary_timer
+	uint32 preferred_mask
 )
 {
 	enabled_mask = SanitizeMask(enabled_mask);
@@ -153,10 +167,7 @@ uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 				continue;
 			}
 
-			const bool uses_secondary_timer = UsesSecondaryReuseTimer(
-				definition.skill,
-				tiger_claw_uses_secondary_timer
-			);
+			const bool uses_secondary_timer = UsesSecondaryReuseTimer(definition.skill);
 
 			if (uses_secondary_timer) {
 				if (secondary_timer_claimed) {
@@ -185,7 +196,6 @@ uint32 EQ::skills::autoskill::NormalizeReuseTimerGroups(
 uint32 EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 	uint32 enabled_mask,
 	EQ::skills::SkillType skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool enabled
 )
 {
@@ -194,11 +204,11 @@ uint32 EQ::skills::autoskill::SetEnabledForReuseTimerGroup(
 		return SetEnabled(enabled_mask, skill, enabled);
 	}
 
-	const bool uses_secondary_timer = UsesSecondaryReuseTimer(skill, tiger_claw_uses_secondary_timer);
+	const bool uses_secondary_timer = UsesSecondaryReuseTimer(skill);
 	uint32 reuse_timer_group_mask = 0;
 
 	for (const auto &definition : GetSkillDefinitions()) {
-		if (UsesSecondaryReuseTimer(definition.skill, tiger_claw_uses_secondary_timer) == uses_secondary_timer) {
+		if (UsesSecondaryReuseTimer(definition.skill) == uses_secondary_timer) {
 			reuse_timer_group_mask |= definition.mask;
 		}
 	}
@@ -238,25 +248,34 @@ int EQ::skills::autoskill::ClampPersistentReuseTime(int reuse_time)
 	return std::max(reuse_time, 0);
 }
 
+uint32 EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(uint32 reuse_time_milliseconds)
+{
+	if (reuse_time_milliseconds == 0) {
+		return 0;
+	}
+
+	// PersistentTimer records its start at whole-second precision. Add one full second after rounding up
+	// so zoning cannot make the persisted bridge expire before the millisecond deadline.
+	return static_cast<uint32>(
+		(static_cast<uint64>(reuse_time_milliseconds) + 999) / 1000 + 1
+	);
+}
+
 bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
 	uint32 enabled_mask,
-	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer
+	EQ::skills::SkillType requested_skill
 )
 {
 	if (!IsSupported(requested_skill)) {
 		return false;
 	}
 
-	const bool requested_skill_uses_secondary_timer = UsesSecondaryReuseTimer(
-		requested_skill,
-		tiger_claw_uses_secondary_timer
-	);
+	const bool requested_skill_uses_secondary_timer = UsesSecondaryReuseTimer(requested_skill);
 
 	for (const auto &definition : GetSkillDefinitions()) {
 		if (
 			(enabled_mask & definition.mask) != 0 &&
-			UsesSecondaryReuseTimer(definition.skill, tiger_claw_uses_secondary_timer) ==
+			UsesSecondaryReuseTimer(definition.skill) ==
 				requested_skill_uses_secondary_timer
 		) {
 			return true;
@@ -269,18 +288,39 @@ bool EQ::skills::autoskill::ShouldEnforceReuseTimer(
 bool EQ::skills::autoskill::CanUseReuseTimer(
 	uint32 enabled_mask,
 	EQ::skills::SkillType requested_skill,
-	bool tiger_claw_uses_secondary_timer,
 	bool reuse_timer_ready,
 	bool auto_skill_reuse_in_flight
 )
 {
 	return (
 		!(
-			ShouldEnforceReuseTimer(enabled_mask, requested_skill, tiger_claw_uses_secondary_timer) ||
+			ShouldEnforceReuseTimer(enabled_mask, requested_skill) ||
 			(auto_skill_reuse_in_flight && IsSupported(requested_skill))
 		) ||
 		reuse_timer_ready
 	);
+}
+
+bool EQ::skills::autoskill::CanUseCrossPathReuseTimer(
+	bool reuse_timer_ready,
+	bool reuse_timer_started_by_auto_skill,
+	bool auto_skill_activation
+)
+{
+	// Existing lane timers remain authoritative within one activation path. This guard only prevents
+	// switching paths from reusing the same skill before its precise deadline.
+	return reuse_timer_ready || reuse_timer_started_by_auto_skill == auto_skill_activation;
+}
+
+bool EQ::skills::autoskill::CanUsePersistentLaneReuseTimer(
+	bool manual_origin_timer_ready,
+	bool scheduler_origin_timer_ready,
+	bool auto_skill_activation
+)
+{
+	// Manual activations ignore their own persisted scheduler bridge. Scheduler activations must honor
+	// either origin so switching paths cannot bypass reuse after the precise in-zone timer is lost.
+	return scheduler_origin_timer_ready && (!auto_skill_activation || manual_origin_timer_ready);
 }
 
 bool EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(
