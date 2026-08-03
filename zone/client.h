@@ -2072,6 +2072,7 @@ private:
 	void OPGMSummon(const EQApplicationPacket *app);
 	void OPCombatAbility(const CombatAbility_Struct *ca_atk);
 	bool IsAutoSkillReuseTimerReady(pTimerType timer);
+	bool IsAutoSkillSchedulerReuseTimerReady(pTimerType timer);
 	bool CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill);
 	bool CanUseCrossPathAutoSkillReuseTimer(EQ::skills::SkillType skill, bool auto_skill_activation);
 	void StartAutoSkillReuseTimer(

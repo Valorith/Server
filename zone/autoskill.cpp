@@ -91,6 +91,13 @@ pTimerType GetAutoSkillTimer(EQ::skills::SkillType skill)
 	return pTimerCombatAbility;
 }
 
+pTimerType GetAutoSkillSchedulerPersistentTimer(pTimerType timer)
+{
+	return timer == pTimerCombatAbility2 ?
+		pTimerAutoSkillSchedulerPunchBashReuse :
+		pTimerAutoSkillSchedulerGeneralReuse;
+}
+
 int GetCrossPathPersistentTimerOffset(EQ::skills::SkillType skill)
 {
 	switch (skill) {
@@ -143,6 +150,20 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 
 	// Persistent combat ability timers use whole seconds. This timer preserves the actual millisecond reuse deadline.
 	return !reuse_timer.Enabled() || reuse_timer.Check(false);
+}
+
+bool Client::IsAutoSkillSchedulerReuseTimerReady(pTimerType timer)
+{
+	auto &reuse_timer = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer :
+		auto_skill_combat_ability_timer;
+
+	// The millisecond timer is authoritative in-zone. The conservative pTimer is only a zoning fallback.
+	if (reuse_timer.Enabled()) {
+		return reuse_timer.Check(false);
+	}
+
+	return p_timers.Expired(&database, GetAutoSkillSchedulerPersistentTimer(timer), false);
 }
 
 bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill)
@@ -241,6 +262,12 @@ void Client::StartAutoSkillReuseTimer(
 
 	started_by_auto_skill = auto_skill_attack_in_progress;
 	reuse_timer.Start(reuse_time);
+
+	if (auto_skill_attack_in_progress) {
+		const auto persistent_reuse_time =
+			EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(reuse_time);
+		p_timers.Start(GetAutoSkillSchedulerPersistentTimer(timer), persistent_reuse_time);
+	}
 
 	const bool manual_uses_secondary_timer = EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
 		skill,
@@ -342,7 +369,20 @@ void Client::LoadAutoSkillSettings()
 	}
 
 	const auto saved_mask = Strings::ToUnsignedInt(auto_skill_bucket);
-	auto_skill_enabled_mask = EQ::skills::autoskill::NormalizeReuseTimerGroups(saved_mask);
+	uint32 usable_saved_mask = 0;
+	for (const auto &definition : EQ::skills::autoskill::GetSkillDefinitions()) {
+		if (
+			EQ::skills::autoskill::IsEnabled(saved_mask, definition.skill) &&
+			IsAutoSkillUsable(definition.skill)
+		) {
+			usable_saved_mask |= definition.mask;
+		}
+	}
+
+	auto_skill_enabled_mask = EQ::skills::autoskill::NormalizeReuseTimerGroups(
+		saved_mask,
+		usable_saved_mask
+	);
 	if (auto_skill_enabled_mask != saved_mask) {
 		SaveAutoSkillSettings();
 	}
@@ -426,7 +466,7 @@ void Client::ProcessAutoSkills()
 			!EQ::skills::autoskill::CanUseReuseTimer(
 				active_auto_skill_enabled_mask,
 				skill,
-				IsAutoSkillReuseTimerReady(timer)
+				IsAutoSkillSchedulerReuseTimerReady(timer)
 			) ||
 			!CanUseCrossPathAutoSkillReuseTimer(skill, true) ||
 			!p_timers.Expired(&database, timer, false)
@@ -445,7 +485,7 @@ void Client::ProcessAutoSkills()
 
 		// DoAnim rate-limits combat animation packets. Yield after a successful activation so another
 		// ready cooldown lane runs on the next scheduler tick instead of losing its animation in this one.
-		if (!IsAutoSkillReuseTimerReady(timer)) {
+		if (!IsAutoSkillSchedulerReuseTimerReady(timer)) {
 			return;
 		}
 

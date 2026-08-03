@@ -62,6 +62,9 @@ enum : int {	//values for pTimerType
 	pTimerAutoSkillManualCrossPathEnd = 906,
 	pTimerAutoSkillSchedulerCrossPathStart = 907,
 	pTimerAutoSkillSchedulerCrossPathEnd = 910,
+	// Preserve scheduler lane deadlines across zoning without changing manual combat-ability timers.
+	pTimerAutoSkillSchedulerGeneralReuse = 911,
+	pTimerAutoSkillSchedulerPunchBashReuse = 912,
 	pTimerAAStart = 1000,		//AA re-use timers
 	pTimerAAEnd = 2999,
 	pTimerAAEffectStart = 3001,	//AA effect timers

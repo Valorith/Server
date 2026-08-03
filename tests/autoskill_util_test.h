@@ -184,6 +184,16 @@ private:
 		TEST_ASSERT(IsEnabled(preferred_normalized_mask, SkillBash));
 		TEST_ASSERT(!IsEnabled(preferred_normalized_mask, SkillDragonPunch));
 
+		auto migrated_punch_mask = SetEnabled(0, SkillDragonPunch, true);
+		migrated_punch_mask = SetEnabled(migrated_punch_mask, SkillTigerClaw, true);
+		const auto usable_migrated_punch_mask = SetEnabled(0, SkillTigerClaw, true);
+		const auto migrated_punch_normalized_mask = NormalizeReuseTimerGroups(
+			migrated_punch_mask,
+			usable_migrated_punch_mask
+		);
+		TEST_ASSERT(IsEnabled(migrated_punch_normalized_mask, SkillTigerClaw));
+		TEST_ASSERT(!IsEnabled(migrated_punch_normalized_mask, SkillDragonPunch));
+
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillFlyingKick));
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillKick));
 		TEST_ASSERT(IsEnabled(enabled_mask, SkillDragonPunch));
