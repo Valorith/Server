@@ -65,6 +65,9 @@ enum : int {	//values for pTimerType
 	// Preserve scheduler lane deadlines across zoning without changing manual combat-ability timers.
 	pTimerAutoSkillSchedulerGeneralReuse = 911,
 	pTimerAutoSkillSchedulerPunchBashReuse = 912,
+	// Preserve manual-origin deadlines only for a later scheduler activation; manual pTimer routing is unchanged.
+	pTimerAutoSkillManualGeneralReuse = 913,
+	pTimerAutoSkillManualPunchBashReuse = 914,
 	pTimerAAStart = 1000,		//AA re-use timers
 	pTimerAAEnd = 2999,
 	pTimerAAEffectStart = 3001,	//AA effect timers

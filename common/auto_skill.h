@@ -62,6 +62,11 @@ bool CanUseCrossPathReuseTimer(
 	bool reuse_timer_started_by_auto_skill,
 	bool auto_skill_activation
 );
+bool CanUsePersistentLaneReuseTimer(
+	bool manual_origin_timer_ready,
+	bool scheduler_origin_timer_ready,
+	bool auto_skill_activation
+);
 bool ShouldUseAutoSkillProcReuseTime(bool auto_skill_attack_in_progress, bool skill_enabled);
 std::string NormalizeSkillName(const std::string &skill_name);
 

@@ -411,6 +411,18 @@ private:
 		TEST_ASSERT(CanUseCrossPathReuseTimer(false, true, true));
 		TEST_ASSERT(!CanUseCrossPathReuseTimer(false, false, true));
 		TEST_ASSERT(!CanUseCrossPathReuseTimer(false, true, false));
+
+		// Manual activations ignore a manual-origin fallback, but must honor a scheduler-origin fallback.
+		TEST_ASSERT(CanUsePersistentLaneReuseTimer(true, true, false));
+		TEST_ASSERT(CanUsePersistentLaneReuseTimer(false, true, false));
+		TEST_ASSERT(!CanUsePersistentLaneReuseTimer(true, false, false));
+		TEST_ASSERT(!CanUsePersistentLaneReuseTimer(false, false, false));
+
+		// Scheduler activations must honor persisted lane reuse from either activation source.
+		TEST_ASSERT(CanUsePersistentLaneReuseTimer(true, true, true));
+		TEST_ASSERT(!CanUsePersistentLaneReuseTimer(false, true, true));
+		TEST_ASSERT(!CanUsePersistentLaneReuseTimer(true, false, true));
+		TEST_ASSERT(!CanUsePersistentLaneReuseTimer(false, false, true));
 	}
 
 	void SelectsAutoSkillProcReuseTimes() {

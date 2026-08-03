@@ -312,6 +312,17 @@ bool EQ::skills::autoskill::CanUseCrossPathReuseTimer(
 	return reuse_timer_ready || reuse_timer_started_by_auto_skill == auto_skill_activation;
 }
 
+bool EQ::skills::autoskill::CanUsePersistentLaneReuseTimer(
+	bool manual_origin_timer_ready,
+	bool scheduler_origin_timer_ready,
+	bool auto_skill_activation
+)
+{
+	// Manual activations ignore their own persisted scheduler bridge. Scheduler activations must honor
+	// either origin so switching paths cannot bypass reuse after the precise in-zone timer is lost.
+	return scheduler_origin_timer_ready && (!auto_skill_activation || manual_origin_timer_ready);
+}
+
 bool EQ::skills::autoskill::ShouldUseAutoSkillProcReuseTime(
 	bool auto_skill_attack_in_progress,
 	bool skill_enabled

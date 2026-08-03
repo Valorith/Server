@@ -91,11 +91,17 @@ pTimerType GetAutoSkillTimer(EQ::skills::SkillType skill)
 	return pTimerCombatAbility;
 }
 
-pTimerType GetAutoSkillSchedulerPersistentTimer(pTimerType timer)
+pTimerType GetAutoSkillPersistentTimer(pTimerType timer, bool auto_skill_activation)
 {
+	if (auto_skill_activation) {
+		return timer == pTimerCombatAbility2 ?
+			pTimerAutoSkillSchedulerPunchBashReuse :
+			pTimerAutoSkillSchedulerGeneralReuse;
+	}
+
 	return timer == pTimerCombatAbility2 ?
-		pTimerAutoSkillSchedulerPunchBashReuse :
-		pTimerAutoSkillSchedulerGeneralReuse;
+		pTimerAutoSkillManualPunchBashReuse :
+		pTimerAutoSkillManualGeneralReuse;
 }
 
 int GetCrossPathPersistentTimerOffset(EQ::skills::SkillType skill)
@@ -148,8 +154,12 @@ bool Client::IsAutoSkillReuseTimerReady(pTimerType timer)
 		auto_skill_combat_ability_2_timer :
 		auto_skill_combat_ability_timer;
 
-	// Persistent combat ability timers use whole seconds. This timer preserves the actual millisecond reuse deadline.
-	return !reuse_timer.Enabled() || reuse_timer.Check(false);
+	// The millisecond timer is authoritative in-zone. A scheduler-origin pTimer preserves the manual guard on zone.
+	if (reuse_timer.Enabled()) {
+		return reuse_timer.Check(false);
+	}
+
+	return p_timers.Expired(&database, GetAutoSkillPersistentTimer(timer, true), false);
 }
 
 bool Client::IsAutoSkillSchedulerReuseTimerReady(pTimerType timer)
@@ -163,7 +173,11 @@ bool Client::IsAutoSkillSchedulerReuseTimerReady(pTimerType timer)
 		return reuse_timer.Check(false);
 	}
 
-	return p_timers.Expired(&database, GetAutoSkillSchedulerPersistentTimer(timer), false);
+	return EQ::skills::autoskill::CanUsePersistentLaneReuseTimer(
+		p_timers.Expired(&database, GetAutoSkillPersistentTimer(timer, false), false),
+		p_timers.Expired(&database, GetAutoSkillPersistentTimer(timer, true), false),
+		true
+	);
 }
 
 bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType requested_skill)
@@ -172,6 +186,10 @@ bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType r
 		return true;
 	}
 
+	auto &reuse_timer = timer == pTimerCombatAbility2 ?
+		auto_skill_combat_ability_2_timer :
+		auto_skill_combat_ability_timer;
+	const bool precise_timer_enabled = reuse_timer.Enabled();
 	const bool reuse_timer_ready = IsAutoSkillReuseTimerReady(timer);
 	auto &started_by_auto_skill = timer == pTimerCombatAbility2 ?
 		auto_skill_combat_ability_2_timer_started_by_auto_skill :
@@ -179,6 +197,9 @@ bool Client::CanUseAutoSkillReuseTimer(pTimerType timer, EQ::skills::SkillType r
 
 	if (reuse_timer_ready) {
 		started_by_auto_skill = false;
+	} else if (!precise_timer_enabled) {
+		// Only scheduler-origin lane timers are consulted by manual activations after zoning.
+		started_by_auto_skill = true;
 	}
 
 	// The selected timer is authoritative because manual client grouping can differ from autoskill grouping.
@@ -263,11 +284,12 @@ void Client::StartAutoSkillReuseTimer(
 	started_by_auto_skill = auto_skill_attack_in_progress;
 	reuse_timer.Start(reuse_time);
 
-	if (auto_skill_attack_in_progress) {
-		const auto persistent_reuse_time =
-			EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(reuse_time);
-		p_timers.Start(GetAutoSkillSchedulerPersistentTimer(timer), persistent_reuse_time);
-	}
+	const auto persistent_reuse_time =
+		EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(reuse_time);
+	p_timers.Start(
+		GetAutoSkillPersistentTimer(timer, auto_skill_attack_in_progress),
+		persistent_reuse_time
+	);
 
 	const bool manual_uses_secondary_timer = EQ::skills::autoskill::UsesSecondaryCombatAbilityTimer(
 		skill,
@@ -283,8 +305,6 @@ void Client::StartAutoSkillReuseTimer(
 
 		const auto persistent_timer = GetCrossPathPersistentTimer(skill, auto_skill_attack_in_progress);
 		if (persistent_timer) {
-			const auto persistent_reuse_time =
-				EQ::skills::autoskill::GetConservativePersistentReuseTimeSeconds(reuse_time);
 			p_timers.Start(persistent_timer, persistent_reuse_time);
 		}
 	}
