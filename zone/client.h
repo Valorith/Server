@@ -335,6 +335,9 @@ public:
 	void TraderEndTrader();
 	void BroadcastTraderOffWithoutDeletingListings();
 	bool RestorePersistedTraderMode();
+	void MarkPersistedListingRestorePosition();
+	void ClearPersistedListingRestoreDeferral();
+	bool ShouldTeardownListingsForCurrentMove(float x, float y) const;
 	void TraderUpdateItem(const EQApplicationPacket *app);
 	void SendBazaarDone(uint32 trader_id);
 	void SendBulkBazaarTraders();
@@ -2186,6 +2189,9 @@ private:
 	std::map<int16, std::tuple<uint32, int32, std::string>>        m_trader_merchant_list{};  // itemid, qty, item_unique_id
 	uint32                                                         m_buyer_id;
 	bool                                                           m_restored_persisted_buyer_mode;
+	bool                                                           m_defer_listing_teardown_after_restore;
+	float                                                          m_listing_restore_x;
+	float                                                          m_listing_restore_y;
 	bool                                                           m_offline;
 	uint32                                                         m_barter_time;
 	int32                                                          m_parcel_platinum;

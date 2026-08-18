@@ -71,6 +71,9 @@ public:
 		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
 		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
 		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
+		TEST_ADD(BazaarTest::SpawnJitterAfterRestoreDoesNotTeardownListings);
+		TEST_ADD(BazaarTest::WalkingAwayAfterRestoreTeardownsListings);
+		TEST_ADD(BazaarTest::AnyMovementTeardownsListingsWithoutRestoreDeferral);
 	}
 
 	~BazaarTest()
@@ -430,5 +433,23 @@ private:
 	{
 		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(true, 500, 100) == 500);
 		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(false, 500, 100) == 100);
+	}
+
+	void SpawnJitterAfterRestoreDoesNotTeardownListings()
+	{
+		TEST_ASSERT(!Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 100.4f, 200.3f));
+		TEST_ASSERT(!Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 104.0f, 200.0f));
+	}
+
+	void WalkingAwayAfterRestoreTeardownsListings()
+	{
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 106.0f, 200.0f));
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 100.0f, 220.0f));
+	}
+
+	void AnyMovementTeardownsListingsWithoutRestoreDeferral()
+	{
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.01f, 200.0f));
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.0f, 200.0f));
 	}
 };

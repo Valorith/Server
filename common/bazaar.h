@@ -88,6 +88,18 @@ public:
 		uint32 client_price
 	);
 
+	// After persist restore, zone-in spawn PPUs are not a real walk-away.
+	// Any later movement past the settle distance still ends trader/buyer.
+	static constexpr float PersistRestoreSettleDistance = 5.0f;
+
+	static bool ShouldTeardownListingsOnMovement(
+		bool defer_after_persist_restore,
+		float restore_x,
+		float restore_y,
+		float current_x,
+		float current_y
+	);
+
 	static void RecordAuditTrail(
 		Database &db,
 		const std::string &seller,

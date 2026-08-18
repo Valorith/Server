@@ -1281,6 +1281,7 @@ bool Client::RestorePersistedTraderMode()
 			GetID()
 		);
 		TraderShowItems();
+		MarkPersistedListingRestorePosition();
 		return true;
 	}
 
@@ -1298,7 +1299,31 @@ bool Client::RestorePersistedTraderMode()
 	SendBecomeTraderToWorld(this, TraderOn);
 	TraderShowItems();
 	UpdateWho();
+	MarkPersistedListingRestorePosition();
 	return true;
+}
+
+void Client::MarkPersistedListingRestorePosition()
+{
+	m_defer_listing_teardown_after_restore = true;
+	m_listing_restore_x = GetX();
+	m_listing_restore_y = GetY();
+}
+
+void Client::ClearPersistedListingRestoreDeferral()
+{
+	m_defer_listing_teardown_after_restore = false;
+}
+
+bool Client::ShouldTeardownListingsForCurrentMove(float x, float y) const
+{
+	return Bazaar::ShouldTeardownListingsOnMovement(
+		m_defer_listing_teardown_after_restore,
+		m_listing_restore_x,
+		m_listing_restore_y,
+		x,
+		y
+	);
 }
 
 void Client::TraderEndTrader()
@@ -1314,6 +1339,7 @@ void Client::TraderEndTrader()
 
 	TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", CharacterID()));
 
+	ClearPersistedListingRestoreDeferral();
 	BroadcastTraderOffWithoutDeletingListings();
 }
 
@@ -2773,6 +2799,7 @@ void Client::ToggleBuyerMode(bool status)
 		}
 
 		m_restored_persisted_buyer_mode = false;
+		ClearPersistedListingRestoreDeferral();
 		UpdateWho();
 		Message(Chat::Yellow, fmt::format("Barter Mode OFF. Buy lines deactivated.").c_str());
 	}
@@ -2878,6 +2905,7 @@ bool Client::RestorePersistedBuyerMode()
 	data->status    = BuyerBarter::On;
 	entity_list.QueueClients(this, outapp.get(), false);
 	m_restored_persisted_buyer_mode = true;
+	MarkPersistedListingRestorePosition();
 	return true;
 }
 

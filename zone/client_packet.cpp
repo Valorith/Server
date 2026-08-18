@@ -4987,13 +4987,17 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	}
 
 	if (cy != m_Position.y || cx != m_Position.x) {
-		// End trader mode if we move
-		if (IsTrader()) {
-			TraderEndTrader();
-		}
+		// End trader/buyer mode if we move. After persist restore, ignore
+		// zone-in spawn jitter so those rows are not deleted before the
+		// client re-sends start-mode from a stale INI.
+		if (ShouldTeardownListingsForCurrentMove(cx, cy)) {
+			if (IsTrader()) {
+				TraderEndTrader();
+			}
 
-		if (IsBuyer()) {
-			ToggleBuyerMode(false);
+			if (IsBuyer()) {
+				ToggleBuyerMode(false);
+			}
 		}
 
 		/* Break Hide if moving without sneaking and set rewind timer if moved */

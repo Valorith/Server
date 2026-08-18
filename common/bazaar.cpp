@@ -180,6 +180,24 @@ uint32 Bazaar::ResolveTraderStartPrice(
 	return has_persisted_price ? persisted_price : client_price;
 }
 
+bool Bazaar::ShouldTeardownListingsOnMovement(
+	bool defer_after_persist_restore,
+	float restore_x,
+	float restore_y,
+	float current_x,
+	float current_y
+)
+{
+	if (!defer_after_persist_restore) {
+		return true;
+	}
+
+	const float dx = current_x - restore_x;
+	const float dy = current_y - restore_y;
+	const float settle = PersistRestoreSettleDistance;
+	return (dx * dx + dy * dy) >= (settle * settle);
+}
+
 void Bazaar::RecordAuditTrail(
 	Database &db,
 	const std::string &seller,
