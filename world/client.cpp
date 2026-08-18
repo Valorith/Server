@@ -1168,7 +1168,11 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	const auto session = session_lookup.session;
 	if (!session.id) {
-		ClearOrphanedAccountTradeListings();
+		if (!ClearOrphanedAccountTradeListings()) {
+			TellClientZoneUnavailable();
+			return false;
+		}
+
 		return true;
 	}
 
@@ -1314,14 +1318,14 @@ bool Client::ClearStaleOfflineSession(uint32 character_id, const char *reason)
 	return true;
 }
 
-void Client::ClearOrphanedAccountTradeListings()
+bool Client::ClearOrphanedAccountTradeListings()
 {
 	const uint32 entering_character_id = GetCharID();
 	const uint32 entering_zone_id = GetZoneID();
 	const int32 entering_instance_id = static_cast<int32>(GetInstanceID());
 	const auto character_ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
 	if (entering_character_id == 0 || character_ids.empty()) {
-		return;
+		return true;
 	}
 
 	std::vector<std::string> character_id_strings;
@@ -1340,7 +1344,7 @@ void Client::ClearOrphanedAccountTradeListings()
 		fmt::format("`char_id` IN ({})", id_list)
 	);
 	if (leftover_traders.empty() && leftover_buyers.empty()) {
-		return;
+		return true;
 	}
 
 	std::vector<uint32> clear_ids;
@@ -1375,7 +1379,7 @@ void Client::ClearOrphanedAccountTradeListings()
 	}
 
 	if (clear_ids.empty()) {
-		return;
+		return true;
 	}
 
 	database.TransactionBegin();
@@ -1399,7 +1403,10 @@ void Client::ClearOrphanedAccountTradeListings()
 			commit_result.ErrorNumber(),
 			commit_result.ErrorMessage()
 		);
+		return false;
 	}
+
+	return true;
 }
 
 void Client::ResetOfflineSessionReclaimState()
