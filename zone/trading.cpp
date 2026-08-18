@@ -3011,7 +3011,12 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		}
 
 		current_total_cost = ValidateBuyLineCost(item_map);
-		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
+		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
+		BuyerRepository::UpdateTransactionDate(
+			database,
+			GetBuyerID(),
+			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
+		);
 
 		if (buy_line.item_toggle) {
 			current_total_cost +=
@@ -4575,7 +4580,12 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 				}
 
 				if (overlay_wrote) {
-					BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
+					const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
+					BuyerRepository::UpdateTransactionDate(
+						database,
+						GetBuyerID(),
+						Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
+					);
 				}
 			}
 			else {

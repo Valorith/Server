@@ -136,17 +136,37 @@ bool Bazaar::ShouldPreserveOfflineListings(
 bool Bazaar::ShouldClearOrphanedAccountListings(
 	bool has_offline_session,
 	uint32 entering_character_id,
-	uint32 listing_character_id
+	uint32 listing_character_id,
+	uint32 entering_zone_id,
+	uint32 listing_zone_id,
+	int32 entering_instance_id,
+	int32 listing_instance_id
 )
 {
 	if (has_offline_session) {
 		return false;
 	}
 
+	if (entering_character_id == 0 || listing_character_id == 0) {
+		return false;
+	}
+
+	if (listing_character_id != entering_character_id) {
+		return true;
+	}
+
+	if (listing_zone_id == 0) {
+		return false;
+	}
+
 	return
-		entering_character_id != 0 &&
-		listing_character_id != 0 &&
-		listing_character_id != entering_character_id;
+		listing_zone_id != entering_zone_id ||
+		listing_instance_id != entering_instance_id;
+}
+
+time_t Bazaar::NextBuyerTransactionDate(time_t existing, time_t now)
+{
+	return now > existing ? now : existing + 1;
 }
 
 bool Bazaar::ShouldUseClientBuyerStartPayload(

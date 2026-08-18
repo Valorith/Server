@@ -4,6 +4,7 @@
 #include "common/shareddb.h"
 
 #include <cstddef>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <vector>
@@ -65,14 +66,22 @@ public:
 		int32 selected_instance_id
 	);
 
-	// After a preserve reclaim deletes the session, a later alt login has
+	// After a preserve reclaim deletes the session, a later login has
 	// nothing to reclaim. Clear leftover rows that belong to another
-	// character on the account. Same-character reconnect keeps its rows.
+	// character, or to this character at a destination that cannot restore.
 	static bool ShouldClearOrphanedAccountListings(
 		bool has_offline_session,
 		uint32 entering_character_id,
-		uint32 listing_character_id
+		uint32 listing_character_id,
+		uint32 entering_zone_id,
+		uint32 listing_zone_id,
+		int32 entering_instance_id,
+		int32 listing_instance_id
 	);
+
+	// Seller cache invalidation is `buyer_time > GetBarterTime()`. A same-
+	// second write must still advance past the cached timestamp.
+	static time_t NextBuyerTransactionDate(time_t existing, time_t now);
 
 	struct BuyerLinePrice {
 		uint32 slot;

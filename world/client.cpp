@@ -1155,7 +1155,18 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		return false;
 	}
 
-	const auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, GetAccountID());
+	const auto session_lookup = OfflineCharacterSessionsRepository::TryGetByAccountId(database, GetAccountID());
+	if (!session_lookup.query_succeeded) {
+		LogError(
+			"Failed looking up offline session for account [{}] character [{}]; aborting entry instead of clearing listings",
+			GetAccountID(),
+			GetCharID()
+		);
+		TellClientZoneUnavailable();
+		return false;
+	}
+
+	const auto session = session_lookup.session;
 	if (!session.id) {
 		ClearOrphanedAccountTradeListings();
 		return true;
@@ -1306,26 +1317,20 @@ bool Client::ClearStaleOfflineSession(uint32 character_id, const char *reason)
 void Client::ClearOrphanedAccountTradeListings()
 {
 	const uint32 entering_character_id = GetCharID();
+	const uint32 entering_zone_id = GetZoneID();
+	const int32 entering_instance_id = static_cast<int32>(GetInstanceID());
 	const auto character_ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
-
-	std::vector<uint32> orphaned_ids;
-	for (const auto listing_character_id : character_ids) {
-		if (Bazaar::ShouldClearOrphanedAccountListings(false, entering_character_id, listing_character_id)) {
-			orphaned_ids.push_back(listing_character_id);
-		}
-	}
-
-	if (orphaned_ids.empty()) {
+	if (entering_character_id == 0 || character_ids.empty()) {
 		return;
 	}
 
-	std::vector<std::string> orphaned_id_strings;
-	orphaned_id_strings.reserve(orphaned_ids.size());
-	for (const auto listing_character_id : orphaned_ids) {
-		orphaned_id_strings.push_back(std::to_string(listing_character_id));
+	std::vector<std::string> character_id_strings;
+	character_id_strings.reserve(character_ids.size());
+	for (const auto listing_character_id : character_ids) {
+		character_id_strings.push_back(std::to_string(listing_character_id));
 	}
 
-	const auto id_list = Strings::Implode(", ", orphaned_id_strings);
+	const auto id_list = Strings::Implode(", ", character_id_strings);
 	const auto leftover_traders = TraderRepository::GetWhere(
 		database,
 		fmt::format("`character_id` IN ({})", id_list)
@@ -1338,8 +1343,43 @@ void Client::ClearOrphanedAccountTradeListings()
 		return;
 	}
 
+	std::vector<uint32> clear_ids;
+	auto consider = [&](uint32 listing_character_id, uint32 listing_zone_id, int32 listing_instance_id) {
+		if (!Bazaar::ShouldClearOrphanedAccountListings(
+			false,
+			entering_character_id,
+			listing_character_id,
+			entering_zone_id,
+			listing_zone_id,
+			entering_instance_id,
+			listing_instance_id
+		)) {
+			return;
+		}
+
+		for (const auto existing_id : clear_ids) {
+			if (existing_id == listing_character_id) {
+				return;
+			}
+		}
+
+		clear_ids.push_back(listing_character_id);
+	};
+
+	for (const auto &row : leftover_traders) {
+		consider(row.character_id, row.char_zone_id, row.char_zone_instance_id);
+	}
+
+	for (const auto &row : leftover_buyers) {
+		consider(row.char_id, row.char_zone_id, static_cast<int32>(row.char_zone_instance_id));
+	}
+
+	if (clear_ids.empty()) {
+		return;
+	}
+
 	database.TransactionBegin();
-	for (const auto listing_character_id : orphaned_ids) {
+	for (const auto listing_character_id : clear_ids) {
 		TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", listing_character_id));
 		BuyerRepository::DeleteBuyer(database, listing_character_id);
 		LogTrading(

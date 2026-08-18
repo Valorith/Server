@@ -68,6 +68,8 @@ public:
 		TEST_ADD(BazaarTest::ClearsOrphanedAccountListingsForAlternateCharacter);
 		TEST_ADD(BazaarTest::KeepsOrphanedAccountListingsForSameCharacter);
 		TEST_ADD(BazaarTest::KeepsAccountListingsWhenOfflineSessionExists);
+		TEST_ADD(BazaarTest::ClearsOrphanedAccountListingsWhenDestinationChanges);
+		TEST_ADD(BazaarTest::BuyerTransactionDateAdvancesPastCachedSecond);
 		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadOnFreshBarterOn);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenPersistedLinesExist);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadAfterEmptyRestore);
@@ -418,19 +420,33 @@ private:
 
 	void ClearsOrphanedAccountListingsForAlternateCharacter()
 	{
-		TEST_ASSERT(Bazaar::ShouldClearOrphanedAccountListings(false, 456, 123));
+		TEST_ASSERT(Bazaar::ShouldClearOrphanedAccountListings(false, 456, 123, 151, 151, 0, 0));
 	}
 
 	void KeepsOrphanedAccountListingsForSameCharacter()
 	{
-		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123));
-		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 0, 123));
-		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 0));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123, 151, 151, 0, 0));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 0, 123, 151, 151, 0, 0));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 0, 151, 151, 0, 0));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123, 151, 0, 0, 0));
 	}
 
 	void KeepsAccountListingsWhenOfflineSessionExists()
 	{
-		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(true, 456, 123));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(true, 456, 123, 151, 151, 0, 0));
+	}
+
+	void ClearsOrphanedAccountListingsWhenDestinationChanges()
+	{
+		TEST_ASSERT(Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123, 202, 151, 0, 0));
+		TEST_ASSERT(Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123, 151, 151, 2, 1));
+	}
+
+	void BuyerTransactionDateAdvancesPastCachedSecond()
+	{
+		TEST_ASSERT(Bazaar::NextBuyerTransactionDate(100, 100) == 101);
+		TEST_ASSERT(Bazaar::NextBuyerTransactionDate(100, 105) == 105);
+		TEST_ASSERT(Bazaar::NextBuyerTransactionDate(100, 99) == 101);
 	}
 
 	void UsesClientBuyerStartPayloadOnFreshBarterOn()
