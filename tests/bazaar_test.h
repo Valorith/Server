@@ -77,6 +77,8 @@ public:
 		TEST_ADD(BazaarTest::BuyerDisableUsesPersistedSlotWhenClientSlotDiffers);
 		TEST_ADD(BazaarTest::BuyerStartOverlayAppliesPriceOnly);
 		TEST_ADD(BazaarTest::SkipsBuyerRestoreWithoutListingProtocol);
+		TEST_ADD(BazaarTest::RejectsBuyerOverlayWhenFundsDoNotCoverTotal);
+		TEST_ADD(BazaarTest::ConsumesRestoreDeferralAfterFirstInRadiusMove);
 		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
 		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
 		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
@@ -565,6 +567,21 @@ private:
 	{
 		TEST_ASSERT(Bazaar::ShouldRestorePersistedBuyerMode(true));
 		TEST_ASSERT(!Bazaar::ShouldRestorePersistedBuyerMode(false));
+	}
+
+	void RejectsBuyerOverlayWhenFundsDoNotCoverTotal()
+	{
+		TEST_ASSERT(Bazaar::ShouldCommitBuyerPriceOverlay(50, 50));
+		TEST_ASSERT(!Bazaar::ShouldCommitBuyerPriceOverlay(51, 50));
+		TEST_ASSERT(!Bazaar::ShouldCommitBuyerPriceOverlay(0, 50));
+	}
+
+	void ConsumesRestoreDeferralAfterFirstInRadiusMove()
+	{
+		TEST_ASSERT(Bazaar::ShouldClearPersistRestoreDeferralOnMovement(true, false));
+		TEST_ASSERT(!Bazaar::ShouldClearPersistRestoreDeferralOnMovement(true, true));
+		TEST_ASSERT(!Bazaar::ShouldClearPersistRestoreDeferralOnMovement(false, false));
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.01f, 200.0f));
 	}
 
 	void BuyerUpdateMatchesByItemIdWhenSlotsDiffer()

@@ -2843,7 +2843,7 @@ bool Client::RestorePersistedBuyerMode()
 	}
 
 	if (!Bazaar::ShouldRestorePersistedBuyerMode(
-		ClientVersion() >= EQ::versions::ClientVersion::RoF
+		ClientVersion() == EQ::versions::ClientVersion::RoF2
 	)) {
 		LogTrading(
 			"Skipping buyer mode restore for client [{}] character [{}]; client lacks BuyerItems",
@@ -4470,6 +4470,43 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					persisted_buy_lines.size(),
 					bl.buy_lines.size()
 				);
+
+				std::vector<Bazaar::BuyerLinePrice> client_prices;
+				client_prices.reserve(bl.buy_lines.size());
+				for (const auto &client_line : bl.buy_lines) {
+					client_prices.push_back({client_line.slot, client_line.item_id, client_line.item_cost});
+				}
+				const auto proposed_prices = Bazaar::ApplyBuyerClientLinePrices(
+					persisted_prices,
+					client_prices,
+					false,
+					m_buyer_explicit_price_update,
+					m_restored_persisted_buyer_mode
+				);
+				auto proposed_lines = persisted_buy_lines;
+				for (auto &line : proposed_lines) {
+					const int proposed_index = Bazaar::FindBuyerLineIndex(
+						proposed_prices,
+						line.slot,
+						line.item_id
+					);
+					if (proposed_index >= 0) {
+						line.item_cost = proposed_prices[proposed_index].price;
+					}
+				}
+				std::map<uint32, BuylineItemDetails_Struct> overlay_item_map{};
+				if (!BuildBuyLineMapFromVector(overlay_item_map, proposed_lines)) {
+					SendPersistedBuyLines();
+					return;
+				}
+				const auto proposed_total_cost = ValidateBuyLineCost(overlay_item_map);
+				if (!Bazaar::ShouldCommitBuyerPriceOverlay(
+					static_cast<uint64>(proposed_total_cost),
+					GetCarriedMoney()
+				)) {
+					SendPersistedBuyLines();
+					return;
+				}
 
 				const uint64 max_overlay_transaction_value =
 					EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;

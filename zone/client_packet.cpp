@@ -4999,6 +4999,9 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 				ToggleBuyerMode(false);
 			}
 		}
+		else {
+			ClearPersistedListingRestoreDeferral();
+		}
 
 		/* Break Hide if moving without sneaking and set rewind timer if moved */
 		if ((hidden || improved_hidden) && !sneaking) {

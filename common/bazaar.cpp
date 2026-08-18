@@ -210,6 +210,19 @@ bool Bazaar::ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items)
 	return client_supports_buyer_items;
 }
 
+bool Bazaar::ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money)
+{
+	return proposed_total_cost > 0 && proposed_total_cost <= carried_money;
+}
+
+bool Bazaar::ShouldClearPersistRestoreDeferralOnMovement(
+	bool defer_after_persist_restore,
+	bool would_teardown
+)
+{
+	return defer_after_persist_restore && !would_teardown;
+}
+
 std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(
 	const std::vector<BuyerLinePrice> &persisted,
 	const std::vector<BuyerLinePrice> &client,
