@@ -118,12 +118,7 @@ public:
 
 	static bool ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money);
 
-	// First in-radius zone-in PPU consumes the settle deferral so later
-	// movement ends trader/buyer again.
-	static bool ShouldClearPersistRestoreDeferralOnMovement(
-		bool defer_after_persist_restore,
-		bool would_teardown
-	);
+	static bool IsValidBuyerOverlayPrice(uint32 client_price, uint64 max_transaction_value);
 
 	// Player-visible prices after Update and/or Start, and therefore after
 	// the next offline reconnect restore. Does not add INI-only lines.

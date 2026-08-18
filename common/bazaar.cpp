@@ -162,23 +162,25 @@ int Bazaar::FindBuyerLineIndex(
 	uint32 item_id
 )
 {
+	int slot_match = -1;
+	int item_match = -1;
 	for (size_t i = 0; i < lines.size(); ++i) {
-		if (lines[i].slot == slot) {
+		if (lines[i].slot == slot && (item_id == 0 || lines[i].item_id == item_id)) {
 			return static_cast<int>(i);
+		}
+		if (lines[i].slot == slot && slot_match < 0) {
+			slot_match = static_cast<int>(i);
+		}
+		if (item_id != 0 && lines[i].item_id == item_id && item_match < 0) {
+			item_match = static_cast<int>(i);
 		}
 	}
 
-	if (item_id == 0) {
-		return -1;
+	if (item_match >= 0) {
+		return item_match;
 	}
 
-	for (size_t i = 0; i < lines.size(); ++i) {
-		if (lines[i].item_id == item_id) {
-			return static_cast<int>(i);
-		}
-	}
-
-	return -1;
+	return item_id == 0 ? slot_match : -1;
 }
 
 uint32 Bazaar::ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price)
@@ -215,12 +217,13 @@ bool Bazaar::ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 ca
 	return proposed_total_cost > 0 && proposed_total_cost <= carried_money;
 }
 
-bool Bazaar::ShouldClearPersistRestoreDeferralOnMovement(
-	bool defer_after_persist_restore,
-	bool would_teardown
-)
+bool Bazaar::IsValidBuyerOverlayPrice(uint32 client_price, uint64 max_transaction_value)
 {
-	return defer_after_persist_restore && !would_teardown;
+	if (client_price == 0) {
+		return false;
+	}
+
+	return ValidateBuyLinePrice(client_price, max_transaction_value).is_valid;
 }
 
 std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(

@@ -2850,7 +2850,6 @@ bool Client::RestorePersistedBuyerMode()
 			GetCleanName(),
 			CharacterID()
 		);
-		BuyerRepository::DeleteBuyer(database, CharacterID());
 		return false;
 	}
 
@@ -2884,7 +2883,9 @@ bool Client::RestorePersistedBuyerMode()
 	buyer.char_zone_instance_id = GetInstanceID();
 	buyer.char_name             = GetCleanName();
 
-	const bool buyer_row_refreshed = BuyerRepository::UpdateOne(database, buyer);
+	const int buyer_rows_updated = BuyerRepository::UpdateOne(database, buyer);
+	const bool buyer_row_refreshed =
+		buyer_rows_updated > 0 || BuyerRepository::BuyerRowAlreadyMatches(database, buyer);
 	LogTrading(
 		"Restoring buyer mode for client [{}] account [{}] character [{}] zone [{}] instance [{}]. previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
 		GetCleanName(),
@@ -4471,9 +4472,17 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					bl.buy_lines.size()
 				);
 
+				const uint64 max_overlay_transaction_value =
+					EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 				std::vector<Bazaar::BuyerLinePrice> client_prices;
 				client_prices.reserve(bl.buy_lines.size());
 				for (const auto &client_line : bl.buy_lines) {
+					if (!Bazaar::IsValidBuyerOverlayPrice(
+						client_line.item_cost,
+						max_overlay_transaction_value
+					)) {
+						continue;
+					}
 					client_prices.push_back({client_line.slot, client_line.item_id, client_line.item_cost});
 				}
 				const auto proposed_prices = Bazaar::ApplyBuyerClientLinePrices(
@@ -4508,23 +4517,20 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					return;
 				}
 
-				const uint64 max_overlay_transaction_value =
-					EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 				for (const auto &client_line : bl.buy_lines) {
+					if (!Bazaar::IsValidBuyerOverlayPrice(
+						client_line.item_cost,
+						max_overlay_transaction_value
+					)) {
+						continue;
+					}
+
 					const int index = Bazaar::FindBuyerLineIndex(
 						persisted_prices,
 						client_line.slot,
 						client_line.item_id
 					);
 					if (index < 0) {
-						continue;
-					}
-
-					const auto transaction_value = Bazaar::ValidateBuyLinePrice(
-						client_line.item_cost,
-						max_overlay_transaction_value
-					);
-					if (!transaction_value.is_valid) {
 						continue;
 					}
 

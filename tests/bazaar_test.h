@@ -78,7 +78,8 @@ public:
 		TEST_ADD(BazaarTest::BuyerStartOverlayAppliesPriceOnly);
 		TEST_ADD(BazaarTest::SkipsBuyerRestoreWithoutListingProtocol);
 		TEST_ADD(BazaarTest::RejectsBuyerOverlayWhenFundsDoNotCoverTotal);
-		TEST_ADD(BazaarTest::ConsumesRestoreDeferralAfterFirstInRadiusMove);
+		TEST_ADD(BazaarTest::BuyerLineMatchPrefersItemIdOverConflictingSlot);
+		TEST_ADD(BazaarTest::BuyerOverlayIgnoresInvalidZeroPrice);
 		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
 		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
 		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
@@ -576,12 +577,20 @@ private:
 		TEST_ASSERT(!Bazaar::ShouldCommitBuyerPriceOverlay(0, 50));
 	}
 
-	void ConsumesRestoreDeferralAfterFirstInRadiusMove()
+	void BuyerLineMatchPrefersItemIdOverConflictingSlot()
 	{
-		TEST_ASSERT(Bazaar::ShouldClearPersistRestoreDeferralOnMovement(true, false));
-		TEST_ASSERT(!Bazaar::ShouldClearPersistRestoreDeferralOnMovement(true, true));
-		TEST_ASSERT(!Bazaar::ShouldClearPersistRestoreDeferralOnMovement(false, false));
-		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.01f, 200.0f));
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 100, 40},
+			{1, 200, 10}
+		};
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex(persisted, 0, 200) == 1);
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex(persisted, 1, 100) == 0);
+	}
+
+	void BuyerOverlayIgnoresInvalidZeroPrice()
+	{
+		TEST_ASSERT(!Bazaar::IsValidBuyerOverlayPrice(0, 100000));
+		TEST_ASSERT(Bazaar::IsValidBuyerOverlayPrice(30, 100000));
 	}
 
 	void BuyerUpdateMatchesByItemIdWhenSlotsDiffer()

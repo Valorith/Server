@@ -188,6 +188,19 @@ public:
 		return true;
 	}
 
+	static bool BuyerRowAlreadyMatches(Database &db, const Buyer &e)
+	{
+		if (e.id == 0) {
+			return false;
+		}
+
+		const auto row = FindOne(db, static_cast<int>(e.id));
+		return row.id == e.id
+			&& row.char_entity_id == e.char_entity_id
+			&& row.char_zone_id == e.char_zone_id
+			&& row.char_zone_instance_id == e.char_zone_instance_id;
+	}
+
 	static bool UpdateBuyerEntityID(Database &db, uint32 char_id, uint32 old_entity_id, uint32 new_entity_id)
 	{
 		if (!char_id || !old_entity_id || !new_entity_id) {
