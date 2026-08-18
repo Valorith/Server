@@ -1211,6 +1211,13 @@ bool Client::RestorePersistedTraderMode()
 		return false;
 	}
 
+	for (auto &entry : trader_items) {
+		auto *inst = FindTraderItemByUniqueID(entry.item_unique_id.c_str());
+		if (inst) {
+			inst->SetPrice(entry.item_cost);
+		}
+	}
+
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
 		auto outapp = new EQApplicationPacket(OP_Trader, sizeof(TraderStatus_Struct));
 		auto data   = (TraderStatus_Struct *) outapp->pBuffer;
