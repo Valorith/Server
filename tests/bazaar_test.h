@@ -23,6 +23,8 @@
 #include "cppunit/cpptest.h"
 
 #include <limits>
+#include <string>
+#include <vector>
 
 class BazaarTest : public Test::Suite {
 public:
@@ -59,8 +61,16 @@ public:
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
 		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
-		TEST_ADD(BazaarTest::UsesPersistedListingsWhenServerStillHasThem);
-		TEST_ADD(BazaarTest::UsesClientPayloadWhenNoPersistedListingsRemain);
+		TEST_ADD(BazaarTest::PreservesOfflineListingsForSameCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForAlternateCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForDifferentDestination);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsWithoutValidIds);
+		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadWhenNoBuyerRowExists);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenBuyerRowExists);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenBuyerRowExistsWithEmptyLines);
+		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
+		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
+		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
 	}
 
 	~BazaarTest()
@@ -364,13 +374,61 @@ private:
 		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
 	}
 
-	void UsesPersistedListingsWhenServerStillHasThem()
+	void PreservesOfflineListingsForSameCharacter()
 	{
-		TEST_ASSERT(Bazaar::ShouldUsePersistedListings(true));
+		TEST_ASSERT(Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 151, 0));
 	}
 
-	void UsesClientPayloadWhenNoPersistedListingsRemain()
+	void DoesNotPreserveOfflineListingsForAlternateCharacter()
 	{
-		TEST_ASSERT(!Bazaar::ShouldUsePersistedListings(false));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 456, 151, 0));
+	}
+
+	void DoesNotPreserveOfflineListingsForDifferentDestination()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 202, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 1, 123, 151, 2));
+	}
+
+	void DoesNotPreserveOfflineListingsWithoutValidIds()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(0, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 0, 0, 123, 0, 0));
+	}
+
+	void UsesClientBuyerStartPayloadWhenNoBuyerRowExists()
+	{
+		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(false, 0));
+		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(false, 3));
+	}
+
+	void RejectsStaleBuyerStartPayloadWhenBuyerRowExists()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(true, 2));
+	}
+
+	void RejectsStaleBuyerStartPayloadWhenBuyerRowExistsWithEmptyLines()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(true, 0));
+	}
+
+	void TraderListingSetsMatchIgnoringOrderAndPlaceholders()
+	{
+		TEST_ASSERT(Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"bbb", "aaa"}));
+		TEST_ASSERT(Bazaar::TraderListingSetsMatch({"aaa", ""}, {"aaa", "0000000000000000"}));
+	}
+
+	void TraderListingSetsDifferOnAddOrRemove()
+	{
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"aaa", "ccc"}));
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa"}, {"aaa", "bbb"}));
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"aaa"}));
+	}
+
+	void PersistedTraderPriceWinsOverClientStartPrice()
+	{
+		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(true, 500, 100) == 500);
+		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(false, 500, 100) == 100);
 	}
 };

@@ -1736,6 +1736,11 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		}
 		case ServerOP_ReclaimOfflineSessionResp: {
 			if (pack->size != sizeof(OfflineSessionReclaim_Struct)) {
+				LogError(
+					"Offline reclaim response size mismatch. got [{}] expected [{}]",
+					pack->size,
+					sizeof(OfflineSessionReclaim_Struct)
+				);
 				break;
 			}
 

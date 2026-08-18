@@ -3,7 +3,9 @@
 #include "common/item_instance.h"
 #include "common/shareddb.h"
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 class Bazaar {
@@ -52,10 +54,37 @@ public:
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
 
-	// Client bazaar/barter INI files are flushed on camp, not when entering
-	// offline trader or buyer mode. If the server still has listings, those
-	// prices are newer than a later client start-mode payload.
-	static bool ShouldUsePersistedListings(bool has_persisted_listings);
+	// Same character + same zone + same instance reclaim keeps listings.
+	// Alt login, dest change, and invalid IDs still wipe.
+	static bool ShouldPreserveOfflineListings(
+		uint32 offline_character_id,
+		uint32 offline_zone_id,
+		int32 offline_instance_id,
+		uint32 selected_character_id,
+		uint32 selected_zone_id,
+		int32 selected_instance_id
+	);
+
+	// A live buyer row is authoritative, including zero buy lines after the
+	// last quantity was purchased while offline. Missing buyer row means use
+	// the RoF2 start payload. Barter Off deletes the row and is the reset.
+	static bool ShouldUseClientBuyerStartPayload(
+		bool buyer_row_exists,
+		size_t persisted_buy_line_count
+	);
+
+	// Start-mode satchel add/remove is applied when unique IDs differ.
+	// Matching IDs keep the persisted price instead of a stale INI price.
+	static bool TraderListingSetsMatch(
+		const std::vector<std::string> &persisted_unique_ids,
+		const std::vector<std::string> &client_unique_ids
+	);
+
+	static uint32 ResolveTraderStartPrice(
+		bool has_persisted_price,
+		uint32 persisted_price,
+		uint32 client_price
+	);
 
 	static void RecordAuditTrail(
 		Database &db,

@@ -36,6 +36,7 @@
 #include "common/packet_dump.h"
 #include "common/races.h"
 #include "common/random.h"
+#include "common/bazaar.h"
 #include "common/repositories/account_repository.h"
 #include "common/repositories/buyer_repository.h"
 #include "common/repositories/character_data_repository.h"
@@ -1240,22 +1241,32 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 	offline_reclaim_mode         = mode;
 	offline_reclaim_timeout.Start(RuleI(World, OfflineSessionReclaimTimeoutMS));
 
+	const bool preserve_listings = Bazaar::ShouldPreserveOfflineListings(
+		session.character_id,
+		session.zone_id,
+		session.instance_id,
+		GetCharID(),
+		zone_id,
+		instance_id
+	);
+
 	reclaim->request_id   = offline_reclaim_request_id;
 	reclaim->account_id   = GetAccountID();
 	reclaim->character_id = session.character_id;
 	reclaim->zone_id      = session.zone_id;
 	reclaim->instance_id  = session.instance_id;
 	reclaim->entity_id    = session.entity_id;
-	reclaim->mode         = mode;
+	reclaim->mode         = EncodeOfflineSessionMode(mode, preserve_listings);
 	reclaim->response     = OfflineSessionReclaimFailed;
 
 	LogTrading(
-		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}]",
+		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}] preserve_listings [{}]",
 		OfflineSessionModeName(mode),
 		offline_reclaim_request_id,
 		session.zone_id,
 		session.instance_id,
-		GetAccountID()
+		GetAccountID(),
+		preserve_listings
 	);
 
 	zone_server->SendPacket(pack);

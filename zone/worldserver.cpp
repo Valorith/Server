@@ -4472,10 +4472,17 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 		}
 		case ServerOP_ReclaimOfflineSessionReq: {
 			if (pack->size != sizeof(OfflineSessionReclaim_Struct)) {
+				LogError(
+					"Offline reclaim request size mismatch. got [{}] expected [{}]",
+					pack->size,
+					sizeof(OfflineSessionReclaim_Struct)
+				);
 				break;
 			}
 
 			auto in = reinterpret_cast<OfflineSessionReclaim_Struct *>(pack->pBuffer);
+			const uint8 reclaim_mode = OfflineSessionModeValue(in->mode);
+			const bool preserve_listings = OfflineSessionPreserveListings(in->mode);
 			auto client = FindOfflineReclaimClient(*in);
 			if (!client) {
 				LogTrading(
@@ -4491,11 +4498,11 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			const bool account_matches = client->AccountID() == in->account_id;
 			const bool character_matches = client->CharacterID() == in->character_id;
 			const bool mode_matches =
-				(in->mode == OfflineSessionModeTrader && client->IsTrader()) ||
-				(in->mode == OfflineSessionModeBuyer && client->IsBuyer()) ||
-				(in->mode == OfflineSessionModeNone && (client->IsTrader() || client->IsBuyer()));
+				(reclaim_mode == OfflineSessionModeTrader && client->IsTrader()) ||
+				(reclaim_mode == OfflineSessionModeBuyer && client->IsBuyer()) ||
+				(reclaim_mode == OfflineSessionModeNone && (client->IsTrader() || client->IsBuyer()));
 
-			if (in->mode == OfflineSessionModeNone) {
+			if (reclaim_mode == OfflineSessionModeNone) {
 				LogWarning(
 					"Offline reclaim request [{}] for account [{}] character [{}] had no mode; inferring active offline trade mode from zone entity [{}]",
 					in->request_id,
@@ -4542,11 +4549,12 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			}
 
 			LogTrading(
-				"Reclaiming offline {} [{}] for account [{}] character [{}]",
+				"Reclaiming offline {} [{}] for account [{}] character [{}] preserve_listings [{}]",
 				client->IsBuyer() ? "buyer" : "trader",
 				client->GetCleanName(),
 				client->AccountID(),
-				client->CharacterID()
+				client->CharacterID(),
+				preserve_listings
 			);
 
 			database.TransactionBegin();
@@ -4567,23 +4575,38 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
-			// Keep trader and buyer listings. Offline mode is not a camp, so
-			// client bazaar/barter INI files may still have the previous prices.
-			// The live client restores those persisted listings on zone entry.
-			if (client->IsTrader()) {
-				LogTrading(
-					"Preserving trader listings while reclaiming offline trader [{}] character [{}]",
-					client->GetCleanName(),
-					client->CharacterID()
-				);
-			}
+			if (!preserve_listings) {
+				if (client->IsTrader()) {
+					client->TraderEndTrader();
+				}
 
-			if (client->IsBuyer()) {
-				LogTrading(
-					"Preserving buyer listings while reclaiming offline buyer [{}] character [{}]",
-					client->GetCleanName(),
-					client->CharacterID()
-				);
+				if (client->IsBuyer()) {
+					client->ToggleBuyerMode(false);
+				}
+			}
+			else {
+				// Same character + same zone + same instance: keep DB rows so
+				// zone-in can restore prices. Still unregister the old entity
+				// so other RoF2 clients drop it and m_trader_count does not climb.
+				if (client->IsTrader()) {
+					LogTrading(
+						"Preserving trader listings while reclaiming offline trader [{}] character [{}] old_entity [{}]",
+						client->GetCleanName(),
+						client->CharacterID(),
+						client->GetID()
+					);
+					client->BroadcastTraderOffWithoutDeletingListings();
+				}
+
+				if (client->IsBuyer()) {
+					LogTrading(
+						"Preserving buyer listings while reclaiming offline buyer [{}] character [{}] old_entity [{}]",
+						client->GetCleanName(),
+						client->CharacterID(),
+						client->GetID()
+					);
+					client->BroadcastBuyerOffWithoutDeletingListings();
+				}
 			}
 
 			client->UpdateWho(2);

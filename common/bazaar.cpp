@@ -6,6 +6,9 @@
 
 #include <limits>
 #include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 	uint32 requested_quantity,
@@ -113,9 +116,65 @@ bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 	return listed_price > 0 && requested_price == listed_price;
 }
 
-bool Bazaar::ShouldUsePersistedListings(bool has_persisted_listings)
+bool Bazaar::ShouldPreserveOfflineListings(
+	uint32 offline_character_id,
+	uint32 offline_zone_id,
+	int32 offline_instance_id,
+	uint32 selected_character_id,
+	uint32 selected_zone_id,
+	int32 selected_instance_id
+)
 {
-	return has_persisted_listings;
+	return
+		offline_character_id != 0 &&
+		offline_character_id == selected_character_id &&
+		offline_zone_id != 0 &&
+		offline_zone_id == selected_zone_id &&
+		offline_instance_id == selected_instance_id;
+}
+
+bool Bazaar::ShouldUseClientBuyerStartPayload(
+	bool buyer_row_exists,
+	size_t persisted_buy_line_count
+)
+{
+	(void) persisted_buy_line_count;
+	return !buyer_row_exists;
+}
+
+bool Bazaar::TraderListingSetsMatch(
+	const std::vector<std::string> &persisted_unique_ids,
+	const std::vector<std::string> &client_unique_ids
+)
+{
+	auto is_placeholder = [](const std::string &item_unique_id) {
+		return item_unique_id.empty() || item_unique_id == "0000000000000000";
+	};
+
+	std::set<std::string> persisted;
+	for (const auto &item_unique_id : persisted_unique_ids) {
+		if (!is_placeholder(item_unique_id)) {
+			persisted.insert(item_unique_id);
+		}
+	}
+
+	std::set<std::string> client;
+	for (const auto &item_unique_id : client_unique_ids) {
+		if (!is_placeholder(item_unique_id)) {
+			client.insert(item_unique_id);
+		}
+	}
+
+	return persisted == client;
+}
+
+uint32 Bazaar::ResolveTraderStartPrice(
+	bool has_persisted_price,
+	uint32 persisted_price,
+	uint32 client_price
+)
+{
+	return has_persisted_price ? persisted_price : client_price;
 }
 
 void Bazaar::RecordAuditTrail(
