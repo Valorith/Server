@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
-# Idempotent Cloud Agent / environment-build install for EQEmu.
-# Installs system deps, builds server binaries, seeds peq DB, and preps runtime paths.
+# Cursor Cloud Agent ONLY — not part of the normal EQEmu build/CI/installer.
+# Idempotent install: system deps, server binaries, peq DB seed, runtime paths.
+# See .cursor/README.md.
 set -euo pipefail
+
+# Refuse accidental runs on developer machines / CI (apt, update-alternatives, DB seed).
+if [[ "${EQEMU_ALLOW_CLOUD_AGENT_SCRIPTS:-}" != "1" ]]; then
+	if [[ ! -d /opt/cursor || ! -d /exec-daemon || ! -f /workspace/CMakeLists.txt ]]; then
+		echo "Refusing to run: .cursor/cloud-agent-install.sh is only for Cursor Cloud Agents." >&2
+		echo "It is not used by CMake, CI, the Linux installer, or local builds." >&2
+		echo "Override (dangerous): EQEMU_ALLOW_CLOUD_AGENT_SCRIPTS=1" >&2
+		exit 1
+	fi
+fi
+
 cd /workspace
 
 echo "[eqemu-install] Installing system packages..."

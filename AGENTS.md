@@ -36,7 +36,9 @@ This repository is an EQEmulator server fork. Reviews should prioritize correctn
 
 ## Cursor Cloud specific instructions
 
-Cloud Agent install/start for this repo lives in `.cursor/cloud-agent-install.sh` and `.cursor/cloud-agent-start.sh`. The dashboard install command should be `bash .cursor/cloud-agent-install.sh` and start should be `bash .cursor/cloud-agent-start.sh` (MariaDB only). Do not use a submodule-only install — that leaves future agents without compilers, binaries, or a seeded DB.
+Optional guidance for [Cursor Cloud Agents](https://cursor.com/docs/cloud-agent) only. It does **not** change CMake, CI, the Linux installer, or local builds for other contributors. Helpers live under `.cursor/` and run only when a Cursor environment Install/Start command invokes them (see `.cursor/README.md`).
+
+Recommended Cursor dashboard commands: Install `bash .cursor/cloud-agent-install.sh`, Start `bash .cursor/cloud-agent-start.sh`. A submodule-only install is insufficient for this codebase (needs compilers, binaries, and a seeded DB).
 
 ### Compiler (important)
 - Default `cc`/`c++` on the base image may be Clang, which selects a GCC-14 toolchain with no usable `libstdc++` (`cannot find -lstdc++`). Always build with **GCC**. The install script forces the alternatives to `gcc`/`g++`. If a build still picks Clang, pass `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++` and `CC=gcc CXX=g++` for vcpkg.
