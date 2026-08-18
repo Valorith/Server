@@ -2948,22 +2948,19 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		BuildBuyLineMapFromVector(item_map, current_buy_lines);
 
 		auto buy_line = bl.buy_lines.front();
-		auto it       = std::find_if(
-			current_buy_lines.cbegin(),
-			current_buy_lines.cend(),
-			[&](const BuyerLineItems_Struct &existing) {
-				return existing.slot == buy_line.slot;
-			}
-		);
-		if (it == std::end(current_buy_lines) && buy_line.item_id != 0) {
-			it = std::find_if(
-				current_buy_lines.cbegin(),
-				current_buy_lines.cend(),
-				[&](const BuyerLineItems_Struct &existing) {
-					return existing.item_id == buy_line.item_id;
-				}
-			);
+		std::vector<Bazaar::BuyerLinePrice> current_prices;
+		current_prices.reserve(current_buy_lines.size());
+		for (const auto &line : current_buy_lines) {
+			current_prices.push_back({line.slot, line.item_id, line.item_cost});
 		}
+		const int match_index = Bazaar::FindBuyerLineIndex(
+			current_prices,
+			buy_line.slot,
+			buy_line.item_id
+		);
+		const auto it = match_index >= 0
+			? std::next(current_buy_lines.cbegin(), match_index)
+			: current_buy_lines.cend();
 		if (it != std::end(current_buy_lines)) {
 			buy_line.slot = Bazaar::ResolveBuyerPersistedSlot(true, it->slot, buy_line.slot);
 		}
@@ -4517,6 +4514,14 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					return;
 				}
 
+				const auto begin_result = database.TransactionBegin();
+				if (!begin_result.Success()) {
+					SendPersistedBuyLines();
+					return;
+				}
+
+				bool overlay_failed = false;
+				bool overlay_wrote = false;
 				for (const auto &client_line : bl.buy_lines) {
 					if (!Bazaar::IsValidBuyerOverlayPrice(
 						client_line.item_cost,
@@ -4539,13 +4544,27 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 						client_line.item_cost,
 						m_buyer_explicit_price_update
 					);
-					BuyerBuyLinesRepository::ModifyBuyLinePrice(
+					if (BuyerBuyLinesRepository::ModifyBuyLinePrice(
 						database,
 						CharacterID(),
 						persisted_prices[index].slot,
 						persisted_prices[index].item_id,
 						price
-					);
+					) <= 0) {
+						overlay_failed = true;
+						break;
+					}
+					overlay_wrote = true;
+				}
+
+				if (overlay_failed || !database.TransactionCommit().Success()) {
+					database.TransactionRollback();
+					SendPersistedBuyLines();
+					return;
+				}
+
+				if (overlay_wrote) {
+					BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
 				}
 			}
 			else {
