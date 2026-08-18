@@ -2799,6 +2799,7 @@ void Client::ToggleBuyerMode(bool status)
 		}
 
 		m_restored_persisted_buyer_mode = false;
+		m_buyer_explicit_price_update = false;
 		ClearPersistedListingRestoreDeferral();
 		UpdateWho();
 		Message(Chat::Yellow, fmt::format("Barter Mode OFF. Buy lines deactivated.").c_str());
@@ -2937,10 +2938,19 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		auto it       = std::find_if(
 			current_buy_lines.cbegin(),
 			current_buy_lines.cend(),
-			[&](BuyerLineItems_Struct bl) {
-				return bl.slot == buy_line.slot;
+			[&](const BuyerLineItems_Struct &existing) {
+				return existing.slot == buy_line.slot;
 			}
 		);
+		if (it == std::end(current_buy_lines) && buy_line.item_id != 0) {
+			it = std::find_if(
+				current_buy_lines.cbegin(),
+				current_buy_lines.cend(),
+				[&](const BuyerLineItems_Struct &existing) {
+					return existing.item_id == buy_line.item_id;
+				}
+			);
+		}
 
 		if (buy_line.item_toggle) {
 			const uint64 max_transaction_value =
@@ -3035,21 +3045,36 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			buy_line.item_toggle = 0;
 		}
 
-		buy_line.item_icon = database.GetItem(buy_line.item_id)->Icon;
+		if (const auto *item = database.GetItem(buy_line.item_id)) {
+			buy_line.item_icon = item->Icon;
+		}
 		if ((buy_line.item_toggle && it != std::end(current_buy_lines)) || pass) {
-			BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, GetBuyerID());
+			if (it != std::end(current_buy_lines)) {
+				buy_line.item_cost = Bazaar::ResolveBuyerUpdatePrice(it->item_cost, buy_line.item_cost);
+			}
+			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) <= 0) {
+				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
+			}
+			m_buyer_explicit_price_update = true;
 			Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 		}
 		else if (buy_line.item_toggle && it == std::end(current_buy_lines)) {
-			BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, GetBuyerID());
-			Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
+			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) > 0) {
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
+			}
+			else {
+				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
+			}
 		}
 		else if (!buy_line.item_toggle) {
-			BuyerBuyLinesRepository::DeleteBuyLine(database, GetBuyerID(), buy_line.slot);
+			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
 			Message(Chat::Yellow, fmt::format("Buy line for {} disabled.", buy_line.item_name).c_str());
 		}
 		else {
-			BuyerBuyLinesRepository::DeleteBuyLine(database, GetBuyerID(), buy_line.slot);
+			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
 			Message(
 				Chat::Yellow,
 				fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name).c_str());
@@ -4412,14 +4437,55 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 			persisted_buy_lines.size(),
 			m_restored_persisted_buyer_mode
 		)) {
-			LogTrading(
-				"Keeping persisted buyer listings for client [{}] account [{}] character [{}] instead of applying a client start-mode payload. buy_lines [{}] restored [{}]",
-				GetCleanName(),
-				AccountID(),
-				CharacterID(),
+			if (Bazaar::ShouldOverlayBuyerStartPrices(
 				persisted_buy_lines.size(),
+				m_buyer_explicit_price_update,
 				m_restored_persisted_buyer_mode
-			);
+			)) {
+				std::vector<Bazaar::BuyerLinePrice> persisted_prices;
+				persisted_prices.reserve(persisted_buy_lines.size());
+				for (const auto &line : persisted_buy_lines) {
+					persisted_prices.push_back({line.slot, line.item_id, line.item_cost});
+				}
+
+				LogTrading(
+					"Overlaying client start-mode prices onto persisted buy lines for client [{}] character [{}]. buy_lines [{}] client_lines [{}]",
+					GetCleanName(),
+					CharacterID(),
+					persisted_buy_lines.size(),
+					bl.buy_lines.size()
+				);
+
+				for (const auto &client_line : bl.buy_lines) {
+					const int index = Bazaar::FindBuyerLineIndex(
+						persisted_prices,
+						client_line.slot,
+						client_line.item_id
+					);
+					if (index < 0) {
+						continue;
+					}
+
+					auto write_line = client_line;
+					write_line.item_cost = Bazaar::ResolveBuyerStartPrice(
+						persisted_prices[index].price,
+						client_line.item_cost,
+						m_buyer_explicit_price_update
+					);
+					BuyerBuyLinesRepository::ModifyBuyLine(database, write_line, CharacterID());
+				}
+			}
+			else {
+				LogTrading(
+					"Keeping persisted buyer listings for client [{}] account [{}] character [{}] instead of applying a client start-mode payload. buy_lines [{}] restored [{}] explicit_update [{}]",
+					GetCleanName(),
+					AccountID(),
+					CharacterID(),
+					persisted_buy_lines.size(),
+					m_restored_persisted_buyer_mode,
+					m_buyer_explicit_price_update
+				);
+			}
 			SendPersistedBuyLines();
 			return;
 		}

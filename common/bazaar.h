@@ -65,14 +65,56 @@ public:
 		int32 selected_instance_id
 	);
 
-	// Ignore the RoF2 start payload only when persisted buy lines exist.
-	// ToggleBuyerMode(true) always inserts/upserts the buyer row before
-	// Barter_BuyerItemStart, so row existence is not a restore signal.
-	// reject_stale_empty_restore is set only by RestorePersistedBuyerMode
-	// for a fulfilled (empty) order after offline reclaim.
+	struct BuyerLinePrice {
+		uint32 slot;
+		uint32 item_id;
+		uint32 price;
+	};
+
+	// Full replace from the RoF2 start payload only on a fresh Barter On
+	// (no persisted lines). ToggleBuyerMode(true) upserts the buyer row
+	// before Barter_BuyerItemStart, so row existence is not a restore
+	// signal. reject_stale_empty_restore is set only by
+	// RestorePersistedBuyerMode for a fulfilled (empty) order.
 	static bool ShouldUseClientBuyerStartPayload(
 		size_t persisted_buy_line_count,
 		bool reject_stale_empty_restore
+	);
+
+	// Mid-session Start Barter overlays window prices onto existing lines.
+	// After persist restore, the next Start is the stale RoF2 INI and must
+	// not overwrite. After an explicit Update write, a later Start that
+	// still carries the first-session INI must not overwrite those writes.
+	static bool ShouldOverlayBuyerStartPrices(
+		size_t persisted_buy_line_count,
+		bool has_explicit_price_update,
+		bool restored_persisted_buyer_mode
+	);
+
+	static int FindBuyerLineIndex(
+		const std::vector<BuyerLinePrice> &lines,
+		uint32 slot,
+		uint32 item_id
+	);
+
+	// Update / Modify always persists the window offering.
+	static uint32 ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price);
+
+	// Start Barter uses the window price unless Update already wrote.
+	static uint32 ResolveBuyerStartPrice(
+		uint32 persisted_price,
+		uint32 client_price,
+		bool has_explicit_price_update
+	);
+
+	// Player-visible prices after Update and/or Start, and therefore after
+	// the next offline reconnect restore. Does not add INI-only lines.
+	static std::vector<BuyerLinePrice> ApplyBuyerClientLinePrices(
+		const std::vector<BuyerLinePrice> &persisted,
+		const std::vector<BuyerLinePrice> &client,
+		bool client_is_update,
+		bool has_explicit_price_update,
+		bool restored_persisted_buyer_mode = false
 	);
 
 	// Start-mode satchel add/remove is applied when unique IDs differ.

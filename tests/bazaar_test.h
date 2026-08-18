@@ -68,6 +68,12 @@ public:
 		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadOnFreshBarterOn);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenPersistedLinesExist);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadAfterEmptyRestore);
+		TEST_ADD(BazaarTest::BuyerUpdateWritesNewOfferingPrice);
+		TEST_ADD(BazaarTest::BuyerStartOverlaysWindowPricesWhenLinesExist);
+		TEST_ADD(BazaarTest::BuyerStartAfterUpdateDoesNotResurrectStaleIniPrices);
+		TEST_ADD(BazaarTest::BuyerReconnectShowsUpdatedPricesNotFirstSession);
+		TEST_ADD(BazaarTest::BuyerRestoreStartKeepsPersistedWhenIniIsStale);
+		TEST_ADD(BazaarTest::BuyerUpdateMatchesByItemIdWhenSlotsDiffer);
 		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
 		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
 		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
@@ -414,6 +420,136 @@ private:
 	void RejectsStaleBuyerStartPayloadAfterEmptyRestore()
 	{
 		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(0, true));
+	}
+
+	void BuyerUpdateWritesNewOfferingPrice()
+	{
+		TEST_ASSERT(Bazaar::ResolveBuyerUpdatePrice(40, 30) == 30);
+		TEST_ASSERT(Bazaar::ResolveBuyerUpdatePrice(10, 20) == 20);
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> updates = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto after_update = Bazaar::ApplyBuyerClientLinePrices(persisted, updates, true, false);
+		TEST_ASSERT(after_update.size() == 2);
+		TEST_ASSERT(after_update[0].price == 30);
+		TEST_ASSERT(after_update[1].price == 20);
+	}
+
+	void BuyerStartOverlaysWindowPricesWhenLinesExist()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(2, true));
+		TEST_ASSERT(Bazaar::ShouldOverlayBuyerStartPrices(2, false, false));
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, false, true));
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> window = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto after_start = Bazaar::ApplyBuyerClientLinePrices(persisted, window, false, false);
+		TEST_ASSERT(after_start[0].price == 30);
+		TEST_ASSERT(after_start[1].price == 20);
+	}
+
+	void BuyerStartAfterUpdateDoesNotResurrectStaleIniPrices()
+	{
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, true, false));
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, true, true));
+		TEST_ASSERT(Bazaar::ResolveBuyerStartPrice(30, 40, true) == 30);
+		TEST_ASSERT(Bazaar::ResolveBuyerStartPrice(20, 10, true) == 20);
+
+		const std::vector<Bazaar::BuyerLinePrice> after_update = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> stale_ini = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const auto after_start = Bazaar::ApplyBuyerClientLinePrices(after_update, stale_ini, false, true);
+		TEST_ASSERT(after_start[0].price == 30);
+		TEST_ASSERT(after_start[1].price == 20);
+	}
+
+	void BuyerReconnectShowsUpdatedPricesNotFirstSession()
+	{
+		const std::vector<Bazaar::BuyerLinePrice> first_session = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> window_update = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto persisted_after_update = Bazaar::ApplyBuyerClientLinePrices(
+			first_session,
+			window_update,
+			true,
+			false
+		);
+		const auto after_start_barter = Bazaar::ApplyBuyerClientLinePrices(
+			persisted_after_update,
+			first_session,
+			false,
+			true
+		);
+		const auto reconnect_visible = after_start_barter;
+
+		TEST_ASSERT(reconnect_visible.size() == 2);
+		TEST_ASSERT(reconnect_visible[0].price == 30);
+		TEST_ASSERT(reconnect_visible[1].price == 20);
+		TEST_ASSERT(reconnect_visible[0].price != 40);
+		TEST_ASSERT(reconnect_visible[1].price != 10);
+	}
+
+	void BuyerRestoreStartKeepsPersistedWhenIniIsStale()
+	{
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, false, true));
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> stale_ini = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const auto after_restore_start = Bazaar::ApplyBuyerClientLinePrices(
+			persisted,
+			stale_ini,
+			false,
+			false,
+			true
+		);
+		TEST_ASSERT(after_restore_start[0].price == 30);
+		TEST_ASSERT(after_restore_start[1].price == 20);
+	}
+
+	void BuyerUpdateMatchesByItemIdWhenSlotsDiffer()
+	{
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex({{0, 22503, 40}, {1, 10029, 10}}, 99, 22503) == 0);
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex({{0, 22503, 40}, {1, 10029, 10}}, 99, 10029) == 1);
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> updates = {
+			{7, 22503, 30},
+			{8, 10029, 20}
+		};
+		const auto after_update = Bazaar::ApplyBuyerClientLinePrices(persisted, updates, true, false);
+		TEST_ASSERT(after_update[0].price == 30);
+		TEST_ASSERT(after_update[1].price == 20);
 	}
 
 	void TraderListingSetsMatchIgnoringOrderAndPlaceholders()

@@ -145,6 +145,98 @@ bool Bazaar::ShouldUseClientBuyerStartPayload(
 	return !reject_stale_empty_restore;
 }
 
+bool Bazaar::ShouldOverlayBuyerStartPrices(
+	size_t persisted_buy_line_count,
+	bool has_explicit_price_update,
+	bool restored_persisted_buyer_mode
+)
+{
+	return persisted_buy_line_count > 0
+		&& !has_explicit_price_update
+		&& !restored_persisted_buyer_mode;
+}
+
+int Bazaar::FindBuyerLineIndex(
+	const std::vector<BuyerLinePrice> &lines,
+	uint32 slot,
+	uint32 item_id
+)
+{
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (lines[i].slot == slot) {
+			return static_cast<int>(i);
+		}
+	}
+
+	if (item_id == 0) {
+		return -1;
+	}
+
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (lines[i].item_id == item_id) {
+			return static_cast<int>(i);
+		}
+	}
+
+	return -1;
+}
+
+uint32 Bazaar::ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price)
+{
+	(void) persisted_price;
+	return client_price;
+}
+
+uint32 Bazaar::ResolveBuyerStartPrice(
+	uint32 persisted_price,
+	uint32 client_price,
+	bool has_explicit_price_update
+)
+{
+	return has_explicit_price_update ? persisted_price : client_price;
+}
+
+std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(
+	const std::vector<BuyerLinePrice> &persisted,
+	const std::vector<BuyerLinePrice> &client,
+	bool client_is_update,
+	bool has_explicit_price_update,
+	bool restored_persisted_buyer_mode
+)
+{
+	auto result = persisted;
+	const bool apply_client = client_is_update ||
+		ShouldOverlayBuyerStartPrices(
+			persisted.size(),
+			has_explicit_price_update,
+			restored_persisted_buyer_mode
+		);
+	if (!apply_client) {
+		return result;
+	}
+
+	for (const auto &client_line : client) {
+		const int index = FindBuyerLineIndex(result, client_line.slot, client_line.item_id);
+		if (index < 0) {
+			continue;
+		}
+
+		result[index].price = client_is_update
+			? ResolveBuyerUpdatePrice(result[index].price, client_line.price)
+			: ResolveBuyerStartPrice(
+				result[index].price,
+				client_line.price,
+				has_explicit_price_update
+			);
+		if (client_line.item_id != 0) {
+			result[index].item_id = client_line.item_id;
+		}
+		result[index].slot = client_line.slot;
+	}
+
+	return result;
+}
+
 bool Bazaar::TraderListingSetsMatch(
 	const std::vector<std::string> &persisted_unique_ids,
 	const std::vector<std::string> &client_unique_ids

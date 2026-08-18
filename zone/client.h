@@ -2189,6 +2189,7 @@ private:
 	std::map<int16, std::tuple<uint32, int32, std::string>>        m_trader_merchant_list{};  // itemid, qty, item_unique_id
 	uint32                                                         m_buyer_id;
 	bool                                                           m_restored_persisted_buyer_mode;
+	bool                                                           m_buyer_explicit_price_update;
 	bool                                                           m_defer_listing_teardown_after_restore;
 	float                                                          m_listing_restore_x;
 	float                                                          m_listing_restore_y;

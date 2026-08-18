@@ -3739,12 +3739,12 @@ void Client::Handle_OP_Barter(const EQApplicationPacket *app)
 		}
 
 		case Barter_BuyerModeOn: {
-			if (!IsTrader()) {
-				ToggleBuyerMode(true);
-			}
-			else {
+			if (IsTrader()) {
 				ToggleBuyerMode(false);
 				Message(Chat::Red, "You cannot be a Trader and Buyer at the same time.");
+			}
+			else if (!IsBuyer()) {
+				ToggleBuyerMode(true);
 			}
 			break;
 		}
