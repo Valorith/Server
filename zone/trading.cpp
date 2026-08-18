@@ -1154,7 +1154,7 @@ bool Client::ResumePersistedTraderListings()
 		trader_items.size()
 	);
 
-	if (!RestorePersistedTraderMode()) {
+	if (!RestorePersistedTraderMode(true)) {
 		LogError(
 			"Failed restoring persisted trader listings for client [{}] character [{}]; falling back to client start-mode payload",
 			GetCleanName(),
@@ -1166,7 +1166,7 @@ bool Client::ResumePersistedTraderListings()
 	return true;
 }
 
-bool Client::RestorePersistedTraderMode()
+bool Client::RestorePersistedTraderMode(bool allow_out_of_zone)
 {
 	auto trader_items = TraderRepository::GetWhere(
 		database,
@@ -1178,7 +1178,7 @@ bool Client::RestorePersistedTraderMode()
 		)
 	);
 
-	if (trader_items.empty()) {
+	if (trader_items.empty() && allow_out_of_zone) {
 		trader_items = TraderRepository::GetWhere(database, fmt::format("`character_id` = {}", CharacterID()));
 	}
 
@@ -2716,7 +2716,7 @@ void Client::SendPersistedBuyLines()
 	}
 }
 
-bool Client::RestorePersistedBuyerMode()
+bool Client::RestorePersistedBuyerMode(bool allow_out_of_zone)
 {
 	if (IsOffline() || IsBuyer() || IsTrader()) {
 		return false;
@@ -2732,7 +2732,7 @@ bool Client::RestorePersistedBuyerMode()
 		)
 	);
 
-	if (buyers.empty()) {
+	if (buyers.empty() && allow_out_of_zone) {
 		buyers = BuyerRepository::GetWhere(
 			database,
 			fmt::format("`char_id` = {} LIMIT 1", CharacterID())

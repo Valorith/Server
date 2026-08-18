@@ -333,7 +333,7 @@ public:
 	void Trader_CustomerBrowsing(Client *Customer);
 
 	void TraderEndTrader();
-	bool RestorePersistedTraderMode();
+	bool RestorePersistedTraderMode(bool allow_out_of_zone = false);
 	bool ResumePersistedTraderListings();
 	void TraderUpdateItem(const EQApplicationPacket *app);
 	void SendBazaarDone(uint32 trader_id);
@@ -469,7 +469,7 @@ public:
 	void ShowBuyLines(const EQApplicationPacket *app);
 	void SellToBuyer(const EQApplicationPacket *app);
 	void ToggleBuyerMode(bool TurnOn);
-	bool RestorePersistedBuyerMode();
+	bool RestorePersistedBuyerMode(bool allow_out_of_zone = false);
 	void SendPersistedBuyLines();
 	void ModifyBuyLine(const EQApplicationPacket *app);
 	void CreateStartingBuyLines(const EQApplicationPacket *app);
