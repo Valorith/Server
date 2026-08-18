@@ -36,23 +36,23 @@ This repository is an EQEmulator server fork. Reviews should prioritize correctn
 
 ## Cursor Cloud specific instructions
 
-This section captures non-obvious, durable setup/run caveats for the Cloud Agent VM. The base image already has system packages (build-essential, cmake, ninja-build, ccache, autotools, MariaDB server/client, libperl-dev, uuid-dev, etc.) installed, the `peq` database seeded, and the project built. The startup update script only refreshes git submodules; everything else below is done once and persists in the environment snapshot.
+Cloud Agent install/start for this repo lives in `.cursor/cloud-agent-install.sh` and `.cursor/cloud-agent-start.sh`. The dashboard install command should be `bash .cursor/cloud-agent-install.sh` and start should be `bash .cursor/cloud-agent-start.sh` (MariaDB only). Do not use a submodule-only install — that leaves future agents without compilers, binaries, or a seeded DB.
 
 ### Compiler (important)
-- The VM's default `cc`/`c++` alternatives are Clang, which selects a GCC-14 toolchain that has no `libstdc++` and fails to link (`cannot find -lstdc++`). This project (and vcpkg) must build with **GCC**. The alternatives have been repointed to `gcc`/`g++`. If a build ever picks Clang again, pass `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++` (and export `CC=gcc CXX=g++` so vcpkg's triplet build uses GCC too).
+- Default `cc`/`c++` on the base image may be Clang, which selects a GCC-14 toolchain with no usable `libstdc++` (`cannot find -lstdc++`). Always build with **GCC**. The install script forces the alternatives to `gcc`/`g++`. If a build still picks Clang, pass `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++` and `CC=gcc CXX=g++` for vcpkg.
 
 ### Build
-- C++ dependencies come from the `submodules/vcpkg` submodule (manifest `vcpkg.json`); the first configure compiles them from source into `build/vcpkg_installed` (cached in `/workspace/.vcpkg-binary-cache`). Use the canonical flags in `.github/workflows/build.yaml` (Linux job). Configure once, then `cmake --build build --parallel`. Binaries land in `build/bin/`. `BUILD.md` covers the manual build; `CMakePresets.json` has `linux-debug`/`linux-release` presets.
+- C++ deps come from `submodules/vcpkg` (`vcpkg.json`). First configure compiles them into `build/vcpkg_installed` (binary cache under `.vcpkg-binary-cache`). Canonical flags match `.github/workflows/build.yaml` (Linux job). Binaries land in `build/bin/`. See also `BUILD.md` / `CMakePresets.json`.
 
 ### Database
-- MariaDB is not auto-started; run `sudo service mariadb start` at the beginning of a session. DB `peq` / user `peq`@`127.0.0.1` password `peqpass` (see `.devcontainer/base/eqemu_config.json`). Content is seeded from `https://db.eqemu.dev/latest`; re-seed via the `inject-mariadb` recipe in `.devcontainer/Makefile`.
-- On `world` startup the in-code DB migrations may hit `Duplicate column`/already-applied errors because the public dump is newer than the binary's migration manifest. `world` then prompts `Would you like to skip this update? [y/n]` (60s timeout). Answer `y` to skip; this is expected, not a failure.
+- Start script starts MariaDB; if you are not using it, run `sudo service mariadb start` yourself. DB `peq` / user `peq` password `peqpass` (see `.devcontainer/base/eqemu_config.json`). Content is seeded from `https://db.eqemu.dev/latest` by the install script (or `inject-mariadb` in `.devcontainer/Makefile`).
+- On `world` startup, in-code migrations may hit `Duplicate column` because the public dump can be ahead of the binary manifest. `world` prompts `Would you like to skip this update? [y/n]` (60s). Answer `y`; this is expected.
 
 ### Running the server stack
-- Run every binary from `build/bin/` (configs `eqemu_config.json` and `login.json` live there, pointing at localhost). Bring-up order: `./shared_memory` (one-shot, serializes items+spells only in this version) → `./loginserver` → `./world` → `./zone`. Ports: loginserver 5998 (+web api 6000), world telnet 9000 / zone-TCP 9001 / http 9080, zones 7000-7400.
-- `zone` aborts at startup with "Incompatible quest plugins detected" unless `quests`, `plugins`, `lua_modules`, and `mods` are symlinked into `build/bin/` from a clone of `github.com/ProjectEQ/projecteqquests` (the `prep` target in `.devcontainer/Makefile` does this). Maps (`github.com/EQEmu/maps`) are optional for a zone to boot.
-- The `world` telnet console (`nc 127.0.0.1 9000`) treats localhost connections as admin (no login needed). Use it to drive the server, e.g. `zonestatus`, then `zonebootup <zone_server_id> <zone_short_name>` (e.g. `zonebootup 1 poknowledge`) to boot a live game zone.
-- The devcontainer `make` targets (`make world`, etc.) are guarded by an `is-vscode` check and only run inside the VS Code devcontainer; run the binaries directly here instead.
+- Run binaries from `build/bin/` (`eqemu_config.json` / `login.json` there, localhost). Bring-up: `./shared_memory` (one-shot; items+spells only in this tree) → `./loginserver` → `./world` → `./zone`. Ports: login 5998 (+API 6000), world telnet 9000 / zone-TCP 9001 / http 9080, zones 7000–7400.
+- `zone` aborts without quest plugins (`CheckHandin`). Install links `quests`/`plugins`/`lua_modules`/`mods` from ProjectEQ quests. Maps are optional for boot.
+- World telnet (`nc 127.0.0.1 9000`) treats localhost as admin. Useful: `zonestatus`, `zonebootup <id> <short_name>` (e.g. `zonebootup 1 poknowledge`).
+- Devcontainer `make` targets require VS Code (`is-vscode`); run binaries directly in Cloud Agents.
 
 ### Tests / lint
-- Unit tests: build with `-DEQEMU_BUILD_TESTS=ON`, then run `./build/bin/tests` (CI runs exactly this). The harness always exits 0; check the printed `Total: N tests, X% correct` line. There is no separate lint step.
+- `./build/bin/tests` (build with `-DEQEMU_BUILD_TESTS=ON`; CI runs this). Harness exits 0; check `Total: N tests, X% correct`. No separate lint step.
