@@ -3011,12 +3011,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		}
 
 		current_total_cost = ValidateBuyLineCost(item_map);
-		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
-		BuyerRepository::UpdateTransactionDate(
-			database,
-			GetBuyerID(),
-			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
-		);
 
 		if (buy_line.item_toggle) {
 			current_total_cost +=
@@ -3108,6 +3102,13 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 				Chat::Yellow,
 				fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name).c_str());
 		}
+
+		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
+		BuyerRepository::UpdateTransactionDate(
+			database,
+			GetBuyerID(),
+			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
+		);
 
 		SendBuyLineUpdate(buy_line);
 
@@ -4573,19 +4574,21 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					overlay_wrote = true;
 				}
 
+				if (overlay_wrote) {
+					const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
+					if (BuyerRepository::UpdateTransactionDate(
+						database,
+						GetBuyerID(),
+						Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
+					) <= 0) {
+						overlay_failed = true;
+					}
+				}
+
 				if (overlay_failed || !database.TransactionCommit().Success()) {
 					database.TransactionRollback();
 					SendPersistedBuyLines();
 					return;
-				}
-
-				if (overlay_wrote) {
-					const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
-					BuyerRepository::UpdateTransactionDate(
-						database,
-						GetBuyerID(),
-						Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
-					);
 				}
 			}
 			else {
