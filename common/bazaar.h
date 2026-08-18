@@ -107,6 +107,15 @@ public:
 		bool has_explicit_price_update
 	);
 
+	// Disable/delete must use the persisted slot when the client slot differs.
+	static uint32 ResolveBuyerPersistedSlot(
+		bool matched,
+		uint32 persisted_slot,
+		uint32 client_slot
+	);
+
+	static bool ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items);
+
 	// Player-visible prices after Update and/or Start, and therefore after
 	// the next offline reconnect restore. Does not add INI-only lines.
 	static std::vector<BuyerLinePrice> ApplyBuyerClientLinePrices(

@@ -2842,6 +2842,18 @@ bool Client::RestorePersistedBuyerMode()
 		return false;
 	}
 
+	if (!Bazaar::ShouldRestorePersistedBuyerMode(
+		ClientVersion() >= EQ::versions::ClientVersion::RoF
+	)) {
+		LogTrading(
+			"Skipping buyer mode restore for client [{}] character [{}]; client lacks BuyerItems",
+			GetCleanName(),
+			CharacterID()
+		);
+		BuyerRepository::DeleteBuyer(database, CharacterID());
+		return false;
+	}
+
 	if (!IsInBuyerSpace()) {
 		LogTrading(
 			"Skipping buyer mode restore for client [{}] character [{}]; not in a barter stall",
@@ -2950,6 +2962,9 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 					return existing.item_id == buy_line.item_id;
 				}
 			);
+		}
+		if (it != std::end(current_buy_lines)) {
+			buy_line.slot = Bazaar::ResolveBuyerPersistedSlot(true, it->slot, buy_line.slot);
 		}
 
 		if (buy_line.item_toggle) {
@@ -4456,6 +4471,8 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					bl.buy_lines.size()
 				);
 
+				const uint64 max_overlay_transaction_value =
+					EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
 				for (const auto &client_line : bl.buy_lines) {
 					const int index = Bazaar::FindBuyerLineIndex(
 						persisted_prices,
@@ -4466,13 +4483,26 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 						continue;
 					}
 
-					auto write_line = client_line;
-					write_line.item_cost = Bazaar::ResolveBuyerStartPrice(
+					const auto transaction_value = Bazaar::ValidateBuyLinePrice(
+						client_line.item_cost,
+						max_overlay_transaction_value
+					);
+					if (!transaction_value.is_valid) {
+						continue;
+					}
+
+					const uint32 price = Bazaar::ResolveBuyerStartPrice(
 						persisted_prices[index].price,
 						client_line.item_cost,
 						m_buyer_explicit_price_update
 					);
-					BuyerBuyLinesRepository::ModifyBuyLine(database, write_line, CharacterID());
+					BuyerBuyLinesRepository::ModifyBuyLinePrice(
+						database,
+						CharacterID(),
+						persisted_prices[index].slot,
+						persisted_prices[index].item_id,
+						price
+					);
 				}
 			}
 			else {

@@ -149,6 +149,21 @@ public:
 		return 1;
 	}
 
+	static int ModifyBuyLinePrice(Database& db, uint32 char_id, uint32 slot, uint32 item_id, uint32 item_cost)
+	{
+		auto b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot));
+		if (b_lines.empty() && item_id != 0) {
+			b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `item_id` = '{}'", char_id, item_id));
+		}
+		if (b_lines.empty()) {
+			return 0;
+		}
+
+		auto b_line = b_lines.front();
+		b_line.item_price = item_cost;
+		return UpdateOne(db, b_line) ? 1 : 0;
+	}
+
 	static bool DeleteBuyLine(Database &db, uint32 char_id, int32 slot_id = 0xffffffff)
 	{
 		const auto buy_line_filter = GetDeleteBuyLineWhereFilter(char_id, slot_id);

@@ -196,6 +196,20 @@ uint32 Bazaar::ResolveBuyerStartPrice(
 	return has_explicit_price_update ? persisted_price : client_price;
 }
 
+uint32 Bazaar::ResolveBuyerPersistedSlot(
+	bool matched,
+	uint32 persisted_slot,
+	uint32 client_slot
+)
+{
+	return matched ? persisted_slot : client_slot;
+}
+
+bool Bazaar::ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items)
+{
+	return client_supports_buyer_items;
+}
+
 std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(
 	const std::vector<BuyerLinePrice> &persisted,
 	const std::vector<BuyerLinePrice> &client,
