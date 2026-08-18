@@ -1157,6 +1157,7 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 
 	const auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, GetAccountID());
 	if (!session.id) {
+		ClearOrphanedAccountTradeListings();
 		return true;
 	}
 
@@ -1300,6 +1301,65 @@ bool Client::ClearStaleOfflineSession(uint32 character_id, const char *reason)
 	}
 
 	return true;
+}
+
+void Client::ClearOrphanedAccountTradeListings()
+{
+	const uint32 entering_character_id = GetCharID();
+	const auto character_ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
+
+	std::vector<uint32> orphaned_ids;
+	for (const auto listing_character_id : character_ids) {
+		if (Bazaar::ShouldClearOrphanedAccountListings(false, entering_character_id, listing_character_id)) {
+			orphaned_ids.push_back(listing_character_id);
+		}
+	}
+
+	if (orphaned_ids.empty()) {
+		return;
+	}
+
+	std::vector<std::string> orphaned_id_strings;
+	orphaned_id_strings.reserve(orphaned_ids.size());
+	for (const auto listing_character_id : orphaned_ids) {
+		orphaned_id_strings.push_back(std::to_string(listing_character_id));
+	}
+
+	const auto id_list = Strings::Implode(", ", orphaned_id_strings);
+	const auto leftover_traders = TraderRepository::GetWhere(
+		database,
+		fmt::format("`character_id` IN ({})", id_list)
+	);
+	const auto leftover_buyers = BuyerRepository::GetWhere(
+		database,
+		fmt::format("`char_id` IN ({})", id_list)
+	);
+	if (leftover_traders.empty() && leftover_buyers.empty()) {
+		return;
+	}
+
+	database.TransactionBegin();
+	for (const auto listing_character_id : orphaned_ids) {
+		TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", listing_character_id));
+		BuyerRepository::DeleteBuyer(database, listing_character_id);
+		LogTrading(
+			"Cleared orphaned trader/buyer listings for account [{}] leftover character [{}] after preserve reclaim without a recoverable session",
+			GetAccountID(),
+			listing_character_id
+		);
+	}
+
+	auto commit_result = database.TransactionCommit();
+	if (!commit_result.Success()) {
+		database.TransactionRollback();
+		LogError(
+			"Failed clearing orphaned trader/buyer listings for account [{}] character [{}]: ({}) {}",
+			GetAccountID(),
+			entering_character_id,
+			commit_result.ErrorNumber(),
+			commit_result.ErrorMessage()
+		);
+	}
 }
 
 void Client::ResetOfflineSessionReclaimState()

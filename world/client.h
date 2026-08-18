@@ -127,6 +127,7 @@ private:
 	void ContinueEnterWorld();
 	bool BeginOfflineSessionReclaimIfNeeded();
 	bool ClearStaleOfflineSession(uint32 character_id, const char *reason);
+	void ClearOrphanedAccountTradeListings();
 	void ResetOfflineSessionReclaimState();
 
 	EQStreamInterface* eqs;

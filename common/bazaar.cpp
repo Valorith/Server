@@ -133,6 +133,22 @@ bool Bazaar::ShouldPreserveOfflineListings(
 		offline_instance_id == selected_instance_id;
 }
 
+bool Bazaar::ShouldClearOrphanedAccountListings(
+	bool has_offline_session,
+	uint32 entering_character_id,
+	uint32 listing_character_id
+)
+{
+	if (has_offline_session) {
+		return false;
+	}
+
+	return
+		entering_character_id != 0 &&
+		listing_character_id != 0 &&
+		listing_character_id != entering_character_id;
+}
+
 bool Bazaar::ShouldUseClientBuyerStartPayload(
 	size_t persisted_buy_line_count,
 	bool reject_stale_empty_restore

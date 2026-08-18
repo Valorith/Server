@@ -65,6 +65,9 @@ public:
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForAlternateCharacter);
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForDifferentDestination);
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsWithoutValidIds);
+		TEST_ADD(BazaarTest::ClearsOrphanedAccountListingsForAlternateCharacter);
+		TEST_ADD(BazaarTest::KeepsOrphanedAccountListingsForSameCharacter);
+		TEST_ADD(BazaarTest::KeepsAccountListingsWhenOfflineSessionExists);
 		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadOnFreshBarterOn);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenPersistedLinesExist);
 		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadAfterEmptyRestore);
@@ -410,6 +413,23 @@ private:
 		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(0, 151, 0, 0, 151, 0));
 		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 0, 151, 0));
 		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 0, 0, 123, 0, 0));
+	}
+
+	void ClearsOrphanedAccountListingsForAlternateCharacter()
+	{
+		TEST_ASSERT(Bazaar::ShouldClearOrphanedAccountListings(false, 456, 123));
+	}
+
+	void KeepsOrphanedAccountListingsForSameCharacter()
+	{
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 123));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 0, 123));
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(false, 123, 0));
+	}
+
+	void KeepsAccountListingsWhenOfflineSessionExists()
+	{
+		TEST_ASSERT(!Bazaar::ShouldClearOrphanedAccountListings(true, 456, 123));
 	}
 
 	void UsesClientBuyerStartPayloadOnFreshBarterOn()

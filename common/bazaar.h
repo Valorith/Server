@@ -65,6 +65,15 @@ public:
 		int32 selected_instance_id
 	);
 
+	// After a preserve reclaim deletes the session, a later alt login has
+	// nothing to reclaim. Clear leftover rows that belong to another
+	// character on the account. Same-character reconnect keeps its rows.
+	static bool ShouldClearOrphanedAccountListings(
+		bool has_offline_session,
+		uint32 entering_character_id,
+		uint32 listing_character_id
+	);
+
 	struct BuyerLinePrice {
 		uint32 slot;
 		uint32 item_id;
