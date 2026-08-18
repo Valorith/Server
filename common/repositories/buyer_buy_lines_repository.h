@@ -205,9 +205,12 @@ public:
 			BuyerLineItems_Struct bli{};
 			bli.item_id       = l.item_id;
 			bli.item_cost     = l.item_price;
+			bli.item_icon     = l.item_icon;
 			bli.item_quantity = l.item_qty;
 			bli.slot          = l.buy_slot_id;
 			bli.item_name     = l.item_name;
+			bli.enabled       = 1;
+			bli.item_toggle   = 1;
 
 			for (auto const &i: GetSubIDs(buy_line_trade_items, l.id)) {
 				BuyerLineTradeItems_Struct blti{};

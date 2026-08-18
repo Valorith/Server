@@ -763,51 +763,11 @@ void Client::CompleteConnect()
 		}
 
 		if (!IsOffline() && !IsTrader()) {
-			auto trader_items = TraderRepository::GetWhere(
-				database,
-				fmt::format(
-					"`character_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {}",
-					CharacterID(),
-					GetZoneID(),
-					GetInstanceID()
-				)
-			);
+			RestorePersistedTraderMode();
+		}
 
-			if (!trader_items.empty()) {
-				auto previous_entity_id = trader_items.front().char_entity_id;
-				for (auto &entry : trader_items) {
-					entry.char_entity_id = GetID();
-				}
-
-				const bool trader_rows_refreshed = TraderRepository::ReplaceMany(database, trader_items);
-				LogTrading(
-					"Restoring trader mode on zone entry for client [{}] account [{}] character [{}] zone [{}] instance [{}]. trader_rows [{}] previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
-					GetCleanName(),
-					AccountID(),
-					CharacterID(),
-					GetZoneID(),
-					GetInstanceID(),
-					trader_items.size(),
-					previous_entity_id,
-					GetID(),
-					trader_rows_refreshed
-				);
-
-				if (trader_rows_refreshed) {
-					if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
-						auto outapp = new EQApplicationPacket(OP_Trader, sizeof(TraderStatus_Struct));
-						auto data   = (TraderStatus_Struct *) outapp->pBuffer;
-						data->Code  = TraderAck2;
-						QueuePacket(outapp);
-						safe_delete(outapp);
-					}
-
-					SetTrader(true);
-					SendTraderMode(TraderOn);
-					SendBecomeTrader(TraderOn, GetID());
-					UpdateWho();
-				}
-			}
+		if (!IsOffline() && !IsBuyer() && !IsTrader()) {
+			RestorePersistedBuyerMode();
 		}
 
 		if (IsPetNameChangeAllowed() && !RuleB(Pets, AlwaysAllowPetRename)) {
@@ -17526,6 +17486,18 @@ void Client::Handle_OP_Offline(const EQApplicationPacket *app)
 		IsTrader(),
 		IsBuyer()
 	);
+
+	// Offline mode is not a camp, so flush character state before cloning the
+	// offline entity. Trader and buyer listing prices already live in their
+	// own tables and must remain there through later reclaim.
+	if (!Save()) {
+		LogError(
+			"Failed saving character [{}] account [{}] before offline {} activation; continuing with in-memory state",
+			CharacterID(),
+			AccountID(),
+			mode
+		);
+	}
 
 	if (IsThereACustomer()) {
 		auto customer = entity_list.GetClientByID(GetCustomerID());

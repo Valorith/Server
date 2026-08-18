@@ -4567,12 +4567,23 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
+			// Keep trader and buyer listings. Offline mode is not a camp, so
+			// client bazaar/barter INI files may still have the previous prices.
+			// The live client restores those persisted listings on zone entry.
 			if (client->IsTrader()) {
-				client->TraderEndTrader();
+				LogTrading(
+					"Preserving trader listings while reclaiming offline trader [{}] character [{}]",
+					client->GetCleanName(),
+					client->CharacterID()
+				);
 			}
 
 			if (client->IsBuyer()) {
-				client->ToggleBuyerMode(false);
+				LogTrading(
+					"Preserving buyer listings while reclaiming offline buyer [{}] character [{}]",
+					client->GetCleanName(),
+					client->CharacterID()
+				);
 			}
 
 			client->UpdateWho(2);

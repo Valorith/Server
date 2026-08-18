@@ -113,6 +113,11 @@ bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 	return listed_price > 0 && requested_price == listed_price;
 }
 
+bool Bazaar::ShouldUsePersistedListings(bool has_persisted_listings)
+{
+	return has_persisted_listings;
+}
+
 void Bazaar::RecordAuditTrail(
 	Database &db,
 	const std::string &seller,

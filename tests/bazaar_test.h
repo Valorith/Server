@@ -59,6 +59,8 @@ public:
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
 		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
+		TEST_ADD(BazaarTest::UsesPersistedListingsWhenServerStillHasThem);
+		TEST_ADD(BazaarTest::UsesClientPayloadWhenNoPersistedListingsRemain);
 	}
 
 	~BazaarTest()
@@ -360,5 +362,15 @@ private:
 	void FailureSubActionPreservesSpecificFailure()
 	{
 		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
+	}
+
+	void UsesPersistedListingsWhenServerStillHasThem()
+	{
+		TEST_ASSERT(Bazaar::ShouldUsePersistedListings(true));
+	}
+
+	void UsesClientPayloadWhenNoPersistedListingsRemain()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUsePersistedListings(false));
 	}
 };

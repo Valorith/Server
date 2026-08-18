@@ -52,6 +52,11 @@ public:
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
 
+	// Client bazaar/barter INI files are flushed on camp, not when entering
+	// offline trader or buyer mode. If the server still has listings, those
+	// prices are newer than a later client start-mode payload.
+	static bool ShouldUsePersistedListings(bool has_persisted_listings);
+
 	static void RecordAuditTrail(
 		Database &db,
 		const std::string &seller,

@@ -333,6 +333,8 @@ public:
 	void Trader_CustomerBrowsing(Client *Customer);
 
 	void TraderEndTrader();
+	bool RestorePersistedTraderMode();
+	bool ResumePersistedTraderListings();
 	void TraderUpdateItem(const EQApplicationPacket *app);
 	void SendBazaarDone(uint32 trader_id);
 	void SendBulkBazaarTraders();
@@ -467,6 +469,8 @@ public:
 	void ShowBuyLines(const EQApplicationPacket *app);
 	void SellToBuyer(const EQApplicationPacket *app);
 	void ToggleBuyerMode(bool TurnOn);
+	bool RestorePersistedBuyerMode();
+	void SendPersistedBuyLines();
 	void ModifyBuyLine(const EQApplicationPacket *app);
 	void CreateStartingBuyLines(const EQApplicationPacket *app);
 	void BuyerItemSearch(const EQApplicationPacket *app);
