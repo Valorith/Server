@@ -2759,6 +2759,17 @@ void Client::ToggleBuyerMode(bool status)
 	data->entity_id = GetID();
 
 	if (status && IsInBuyerSpace()) {
+		if (Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
+			ClientVersion() == EQ::versions::ClientVersion::RoF2
+		)) {
+			LogTrading(
+				"Wiping preserved buy lines for client [{}] character [{}] on unsupported Barter On",
+				GetCleanName(),
+				CharacterID()
+			);
+			BuyerRepository::DeleteBuyer(database, CharacterID());
+		}
+
 		SetBuyerID(CharacterID());
 
 		auto existing = BuyerRepository::GetWhere(

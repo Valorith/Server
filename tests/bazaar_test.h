@@ -80,6 +80,7 @@ public:
 		TEST_ADD(BazaarTest::BuyerDisableUsesPersistedSlotWhenClientSlotDiffers);
 		TEST_ADD(BazaarTest::BuyerStartOverlayAppliesPriceOnly);
 		TEST_ADD(BazaarTest::SkipsBuyerRestoreWithoutListingProtocol);
+		TEST_ADD(BazaarTest::WipesPersistedBuyerLinesOnUnsupportedModeOn);
 		TEST_ADD(BazaarTest::RejectsBuyerOverlayWhenFundsDoNotCoverTotal);
 		TEST_ADD(BazaarTest::BuyerLineMatchPrefersItemIdOverConflictingSlot);
 		TEST_ADD(BazaarTest::BuyerOverlayIgnoresInvalidZeroPrice);
@@ -588,6 +589,12 @@ private:
 	{
 		TEST_ASSERT(Bazaar::ShouldRestorePersistedBuyerMode(true));
 		TEST_ASSERT(!Bazaar::ShouldRestorePersistedBuyerMode(false));
+	}
+
+	void WipesPersistedBuyerLinesOnUnsupportedModeOn()
+	{
+		TEST_ASSERT(Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(false));
+		TEST_ASSERT(!Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(true));
 	}
 
 	void RejectsBuyerOverlayWhenFundsDoNotCoverTotal()

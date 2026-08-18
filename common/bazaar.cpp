@@ -228,6 +228,13 @@ bool Bazaar::ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items)
 	return client_supports_buyer_items;
 }
 
+bool Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
+	bool client_supports_buyer_items
+)
+{
+	return !client_supports_buyer_items;
+}
+
 bool Bazaar::ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money)
 {
 	return proposed_total_cost > 0 && proposed_total_cost <= carried_money;

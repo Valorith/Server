@@ -125,6 +125,12 @@ public:
 
 	static bool ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items);
 
+	// Reconnect skip keeps rows for a later RoF2 login. Explicit Barter On
+	// from a client without OP_BuyerItems must not activate those orders.
+	static bool ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
+		bool client_supports_buyer_items
+	);
+
 	static bool ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money);
 
 	static bool IsValidBuyerOverlayPrice(uint32 client_price, uint64 max_transaction_value);
