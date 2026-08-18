@@ -1085,11 +1085,30 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 
 		if (Bazaar::TraderListingSetsMatch(persisted_unique_ids, client_unique_ids)) {
 			LogTrading(
-				"Keeping persisted trader listing prices for client [{}] character [{}]; start-mode item set is unchanged. listings [{}]",
+				"Keeping persisted trader listing prices for client [{}] character [{}]; start-mode item set is unchanged. listings [{}] already_trader [{}]",
 				GetCleanName(),
 				CharacterID(),
-				persisted_listings.size()
+				persisted_listings.size(),
+				IsTrader()
 			);
+			for (auto &entry : trader_items) {
+				const auto price_it = persisted_prices.find(entry.item_unique_id);
+				const auto cost = Bazaar::ResolveTraderStartPrice(
+					price_it != persisted_prices.end(),
+					price_it != persisted_prices.end() ? price_it->second : 0,
+					entry.item_cost
+				);
+				auto *inst = FindTraderItemByUniqueID(entry.item_unique_id);
+				if (inst) {
+					inst->SetPrice(cost);
+				}
+			}
+
+			if (IsTrader()) {
+				TraderShowItems();
+				return;
+			}
+
 			if (RestorePersistedTraderMode()) {
 				return;
 			}
@@ -1194,10 +1213,13 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		safe_delete(outapp);
 	}
 
+	const bool already_trader = IsTrader();
 	MessageString(Chat::Yellow, TRADER_MODE_ON);
 	SetTrader(true);
 	SendTraderMode(TraderOn);
-	SendBecomeTraderToWorld(this, TraderOn);
+	if (!already_trader) {
+		SendBecomeTraderToWorld(this, TraderOn);
+	}
 	UpdateWho();
 	LogTrading("Trader Mode ON for Player [{}] with client version {}.", GetCleanName(), (uint32) ClientVersion());
 }
@@ -1248,6 +1270,18 @@ bool Client::RestorePersistedTraderMode()
 		if (inst) {
 			inst->SetPrice(entry.item_cost);
 		}
+	}
+
+	if (IsTrader()) {
+		LogTrading(
+			"Skipping trader restore broadcast for client [{}] character [{}]; already the live trader. previous_entity_id [{}] entity [{}]",
+			GetCleanName(),
+			CharacterID(),
+			previous_entity_id,
+			GetID()
+		);
+		TraderShowItems();
+		return true;
 	}
 
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
@@ -2738,6 +2772,7 @@ void Client::ToggleBuyerMode(bool status)
 			Message(Chat::Red, "You must be in a Barter Stall to start Barter Mode.");
 		}
 
+		m_restored_persisted_buyer_mode = false;
 		UpdateWho();
 		Message(Chat::Yellow, fmt::format("Barter Mode OFF. Buy lines deactivated.").c_str());
 	}
@@ -2842,6 +2877,7 @@ bool Client::RestorePersistedBuyerMode()
 	data->entity_id = GetID();
 	data->status    = BuyerBarter::On;
 	entity_list.QueueClients(this, outapp.get(), false);
+	m_restored_persisted_buyer_mode = true;
 	return true;
 }
 
@@ -4343,20 +4379,18 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 			return;
 		}
 
-		const auto buyers = BuyerRepository::GetWhere(
-			database,
-			fmt::format("`char_id` = {} LIMIT 1", CharacterID())
-		);
 		const auto persisted_buy_lines = BuyerBuyLinesRepository::GetBuyLines(database, CharacterID());
-		const bool buyer_row_exists = !buyers.empty();
-		if (!Bazaar::ShouldUseClientBuyerStartPayload(buyer_row_exists, persisted_buy_lines.size())) {
+		if (!Bazaar::ShouldUseClientBuyerStartPayload(
+			persisted_buy_lines.size(),
+			m_restored_persisted_buyer_mode
+		)) {
 			LogTrading(
-				"Keeping persisted buyer listings for client [{}] account [{}] character [{}] instead of applying a client start-mode payload. buyer_row [{}] buy_lines [{}]",
+				"Keeping persisted buyer listings for client [{}] account [{}] character [{}] instead of applying a client start-mode payload. buy_lines [{}] restored [{}]",
 				GetCleanName(),
 				AccountID(),
 				CharacterID(),
-				buyer_row_exists,
-				persisted_buy_lines.size()
+				persisted_buy_lines.size(),
+				m_restored_persisted_buyer_mode
 			);
 			SendPersistedBuyLines();
 			return;

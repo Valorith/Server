@@ -134,12 +134,15 @@ bool Bazaar::ShouldPreserveOfflineListings(
 }
 
 bool Bazaar::ShouldUseClientBuyerStartPayload(
-	bool buyer_row_exists,
-	size_t persisted_buy_line_count
+	size_t persisted_buy_line_count,
+	bool reject_stale_empty_restore
 )
 {
-	(void) persisted_buy_line_count;
-	return !buyer_row_exists;
+	if (persisted_buy_line_count > 0) {
+		return false;
+	}
+
+	return !reject_stale_empty_restore;
 }
 
 bool Bazaar::TraderListingSetsMatch(

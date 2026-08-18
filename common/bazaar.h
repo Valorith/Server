@@ -65,12 +65,14 @@ public:
 		int32 selected_instance_id
 	);
 
-	// A live buyer row is authoritative, including zero buy lines after the
-	// last quantity was purchased while offline. Missing buyer row means use
-	// the RoF2 start payload. Barter Off deletes the row and is the reset.
+	// Ignore the RoF2 start payload only when persisted buy lines exist.
+	// ToggleBuyerMode(true) always inserts/upserts the buyer row before
+	// Barter_BuyerItemStart, so row existence is not a restore signal.
+	// reject_stale_empty_restore is set only by RestorePersistedBuyerMode
+	// for a fulfilled (empty) order after offline reclaim.
 	static bool ShouldUseClientBuyerStartPayload(
-		bool buyer_row_exists,
-		size_t persisted_buy_line_count
+		size_t persisted_buy_line_count,
+		bool reject_stale_empty_restore
 	);
 
 	// Start-mode satchel add/remove is applied when unique IDs differ.

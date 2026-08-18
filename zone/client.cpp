@@ -382,6 +382,7 @@ Client::Client() : Mob(
 	m_parcels.clear();
 
 	m_buyer_id = 0;
+	m_restored_persisted_buyer_mode = false;
 
 	SetBotPulling(false);
 	SetBotPrecombat(false);
@@ -696,6 +697,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	m_parcels.clear();
 
 	m_buyer_id = 0;
+	m_restored_persisted_buyer_mode = false;
 	m_offline  = false;
 
 	SetBotPulling(false);

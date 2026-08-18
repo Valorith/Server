@@ -65,9 +65,9 @@ public:
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForAlternateCharacter);
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForDifferentDestination);
 		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsWithoutValidIds);
-		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadWhenNoBuyerRowExists);
-		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenBuyerRowExists);
-		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenBuyerRowExistsWithEmptyLines);
+		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadOnFreshBarterOn);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenPersistedLinesExist);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadAfterEmptyRestore);
 		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
 		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
 		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
@@ -397,20 +397,20 @@ private:
 		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 0, 0, 123, 0, 0));
 	}
 
-	void UsesClientBuyerStartPayloadWhenNoBuyerRowExists()
+	void UsesClientBuyerStartPayloadOnFreshBarterOn()
 	{
-		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(false, 0));
-		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(false, 3));
+		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(0, false));
 	}
 
-	void RejectsStaleBuyerStartPayloadWhenBuyerRowExists()
+	void RejectsStaleBuyerStartPayloadWhenPersistedLinesExist()
 	{
-		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(true, 2));
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(2, false));
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(1, true));
 	}
 
-	void RejectsStaleBuyerStartPayloadWhenBuyerRowExistsWithEmptyLines()
+	void RejectsStaleBuyerStartPayloadAfterEmptyRestore()
 	{
-		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(true, 0));
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(0, true));
 	}
 
 	void TraderListingSetsMatchIgnoringOrderAndPlaceholders()
