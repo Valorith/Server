@@ -86,6 +86,23 @@ bool Bazaar::ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed
 	return requested_quantity > 0 && requested_quantity <= listed_quantity;
 }
 
+bool Bazaar::ShouldPreserveOfflineListings(
+	uint32 offline_character_id,
+	uint32 offline_zone_id,
+	int32 offline_instance_id,
+	uint32 selected_character_id,
+	uint32 selected_zone_id,
+	int32 selected_instance_id
+)
+{
+	return
+		offline_character_id != 0 &&
+		offline_character_id == selected_character_id &&
+		offline_zone_id != 0 &&
+		offline_zone_id == selected_zone_id &&
+		offline_instance_id == selected_instance_id;
+}
+
 Bazaar::TransactionValueValidation Bazaar::ValidateBuyLinePrice(
 	uint32 unit_price,
 	uint64 max_transaction_value

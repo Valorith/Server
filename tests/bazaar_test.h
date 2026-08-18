@@ -46,6 +46,10 @@ public:
 		TEST_ADD(BazaarTest::RejectsZeroBarterSellQuantity);
 		TEST_ADD(BazaarTest::RejectsBarterSellQuantityAboveBuyLineQuantity);
 		TEST_ADD(BazaarTest::AcceptsBarterSellQuantityWithinBuyLineQuantity);
+		TEST_ADD(BazaarTest::PreservesOfflineListingsForSameCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForAlternateCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForDifferentDestination);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsWithoutValidIds);
 		TEST_ADD(BazaarTest::AcceptsBuyLinePriceAtLimit);
 		TEST_ADD(BazaarTest::RejectsBuyLinePriceOneCopperOverLimitWithoutCommitValue);
 		TEST_ADD(BazaarTest::AcceptsBuyerTransactionAtLimit);
@@ -230,6 +234,29 @@ private:
 	void AcceptsBarterSellQuantityWithinBuyLineQuantity()
 	{
 		TEST_ASSERT(Bazaar::ValidateBarterSellQuantity(20, 20));
+	}
+
+	void PreservesOfflineListingsForSameCharacter()
+	{
+		TEST_ASSERT(Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 151, 0));
+	}
+
+	void DoesNotPreserveOfflineListingsForAlternateCharacter()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 456, 151, 0));
+	}
+
+	void DoesNotPreserveOfflineListingsForDifferentDestination()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 202, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 1, 123, 151, 2));
+	}
+
+	void DoesNotPreserveOfflineListingsWithoutValidIds()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(0, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 0, 0, 123, 0, 0));
 	}
 
 	void AcceptsBuyLinePriceAtLimit()

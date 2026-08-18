@@ -39,6 +39,15 @@ public:
 
 	static bool ValidateBarterSellQuantity(uint32 requested_quantity, uint32 listed_quantity);
 
+	static bool ShouldPreserveOfflineListings(
+		uint32 offline_character_id,
+		uint32 offline_zone_id,
+		int32 offline_instance_id,
+		uint32 selected_character_id,
+		uint32 selected_zone_id,
+		int32 selected_instance_id
+	);
+
 	static TransactionValueValidation ValidateBuyLinePrice(
 		uint32 unit_price,
 		uint64 max_transaction_value

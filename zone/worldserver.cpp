@@ -4567,12 +4567,22 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 				break;
 			}
 
-			if (client->IsTrader()) {
-				client->TraderEndTrader();
-			}
+			if (!in->preserve_listings) {
+				if (client->IsTrader()) {
+					client->TraderEndTrader();
+				}
 
-			if (client->IsBuyer()) {
-				client->ToggleBuyerMode(false);
+				if (client->IsBuyer()) {
+					client->ToggleBuyerMode(false);
+				}
+			}
+			else {
+				LogTrading(
+					"Preserving offline {} listings for character [{}] during same-character reclaim request [{}]",
+					client->IsBuyer() ? "buyer" : "trader",
+					client->CharacterID(),
+					in->request_id
+				);
 			}
 
 			client->UpdateWho(2);

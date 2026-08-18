@@ -870,6 +870,7 @@ struct OfflineSessionReclaim_Struct {
 	uint32 entity_id;
 	uint8  mode;
 	int8   response;
+	uint8  preserve_listings;
 };
 
 struct WorldShutDown_Struct {

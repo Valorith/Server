@@ -204,7 +204,6 @@ public:
 			e.char_entity_id = new_entity_id;
 		}
 
-		ReplaceMany(db, results);
-		return true;
+		return ReplaceMany(db, results) > 0;
 	}
 };

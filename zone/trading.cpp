@@ -4094,6 +4094,20 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 		cereal::BinaryInputArchive   ar(ss_in);
 		ar(bl);
 
+		auto persisted_buy_lines = BuyerBuyLinesRepository::GetBuyLines(database, CharacterID());
+		if (!persisted_buy_lines.empty()) {
+			LogTrading(
+				"Ignoring initial buyer line payload for restored buyer [{}] character [{}]; resending [{}] persisted buy lines",
+				GetCleanName(),
+				CharacterID(),
+				persisted_buy_lines.size()
+			);
+			for (const auto &buy_line : persisted_buy_lines) {
+				SendBuyLineUpdate(buy_line);
+			}
+			return;
+		}
+
 		if (bl.buy_lines.empty()) {
 			return;
 		}

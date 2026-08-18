@@ -810,6 +810,63 @@ void Client::CompleteConnect()
 			}
 		}
 
+		if (!IsOffline() && !IsTrader() && !IsBuyer()) {
+			auto buyers = BuyerRepository::GetWhere(
+				database,
+				fmt::format(
+					"`char_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {} LIMIT 1",
+					CharacterID(),
+					GetZoneID(),
+					GetInstanceID()
+				)
+			);
+
+			if (!buyers.empty()) {
+				const auto previous_entity_id = buyers.front().char_entity_id;
+				auto buy_lines = BuyerBuyLinesRepository::GetBuyLines(database, CharacterID());
+				const bool buyer_row_refreshed = BuyerRepository::UpdateBuyerEntityID(
+					database,
+					CharacterID(),
+					previous_entity_id,
+					GetID()
+				);
+
+				LogTrading(
+					"Restoring buyer mode on zone entry for client [{}] account [{}] character [{}] zone [{}] instance [{}]. previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
+					GetCleanName(),
+					AccountID(),
+					CharacterID(),
+					GetZoneID(),
+					GetInstanceID(),
+					previous_entity_id,
+					GetID(),
+					buyer_row_refreshed
+				);
+
+				if (buyer_row_refreshed) {
+					SetBuyerID(CharacterID());
+					SetCustomerID(0);
+
+					auto outapp = std::make_unique<EQApplicationPacket>(
+						OP_Barter,
+						static_cast<uint32>(sizeof(BuyerSetAppearance_Struct))
+					);
+					auto data       = reinterpret_cast<BuyerSetAppearance_Struct *>(outapp->pBuffer);
+					data->action    = Barter_BuyerAppearance;
+					data->entity_id = GetID();
+					data->status    = BuyerBarter::On;
+
+					SendBuyerMode(true);
+					for (const auto &buy_line : buy_lines) {
+						SendBuyLineUpdate(buy_line);
+					}
+					SendBuyerToBarterWindow(this, Barter_AddToBarterWindow);
+					entity_list.QueueClients(this, outapp.get(), false);
+					UpdateWho();
+				}
+			}
+		}
+
 		if (IsPetNameChangeAllowed() && !RuleB(Pets, AlwaysAllowPetRename)) {
 			InvokeChangePetName(false);
 		}

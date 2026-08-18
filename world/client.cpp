@@ -18,6 +18,7 @@
 
 #include "client.h"
 
+#include "common/bazaar.h"
 #include "common/classes.h"
 #include "common/content/world_content_service.h"
 #include "common/data_bucket.h"
@@ -1248,14 +1249,23 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 	reclaim->entity_id    = session.entity_id;
 	reclaim->mode         = mode;
 	reclaim->response     = OfflineSessionReclaimFailed;
+	reclaim->preserve_listings = Bazaar::ShouldPreserveOfflineListings(
+		session.character_id,
+		session.zone_id,
+		session.instance_id,
+		GetCharID(),
+		zone_id,
+		instance_id
+	);
 
 	LogTrading(
-		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}]",
+		"Sending targeted offline {} reclaim request [{}] to zone [{}] instance [{}] for account [{}] preserve_listings [{}]",
 		OfflineSessionModeName(mode),
 		offline_reclaim_request_id,
 		session.zone_id,
 		session.instance_id,
-		GetAccountID()
+		GetAccountID(),
+		reclaim->preserve_listings
 	);
 
 	zone_server->SendPacket(pack);
