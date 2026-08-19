@@ -4,7 +4,6 @@
 #include "common/shareddb.h"
 
 #include <cstddef>
-#include <ctime>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,23 +65,6 @@ public:
 		int32 selected_instance_id
 	);
 
-	// After a preserve reclaim deletes the session, a later login has
-	// nothing to reclaim. Clear leftover rows that belong to another
-	// character, or to this character at a destination that cannot restore.
-	static bool ShouldClearOrphanedAccountListings(
-		bool has_offline_session,
-		uint32 entering_character_id,
-		uint32 listing_character_id,
-		uint32 entering_zone_id,
-		uint32 listing_zone_id,
-		int32 entering_instance_id,
-		int32 listing_instance_id
-	);
-
-	// Seller cache invalidation is `buyer_time > GetBarterTime()`. A same-
-	// second write must still advance past the cached timestamp.
-	static time_t NextBuyerTransactionDate(time_t existing, time_t now);
-
 	struct BuyerLinePrice {
 		uint32 slot;
 		uint32 item_id;
@@ -125,24 +107,16 @@ public:
 		bool has_explicit_price_update
 	);
 
-	// Disable/delete must use the persisted slot when the client slot differs.
-	static uint32 ResolveBuyerPersistedSlot(
-		bool matched,
-		uint32 persisted_slot,
-		uint32 client_slot
+	// Seller-cache timestamp writes are best-effort. A no-op UPDATE
+	// must not discard a successful item_price persist.
+	static bool ShouldKeepBuyerPriceWriteAfterTimestampNoOp();
+
+	// Restore still sends persisted lines when the buyer UPDATE is a
+	// no-op because the row already matches.
+	static bool ShouldRestoreBuyerAfterRowUpdate(
+		int rows_affected,
+		bool row_already_matches
 	);
-
-	static bool ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items);
-
-	// Reconnect skip keeps rows for a later RoF2 login. Explicit Barter On
-	// from a client without OP_BuyerItems must not activate those orders.
-	static bool ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
-		bool client_supports_buyer_items
-	);
-
-	static bool ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money);
-
-	static bool IsValidBuyerOverlayPrice(uint32 client_price, uint64 max_transaction_value);
 
 	// Player-visible prices after Update and/or Start, and therefore after
 	// the next offline reconnect restore. Does not add INI-only lines.

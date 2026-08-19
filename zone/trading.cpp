@@ -35,6 +35,7 @@
 #include "zone/quest_parser_collection.h"
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <unordered_map>
@@ -2759,17 +2760,6 @@ void Client::ToggleBuyerMode(bool status)
 	data->entity_id = GetID();
 
 	if (status && IsInBuyerSpace()) {
-		if (Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
-			ClientVersion() == EQ::versions::ClientVersion::RoF2
-		)) {
-			LogTrading(
-				"Wiping preserved buy lines for client [{}] character [{}] on unsupported Barter On",
-				GetCleanName(),
-				CharacterID()
-			);
-			BuyerRepository::DeleteBuyer(database, CharacterID());
-		}
-
 		SetBuyerID(CharacterID());
 
 		auto existing = BuyerRepository::GetWhere(
@@ -2853,17 +2843,6 @@ bool Client::RestorePersistedBuyerMode()
 		return false;
 	}
 
-	if (!Bazaar::ShouldRestorePersistedBuyerMode(
-		ClientVersion() == EQ::versions::ClientVersion::RoF2
-	)) {
-		LogTrading(
-			"Skipping buyer mode restore for client [{}] character [{}]; client lacks BuyerItems",
-			GetCleanName(),
-			CharacterID()
-		);
-		return false;
-	}
-
 	if (!IsInBuyerSpace()) {
 		LogTrading(
 			"Skipping buyer mode restore for client [{}] character [{}]; not in a barter stall",
@@ -2895,8 +2874,10 @@ bool Client::RestorePersistedBuyerMode()
 	buyer.char_name             = GetCleanName();
 
 	const int buyer_rows_updated = BuyerRepository::UpdateOne(database, buyer);
-	const bool buyer_row_refreshed =
-		buyer_rows_updated > 0 || BuyerRepository::BuyerRowAlreadyMatches(database, buyer);
+	const bool buyer_row_refreshed = Bazaar::ShouldRestoreBuyerAfterRowUpdate(
+		buyer_rows_updated,
+		BuyerRepository::BuyerRowAlreadyMatches(database, buyer)
+	);
 	LogTrading(
 		"Restoring buyer mode for client [{}] account [{}] character [{}] zone [{}] instance [{}]. previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
 		GetCleanName(),
@@ -2973,7 +2954,7 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			? std::next(current_buy_lines.cbegin(), match_index)
 			: current_buy_lines.cend();
 		if (it != std::end(current_buy_lines)) {
-			buy_line.slot = Bazaar::ResolveBuyerPersistedSlot(true, it->slot, buy_line.slot);
+			buy_line.slot = it->slot;
 		}
 
 		if (buy_line.item_toggle) {
@@ -3011,6 +2992,7 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		}
 
 		current_total_cost = ValidateBuyLineCost(item_map);
+		BuyerRepository::UpdateTransactionDate(database, CharacterID(), time(nullptr));
 
 		if (buy_line.item_toggle) {
 			current_total_cost +=
@@ -3071,21 +3053,6 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		if (const auto *item = database.GetItem(buy_line.item_id)) {
 			buy_line.item_icon = item->Icon;
 		}
-		bool explicit_update = false;
-		std::string success_message;
-		const auto begin_result = database.TransactionBegin();
-		if (!begin_result.Success()) {
-			LogError(
-				"Failed to begin buyer update transaction for client [{}] character [{}]: ({}) {}",
-				GetCleanName(),
-				CharacterID(),
-				begin_result.ErrorNumber(),
-				begin_result.ErrorMessage()
-			);
-			SendPersistedBuyLines();
-			return;
-		}
-
 		if ((buy_line.item_toggle && it != std::end(current_buy_lines)) || pass) {
 			if (it != std::end(current_buy_lines)) {
 				buy_line.item_cost = Bazaar::ResolveBuyerUpdatePrice(it->item_cost, buy_line.item_cost);
@@ -3093,46 +3060,29 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) <= 0) {
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
 			}
-			explicit_update = true;
-			success_message = fmt::format("Buy line for {} modified.", buy_line.item_name);
+			m_buyer_explicit_price_update = true;
+			Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 		}
 		else if (buy_line.item_toggle && it == std::end(current_buy_lines)) {
 			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) > 0) {
-				explicit_update = true;
-				success_message = fmt::format("Buy line for {} modified.", buy_line.item_name);
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 			}
 			else {
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
-				explicit_update = true;
-				success_message = fmt::format("Buy line for {} enabled.", buy_line.item_name);
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
 			}
 		}
 		else if (!buy_line.item_toggle) {
 			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
-			success_message = fmt::format("Buy line for {} disabled.", buy_line.item_name);
+			Message(Chat::Yellow, fmt::format("Buy line for {} disabled.", buy_line.item_name).c_str());
 		}
 		else {
 			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
-			success_message = fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name);
-		}
-
-		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
-		if (BuyerRepository::UpdateTransactionDate(
-			database,
-			GetBuyerID(),
-			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
-		) <= 0 || !database.TransactionCommit().Success()) {
-			database.TransactionRollback();
-			SendPersistedBuyLines();
-			return;
-		}
-
-		if (explicit_update) {
-			m_buyer_explicit_price_update = true;
-		}
-
-		if (!success_message.empty()) {
-			Message(Chat::Yellow, success_message.c_str());
+			Message(
+				Chat::Yellow,
+				fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name).c_str());
 		}
 
 		SendBuyLineUpdate(buy_line);
@@ -4511,67 +4461,7 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 					bl.buy_lines.size()
 				);
 
-				const uint64 max_overlay_transaction_value =
-					EQ::constants::StaticLookup(ClientVersion())->BazaarMaxTransaction;
-				std::vector<Bazaar::BuyerLinePrice> client_prices;
-				client_prices.reserve(bl.buy_lines.size());
 				for (const auto &client_line : bl.buy_lines) {
-					if (!Bazaar::IsValidBuyerOverlayPrice(
-						client_line.item_cost,
-						max_overlay_transaction_value
-					)) {
-						continue;
-					}
-					client_prices.push_back({client_line.slot, client_line.item_id, client_line.item_cost});
-				}
-				const auto proposed_prices = Bazaar::ApplyBuyerClientLinePrices(
-					persisted_prices,
-					client_prices,
-					false,
-					m_buyer_explicit_price_update,
-					m_restored_persisted_buyer_mode
-				);
-				auto proposed_lines = persisted_buy_lines;
-				for (auto &line : proposed_lines) {
-					const int proposed_index = Bazaar::FindBuyerLineIndex(
-						proposed_prices,
-						line.slot,
-						line.item_id
-					);
-					if (proposed_index >= 0) {
-						line.item_cost = proposed_prices[proposed_index].price;
-					}
-				}
-				std::map<uint32, BuylineItemDetails_Struct> overlay_item_map{};
-				if (!BuildBuyLineMapFromVector(overlay_item_map, proposed_lines)) {
-					SendPersistedBuyLines();
-					return;
-				}
-				const auto proposed_total_cost = ValidateBuyLineCost(overlay_item_map);
-				if (!Bazaar::ShouldCommitBuyerPriceOverlay(
-					static_cast<uint64>(proposed_total_cost),
-					GetCarriedMoney()
-				)) {
-					SendPersistedBuyLines();
-					return;
-				}
-
-				const auto begin_result = database.TransactionBegin();
-				if (!begin_result.Success()) {
-					SendPersistedBuyLines();
-					return;
-				}
-
-				bool overlay_failed = false;
-				bool overlay_wrote = false;
-				for (const auto &client_line : bl.buy_lines) {
-					if (!Bazaar::IsValidBuyerOverlayPrice(
-						client_line.item_cost,
-						max_overlay_transaction_value
-					)) {
-						continue;
-					}
-
 					const int index = Bazaar::FindBuyerLineIndex(
 						persisted_prices,
 						client_line.slot,
@@ -4586,37 +4476,13 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 						client_line.item_cost,
 						m_buyer_explicit_price_update
 					);
-					if (BuyerBuyLinesRepository::ModifyBuyLinePrice(
+					BuyerBuyLinesRepository::ModifyBuyLinePrice(
 						database,
 						CharacterID(),
 						persisted_prices[index].slot,
 						persisted_prices[index].item_id,
 						price
-					) <= 0) {
-						overlay_failed = true;
-						break;
-					}
-
-					if (price != persisted_prices[index].price) {
-						overlay_wrote = true;
-					}
-				}
-
-				if (overlay_wrote) {
-					const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
-					if (BuyerRepository::UpdateTransactionDate(
-						database,
-						GetBuyerID(),
-						Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
-					) <= 0) {
-						overlay_failed = true;
-					}
-				}
-
-				if (overlay_failed || !database.TransactionCommit().Success()) {
-					database.TransactionRollback();
-					SendPersistedBuyLines();
-					return;
+					);
 				}
 			}
 			else {

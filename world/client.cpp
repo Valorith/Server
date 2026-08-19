@@ -1155,24 +1155,8 @@ bool Client::BeginOfflineSessionReclaimIfNeeded()
 		return false;
 	}
 
-	const auto session_lookup = OfflineCharacterSessionsRepository::TryGetByAccountId(database, GetAccountID());
-	if (!session_lookup.query_succeeded) {
-		LogError(
-			"Failed looking up offline session for account [{}] character [{}]; aborting entry instead of clearing listings",
-			GetAccountID(),
-			GetCharID()
-		);
-		TellClientZoneUnavailable();
-		return false;
-	}
-
-	const auto session = session_lookup.session;
+	const auto session = OfflineCharacterSessionsRepository::GetByAccountId(database, GetAccountID());
 	if (!session.id) {
-		if (!ClearOrphanedAccountTradeListings()) {
-			TellClientZoneUnavailable();
-			return false;
-		}
-
 		return true;
 	}
 
@@ -1309,107 +1293,6 @@ bool Client::ClearStaleOfflineSession(uint32 character_id, const char *reason)
 			GetAccountID(),
 			character_id,
 			reason ? reason : "processing entry",
-			commit_result.ErrorNumber(),
-			commit_result.ErrorMessage()
-		);
-		return false;
-	}
-
-	return true;
-}
-
-bool Client::ClearOrphanedAccountTradeListings()
-{
-	const uint32 entering_character_id = GetCharID();
-	const uint32 entering_zone_id = GetZoneID();
-	const int32 entering_instance_id = static_cast<int32>(GetInstanceID());
-	const auto character_lookup = CharacterDataRepository::TryGetCharacterIDsByAccountID(database, GetAccountID());
-	if (!character_lookup.query_succeeded) {
-		LogError(
-			"Failed looking up account characters for orphan listing cleanup account [{}] character [{}]",
-			GetAccountID(),
-			entering_character_id
-		);
-		return false;
-	}
-
-	const auto &character_ids = character_lookup.character_ids;
-	if (entering_character_id == 0 || character_ids.empty()) {
-		return true;
-	}
-
-	std::vector<std::string> character_id_strings;
-	character_id_strings.reserve(character_ids.size());
-	for (const auto listing_character_id : character_ids) {
-		character_id_strings.push_back(std::to_string(listing_character_id));
-	}
-
-	const auto id_list = Strings::Implode(", ", character_id_strings);
-	const auto leftover_traders = TraderRepository::GetWhere(
-		database,
-		fmt::format("`character_id` IN ({})", id_list)
-	);
-	const auto leftover_buyers = BuyerRepository::GetWhere(
-		database,
-		fmt::format("`char_id` IN ({})", id_list)
-	);
-	if (leftover_traders.empty() && leftover_buyers.empty()) {
-		return true;
-	}
-
-	std::vector<uint32> clear_ids;
-	auto consider = [&](uint32 listing_character_id, uint32 listing_zone_id, int32 listing_instance_id) {
-		if (!Bazaar::ShouldClearOrphanedAccountListings(
-			false,
-			entering_character_id,
-			listing_character_id,
-			entering_zone_id,
-			listing_zone_id,
-			entering_instance_id,
-			listing_instance_id
-		)) {
-			return;
-		}
-
-		for (const auto existing_id : clear_ids) {
-			if (existing_id == listing_character_id) {
-				return;
-			}
-		}
-
-		clear_ids.push_back(listing_character_id);
-	};
-
-	for (const auto &row : leftover_traders) {
-		consider(row.character_id, row.char_zone_id, row.char_zone_instance_id);
-	}
-
-	for (const auto &row : leftover_buyers) {
-		consider(row.char_id, row.char_zone_id, static_cast<int32>(row.char_zone_instance_id));
-	}
-
-	if (clear_ids.empty()) {
-		return true;
-	}
-
-	database.TransactionBegin();
-	for (const auto listing_character_id : clear_ids) {
-		TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", listing_character_id));
-		BuyerRepository::DeleteBuyer(database, listing_character_id);
-		LogTrading(
-			"Cleared orphaned trader/buyer listings for account [{}] leftover character [{}] after preserve reclaim without a recoverable session",
-			GetAccountID(),
-			listing_character_id
-		);
-	}
-
-	auto commit_result = database.TransactionCommit();
-	if (!commit_result.Success()) {
-		database.TransactionRollback();
-		LogError(
-			"Failed clearing orphaned trader/buyer listings for account [{}] character [{}]: ({}) {}",
-			GetAccountID(),
-			entering_character_id,
 			commit_result.ErrorNumber(),
 			commit_result.ErrorMessage()
 		);

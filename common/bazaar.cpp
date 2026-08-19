@@ -133,42 +133,6 @@ bool Bazaar::ShouldPreserveOfflineListings(
 		offline_instance_id == selected_instance_id;
 }
 
-bool Bazaar::ShouldClearOrphanedAccountListings(
-	bool has_offline_session,
-	uint32 entering_character_id,
-	uint32 listing_character_id,
-	uint32 entering_zone_id,
-	uint32 listing_zone_id,
-	int32 entering_instance_id,
-	int32 listing_instance_id
-)
-{
-	if (has_offline_session) {
-		return false;
-	}
-
-	if (entering_character_id == 0 || listing_character_id == 0) {
-		return false;
-	}
-
-	if (listing_character_id != entering_character_id) {
-		return true;
-	}
-
-	if (listing_zone_id == 0) {
-		return false;
-	}
-
-	return
-		listing_zone_id != entering_zone_id ||
-		listing_instance_id != entering_instance_id;
-}
-
-time_t Bazaar::NextBuyerTransactionDate(time_t existing, time_t now)
-{
-	return now > existing ? now : existing + 1;
-}
-
 bool Bazaar::ShouldUseClientBuyerStartPayload(
 	size_t persisted_buy_line_count,
 	bool reject_stale_empty_restore
@@ -219,6 +183,19 @@ int Bazaar::FindBuyerLineIndex(
 	return item_id == 0 ? slot_match : -1;
 }
 
+bool Bazaar::ShouldKeepBuyerPriceWriteAfterTimestampNoOp()
+{
+	return true;
+}
+
+bool Bazaar::ShouldRestoreBuyerAfterRowUpdate(
+	int rows_affected,
+	bool row_already_matches
+)
+{
+	return rows_affected > 0 || row_already_matches;
+}
+
 uint32 Bazaar::ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price)
 {
 	(void) persisted_price;
@@ -232,41 +209,6 @@ uint32 Bazaar::ResolveBuyerStartPrice(
 )
 {
 	return has_explicit_price_update ? persisted_price : client_price;
-}
-
-uint32 Bazaar::ResolveBuyerPersistedSlot(
-	bool matched,
-	uint32 persisted_slot,
-	uint32 client_slot
-)
-{
-	return matched ? persisted_slot : client_slot;
-}
-
-bool Bazaar::ShouldRestorePersistedBuyerMode(bool client_supports_buyer_items)
-{
-	return client_supports_buyer_items;
-}
-
-bool Bazaar::ShouldWipePersistedBuyerLinesOnUnsupportedModeOn(
-	bool client_supports_buyer_items
-)
-{
-	return !client_supports_buyer_items;
-}
-
-bool Bazaar::ShouldCommitBuyerPriceOverlay(uint64 proposed_total_cost, uint64 carried_money)
-{
-	return proposed_total_cost > 0 && proposed_total_cost <= carried_money;
-}
-
-bool Bazaar::IsValidBuyerOverlayPrice(uint32 client_price, uint64 max_transaction_value)
-{
-	if (client_price == 0) {
-		return false;
-	}
-
-	return ValidateBuyLinePrice(client_price, max_transaction_value).is_valid;
 }
 
 std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(

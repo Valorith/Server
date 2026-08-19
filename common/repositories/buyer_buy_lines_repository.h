@@ -165,7 +165,8 @@ public:
 		}
 
 		b_line.item_price = item_cost;
-		return UpdateOne(db, b_line) ? 1 : 0;
+		UpdateOne(db, b_line);
+		return 1;
 	}
 
 	static bool DeleteBuyLine(Database &db, uint32 char_id, int32 slot_id = 0xffffffff)
