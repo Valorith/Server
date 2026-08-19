@@ -3071,6 +3071,8 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		if (const auto *item = database.GetItem(buy_line.item_id)) {
 			buy_line.item_icon = item->Icon;
 		}
+		bool explicit_update = false;
+		database.TransactionBegin();
 		if ((buy_line.item_toggle && it != std::end(current_buy_lines)) || pass) {
 			if (it != std::end(current_buy_lines)) {
 				buy_line.item_cost = Bazaar::ResolveBuyerUpdatePrice(it->item_cost, buy_line.item_cost);
@@ -3078,17 +3080,17 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) <= 0) {
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
 			}
-			m_buyer_explicit_price_update = true;
+			explicit_update = true;
 			Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 		}
 		else if (buy_line.item_toggle && it == std::end(current_buy_lines)) {
 			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) > 0) {
-				m_buyer_explicit_price_update = true;
+				explicit_update = true;
 				Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 			}
 			else {
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
-				m_buyer_explicit_price_update = true;
+				explicit_update = true;
 				Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
 			}
 		}
@@ -3104,11 +3106,21 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		}
 
 		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
-		BuyerRepository::UpdateTransactionDate(
+		if (BuyerRepository::UpdateTransactionDate(
 			database,
 			GetBuyerID(),
 			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
-		);
+		) <= 0 || !database.TransactionCommit().Success()) {
+			database.TransactionRollback();
+			if (it != std::end(current_buy_lines)) {
+				SendBuyLineUpdate(*it);
+			}
+			return;
+		}
+
+		if (explicit_update) {
+			m_buyer_explicit_price_update = true;
+		}
 
 		SendBuyLineUpdate(buy_line);
 
@@ -4571,7 +4583,10 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 						overlay_failed = true;
 						break;
 					}
-					overlay_wrote = true;
+
+					if (price != persisted_prices[index].price) {
+						overlay_wrote = true;
+					}
 				}
 
 				if (overlay_wrote) {

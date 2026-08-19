@@ -168,12 +168,17 @@ public:
 		return zone_player_counts;
 	}
 
-	static std::vector<uint32_t> GetCharacterIDsByAccountID(
+	struct CharacterIDLookup {
+		bool query_succeeded{false};
+		std::vector<uint32_t> character_ids;
+	};
+
+	static CharacterIDLookup TryGetCharacterIDsByAccountID(
 		Database& db,
 		uint32_t  account_id
 	)
 	{
-		std::vector<uint32_t> character_ids;
+		CharacterIDLookup result{};
 
 		auto query = fmt::format(
 			"SELECT id FROM character_data WHERE account_id = {} AND deleted_at IS NULL",
@@ -181,15 +186,26 @@ public:
 		);
 
 		auto results = db.QueryDatabase(query);
-		if (results.Success()) {
-			for (auto row : results) {
-				if (row[0]) {
-					character_ids.push_back(static_cast<uint32_t>(std::stoul(row[0])));
-				}
+		if (!results.Success()) {
+			return result;
+		}
+
+		result.query_succeeded = true;
+		for (auto row : results) {
+			if (row[0]) {
+				result.character_ids.push_back(static_cast<uint32_t>(std::stoul(row[0])));
 			}
 		}
 
-		return character_ids;
+		return result;
+	}
+
+	static std::vector<uint32_t> GetCharacterIDsByAccountID(
+		Database& db,
+		uint32_t  account_id
+	)
+	{
+		return TryGetCharacterIDsByAccountID(db, account_id).character_ids;
 	}
 
 	static uint32_t GetTotalTimePlayed(Database& db, uint32_t account_id)

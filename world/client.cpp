@@ -1323,7 +1323,17 @@ bool Client::ClearOrphanedAccountTradeListings()
 	const uint32 entering_character_id = GetCharID();
 	const uint32 entering_zone_id = GetZoneID();
 	const int32 entering_instance_id = static_cast<int32>(GetInstanceID());
-	const auto character_ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
+	const auto character_lookup = CharacterDataRepository::TryGetCharacterIDsByAccountID(database, GetAccountID());
+	if (!character_lookup.query_succeeded) {
+		LogError(
+			"Failed looking up account characters for orphan listing cleanup account [{}] character [{}]",
+			GetAccountID(),
+			entering_character_id
+		);
+		return false;
+	}
+
+	const auto &character_ids = character_lookup.character_ids;
 	if (entering_character_id == 0 || character_ids.empty()) {
 		return true;
 	}

@@ -160,6 +160,10 @@ public:
 		}
 
 		auto b_line = b_lines.front();
+		if (b_line.item_price == item_cost) {
+			return 1;
+		}
+
 		b_line.item_price = item_cost;
 		return UpdateOne(db, b_line) ? 1 : 0;
 	}
