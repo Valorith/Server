@@ -3072,7 +3072,20 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			buy_line.item_icon = item->Icon;
 		}
 		bool explicit_update = false;
-		database.TransactionBegin();
+		std::string success_message;
+		const auto begin_result = database.TransactionBegin();
+		if (!begin_result.Success()) {
+			LogError(
+				"Failed to begin buyer update transaction for client [{}] character [{}]: ({}) {}",
+				GetCleanName(),
+				CharacterID(),
+				begin_result.ErrorNumber(),
+				begin_result.ErrorMessage()
+			);
+			SendPersistedBuyLines();
+			return;
+		}
+
 		if ((buy_line.item_toggle && it != std::end(current_buy_lines)) || pass) {
 			if (it != std::end(current_buy_lines)) {
 				buy_line.item_cost = Bazaar::ResolveBuyerUpdatePrice(it->item_cost, buy_line.item_cost);
@@ -3081,28 +3094,26 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
 			}
 			explicit_update = true;
-			Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
+			success_message = fmt::format("Buy line for {} modified.", buy_line.item_name);
 		}
 		else if (buy_line.item_toggle && it == std::end(current_buy_lines)) {
 			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) > 0) {
 				explicit_update = true;
-				Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
+				success_message = fmt::format("Buy line for {} modified.", buy_line.item_name);
 			}
 			else {
 				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
 				explicit_update = true;
-				Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
+				success_message = fmt::format("Buy line for {} enabled.", buy_line.item_name);
 			}
 		}
 		else if (!buy_line.item_toggle) {
 			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
-			Message(Chat::Yellow, fmt::format("Buy line for {} disabled.", buy_line.item_name).c_str());
+			success_message = fmt::format("Buy line for {} disabled.", buy_line.item_name);
 		}
 		else {
 			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
-			Message(
-				Chat::Yellow,
-				fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name).c_str());
+			success_message = fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name);
 		}
 
 		const auto existing_date = BuyerRepository::GetTransactionDate(database, GetBuyerID());
@@ -3112,14 +3123,16 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			Bazaar::NextBuyerTransactionDate(existing_date, time(nullptr))
 		) <= 0 || !database.TransactionCommit().Success()) {
 			database.TransactionRollback();
-			if (it != std::end(current_buy_lines)) {
-				SendBuyLineUpdate(*it);
-			}
+			SendPersistedBuyLines();
 			return;
 		}
 
 		if (explicit_update) {
 			m_buyer_explicit_price_update = true;
+		}
+
+		if (!success_message.empty()) {
+			Message(Chat::Yellow, success_message.c_str());
 		}
 
 		SendBuyLineUpdate(buy_line);
