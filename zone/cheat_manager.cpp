@@ -20,12 +20,26 @@ void CheatManager::SetExemptStatus(ExemptionType type, bool v)
 {
 	if (v) {
 		MovementCheck();
+		// Set exemption with grace period if enabled
+		if (RuleB(Cheat, EnableExemptionGracePeriod)) {
+			m_exemption_expiry_time[type] = Timer::GetCurrentTime() + ExemptionGracePeriodMS;
+		}
 	}
 	m_exemption[type] = v;
 }
 
 bool CheatManager::GetExemptStatus(ExemptionType type)
 {
+	// Check if exemption has expired
+	if (m_exemption[type] && RuleB(Cheat, EnableExemptionGracePeriod)) {
+		uint32 current_time = Timer::GetCurrentTime();
+		if (m_exemption_expiry_time[type] > 0 && current_time > m_exemption_expiry_time[type]) {
+			// Grace period expired, clear exemption
+			m_exemption[type] = false;
+			m_exemption_expiry_time[type] = 0;
+			return false;
+		}
+	}
 	return m_exemption[type];
 }
 
@@ -64,36 +78,41 @@ void CheatManager::CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3
 				m_time_since_last_warp_detection.Start(WarpDetectionCooldownMS);
 			}
 			break;
-		case MQWarpAbsolute:
-			if (RuleB(Cheat, EnableMQWarpDetector) &&
-				((m_target->Admin() < RuleI(Cheat, MQWarpExemptStatus) || (RuleI(Cheat, MQWarpExemptStatus)) == -1))) {
-				std::string message = fmt::format(
-					"/MQWarp (Absolute) with location from x [{:.2f}] y [{:.2f}] z [{:.2f}] to x [{:.2f}] y [{:.2f}] z [{:.2f}] Distance [{:.2f}]",
+	case MQWarpAbsolute:
+		// Apply cooldown to reduce false positives if enabled
+		if ((RuleB(Cheat, EnableMQAbsoluteWarpCooldown) && m_time_since_last_absolute_warp_detection.GetRemainingTime() > 0)) {
+			break;
+		}
+		if (RuleB(Cheat, EnableMQWarpDetector) &&
+			((m_target->Admin() < RuleI(Cheat, MQWarpExemptStatus) || (RuleI(Cheat, MQWarpExemptStatus)) == -1))) {
+			std::string message = fmt::format(
+				"/MQWarp (Absolute) with location from x [{:.2f}] y [{:.2f}] z [{:.2f}] to x [{:.2f}] y [{:.2f}] z [{:.2f}] Distance [{:.2f}]",
+				position1.x,
+				position1.y,
+				position1.z,
+				position2.x,
+				position2.y,
+				position2.z,
+				Distance(position1, position2)
+			);
+			RecordPlayerEventLogWithClient(m_target, PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
+			LogCheat(fmt::runtime(message));
+
+			if (parse->PlayerHasQuestSub(EVENT_WARP)) {
+				const auto& export_string = fmt::format(
+					"{} {} {}",
 					position1.x,
 					position1.y,
-					position1.z,
-					position2.x,
-					position2.y,
-					position2.z,
-					Distance(position1, position2)
+					position1.z
 				);
-				RecordPlayerEventLogWithClient(m_target, PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
-				LogCheat(fmt::runtime(message));
 
-				if (parse->PlayerHasQuestSub(EVENT_WARP)) {
-					const auto& export_string = fmt::format(
-						"{} {} {}",
-						position1.x,
-						position1.y,
-						position1.z
-					);
-
-					parse->EventPlayer(EVENT_WARP, m_target, export_string, 0);
-				}
-
-				m_time_since_last_warp_detection.Start(WarpDetectionCooldownMS);
+				parse->EventPlayer(EVENT_WARP, m_target, export_string, 0);
 			}
-			break;
+
+			m_time_since_last_warp_detection.Start(WarpDetectionCooldownMS);
+			m_time_since_last_absolute_warp_detection.Start(AbsoluteWarpCooldownMS);
+		}
+		break;
 		case MQWarpShadowStep:
 			if (RuleB(Cheat, EnableMQWarpDetector) &&
 				((m_target->Admin() < RuleI(Cheat, MQWarpExemptStatus) || (RuleI(Cheat, MQWarpExemptStatus)) == -1))) {
@@ -274,9 +293,15 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 			bool is_immobile    = m_target->GetRunspeed() == 0; // this covers stuns, roots, mez, and pseudorooted.
 			const auto from      = m_last_position_check_location;
 			const auto to        = m_current_position_check_location;
+			
+			// Check for significant vertical movement which may indicate legitimate falling/levitation
+			float z_diff = std::abs(to.z - from.z);
+			bool significant_z_movement = z_diff > RuleR(Cheat, MQWarpZThreshold);
+			
 			if (!using_gm_speed && !is_immobile) {
 				if (GetExemptStatus(ShadowStep)) {
-					if (m_distance_since_last_position_check > 800) {
+					// Use configurable threshold for shadowstep
+					if (m_distance_since_last_position_check > RuleR(Cheat, MQWarpShadowStepThreshold)) {
 						CheatDetected(
 							MQWarpShadowStep,
 							from,
@@ -285,24 +310,33 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 					}
 				}
 				else if (GetExemptStatus(KnockBack)) {
-					if (estimated_speed > 30.0f) {
+					// Use configurable threshold for knockback
+					if (estimated_speed > RuleR(Cheat, MQWarpKnockBackThreshold)) {
 						CheatDetected(MQWarpKnockBack, from, to);
 					}
 				}
 				else if (!GetExemptStatus(Port)) {
-					if (estimated_speed > (run_speed * 1.5)) {
+					// If significant vertical movement, be more lenient with horizontal speed checks
+					// This helps with falling/levitation ending scenarios
+					float speed_multiplier = significant_z_movement ? 2.0f : 1.5f;
+					
+					if (estimated_speed > (run_speed * speed_multiplier)) {
 						CheatDetected(MQWarp, from, to);
 						m_time_since_last_position_check     = cur_time;
 						m_last_position_check_location       = to;
 						m_distance_since_last_position_check = 0.0f;
 					}
 					else {
-						CheatDetected(MQWarpLight, from, to);
+						// Don't mark as light warp if there's significant vertical movement
+						if (!significant_z_movement) {
+							CheatDetected(MQWarpLight, from, to);
+						}
 					}
 				}
 			}
 		}
-		if (time_between_checks != DefaultMovementCheckIntervalMS) {
+		// Only clear exemptions if grace period is disabled or time_between_checks is default
+		if (time_between_checks != DefaultMovementCheckIntervalMS && !RuleB(Cheat, EnableExemptionGracePeriod)) {
 			SetExemptStatus(ShadowStep, false);
 			SetExemptStatus(KnockBack, false);
 			SetExemptStatus(Port, false);
@@ -355,15 +389,19 @@ void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 				SetExemptStatus(Port, true);
 				break;
 			case UpdateMovementType::TeleportA:
-				if (index != 0) {
+				// Only flag TeleportA if it's a large distance and not during a port exemption
+				if (index != 0 && !GetExemptStatus(Port)) {
 					glm::vec3 from = glm::vec3(
 						m_MovementHistory[index - 1].X,
 						m_MovementHistory[index - 1].Y,
 						m_MovementHistory[index - 1].Z
 					);
-					CheatDetected(MQWarpAbsolute, from, to);
+					// Only detect as warp if distance is significant (reduces false positives)
+					float dist = Distance(from, to);
+					if (dist > 100.0f) {  // Reasonable threshold for legitimate vs. illegitimate teleport
+						CheatDetected(MQWarpAbsolute, from, to);
+					}
 				}
-				SetExemptStatus(Port, false);
 				break;
 		}
 	}

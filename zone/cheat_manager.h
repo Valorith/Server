@@ -51,6 +51,8 @@ private:
 	static constexpr uint32 PositionCheckIntervalMS = 2500;
 	static constexpr uint32 DefaultMovementCheckIntervalMS = 1000;
 	static constexpr uint32 FastMemorizationWindowMS = 1;
+	static constexpr uint32 ExemptionGracePeriodMS = 5000;
+	static constexpr uint32 AbsoluteWarpCooldownMS = 2500;
 
 public:
 	CheatManager()
@@ -68,7 +70,12 @@ public:
 		m_time_since_last_memorization       = 0;
 		m_time_since_last_position_check     = 0;
 		m_time_since_last_warp_detection.Start();
+		m_time_since_last_absolute_warp_detection.Start();
 		m_time_since_last_movement_history.Start(MovementHistoryTimeoutMS);
+		
+		for (int i = 0; i < ExemptionType::MAX_EXEMPTIONS; ++i) {
+			m_exemption_expiry_time[i] = 0;
+		}
 	}
 	void SetClient(Client *cli);
 	void SetExemptStatus(ExemptionType type, bool v);
@@ -82,6 +89,7 @@ public:
 	void ClientProcess();
 private:
 	bool  m_exemption[ExemptionType::MAX_EXEMPTIONS]{};
+	uint32 m_exemption_expiry_time[ExemptionType::MAX_EXEMPTIONS];
 	float m_distance_since_last_position_check;
 	glm::vec3 m_last_position_check_location;
 	glm::vec3 m_current_position_check_location;
@@ -91,5 +99,6 @@ private:
 	uint32 m_time_since_last_position_check;
 	uint32 m_time_since_last_memorization;
 	Timer  m_time_since_last_warp_detection;
+	Timer  m_time_since_last_absolute_warp_detection;
 	Timer  m_time_since_last_movement_history;
 };
