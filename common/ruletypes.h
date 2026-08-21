@@ -1139,11 +1139,6 @@ RULE_BOOL(Cheat, EnableMQGateDetector, true, "Enable the MQGate Detector. Set to
 RULE_BOOL(Cheat, EnableMQGhostDetector, true, "Enable the MQGhost Detector. Set to False to disable this feature.")
 RULE_BOOL(Cheat, EnableMQFastMemDetector, true, "Enable the MQFastMem Detector. Set to False to disable this feature.")
 RULE_BOOL(Cheat, MarkMQWarpLT, false, "Mark clients makeing smaller warps")
-RULE_REAL(Cheat, MQWarpShadowStepThreshold, 800.0, "Distance threshold for flagging suspicious shadowstep movement")
-RULE_REAL(Cheat, MQWarpKnockBackThreshold, 30.0, "Speed threshold for flagging suspicious knockback movement")
-RULE_REAL(Cheat, MQWarpZThreshold, 500.0, "Vertical distance threshold to ignore horizontal warp checks (e.g. falling, levitation)")
-RULE_BOOL(Cheat, EnableMQAbsoluteWarpCooldown, true, "Enable cooldown for absolute warp detection to reduce false positives")
-RULE_BOOL(Cheat, EnableExemptionGracePeriod, true, "Enable grace period for exemptions to reduce false positives from lag")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Command)

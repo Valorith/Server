@@ -4982,7 +4982,10 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 		}
 	}
 
-	cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
+	// Boat motion is applied to world coordinates above and is not player movement.
+	if (!on_boat) {
+		cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
+	}
 
 	if (IsDraggingCorpse())
 		DragCorpses();
@@ -16529,10 +16532,10 @@ void Client::Handle_OP_UnderWorld(const EQApplicationPacket *app)
 	auto dist = Distance(
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, zone->newzone_data.underworld),
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
-	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
 	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0) {
 		cheat_manager.SetExemptStatus(Port, true);
 	}
+	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
 }
 
 void Client::Handle_OP_SharedTaskRemovePlayer(const EQApplicationPacket *app)
