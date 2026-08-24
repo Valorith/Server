@@ -4985,13 +4985,15 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	}
 
 	// Boat motion is folded into the world coordinates above and is not player
-	// movement. vehicle_id (and OP_BoardBoat, which sets controlling_boat_id
-	// from a client-supplied name) are client-controlled, so only skip the
-	// movement check when the server-side position corroborates that the
-	// client is aboard the resolved vessel AND the transformed position stays
-	// on the vessel. Both bounds together confine skipped updates to the
-	// vessel's vicinity; anything else goes through the normal movement check.
-	bool is_aboard_boat = boat &&
+	// movement. vehicle_id is client-controlled, so the movement check is only
+	// skipped for server-driven passenger ships (GetIsBoat), and only when the
+	// server-side position corroborates that the client is aboard AND the
+	// transformed position stays on the vessel. Controllable boats are
+	// excluded because their position is client-writable (GMMove above), which
+	// would let a hacked client drag the corroboration along in hops; their
+	// riders keep going through the normal movement check as before this
+	// change. Anything else also goes through the normal movement check.
+	bool is_aboard_boat = boat && boat->GetIsBoat() &&
 						  DistanceNoZ(GetPosition(), boat->GetPosition()) <= 350.0f &&
 						  DistanceNoZ(glm::vec3(cx, cy, cz), glm::vec3(boat->GetPosition())) <= 350.0f;
 	if (!is_aboard_boat) {

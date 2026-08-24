@@ -316,7 +316,10 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 					}
 					// The displacement this exemption was granted for has now
 					// been evaluated; consume it so it cannot cover more moves.
+					// KnockBack may have been co-granted by the same spell
+					// (push + shadowstep), so consume it as well.
 					SetExemptStatus(ShadowStep, false);
+					SetExemptStatus(KnockBack, false);
 				}
 				else if (GetExemptStatus(KnockBack)) {
 					if (estimated_speed > 30.0f) {
