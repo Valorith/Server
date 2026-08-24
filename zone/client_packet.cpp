@@ -4956,7 +4956,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 
 	if (on_boat) {
 		boat = entity_list.GetMob(ppu->vehicle_id);
-		if (boat == nullptr || !boat->GetIsBoat()) {
+		if (boat == nullptr || !(boat->GetIsBoat() || boat->IsControllableBoat())) {
 			boat = nullptr;
 			LogError("Can't find boat for client position offset.");
 		}
@@ -4986,9 +4986,15 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 
 	// Boat motion is folded into the world coordinates above and is not player
 	// movement. vehicle_id is client-controlled, so only skip the movement check
-	// when it resolved to a real boat; otherwise a hacked client could set it to
-	// disable warp detection entirely.
-	if (!boat) {
+	// when it resolved to a real boat AND the server can corroborate that this
+	// client is aboard it: either it boarded via OP_BoardBoat (controllable
+	// boats), or its server-side position is on/near the vessel (passenger
+	// ships). Otherwise a hacked client could spoof vehicle_id to disable warp
+	// detection.
+	bool is_aboard_boat = boat &&
+						  (boat->GetID() == controlling_boat_id ||
+						   DistanceNoZ(GetPosition(), boat->GetPosition()) <= 350.0f);
+	if (!is_aboard_boat) {
 		cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
 	}
 
