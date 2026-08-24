@@ -293,7 +293,18 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 			const auto from      = m_last_position_check_location;
 			const auto to        = m_current_position_check_location;
 			if (!using_gm_speed && !is_immobile) {
-				if (GetExemptStatus(ShadowStep)) {
+				if (GetExemptStatus(Port)) {
+					// A port explains the displacement and supersedes any stale
+					// shadowstep/knockback exemption. Consume the exemption once
+					// the port-sized displacement itself has been observed so it
+					// cannot cover subsequent movement.
+					SetExemptStatus(ShadowStep, false);
+					SetExemptStatus(KnockBack, false);
+					if (estimated_speed > (run_speed * 1.5)) {
+						SetExemptStatus(Port, false);
+					}
+				}
+				else if (GetExemptStatus(ShadowStep)) {
 					if (m_distance_since_last_position_check > 800) {
 						CheatDetected(
 							MQWarpShadowStep,
@@ -307,7 +318,7 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 						CheatDetected(MQWarpKnockBack, from, to);
 					}
 				}
-				else if (!GetExemptStatus(Port)) {
+				else {
 					if (estimated_speed > (run_speed * 1.5)) {
 						CheatDetected(MQWarp, from, to);
 						m_time_since_last_position_check     = cur_time;

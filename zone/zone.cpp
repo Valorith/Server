@@ -2081,9 +2081,13 @@ ZonePoint* Zone::GetClosestZonePoint(const glm::vec3& location, uint32 to, Clien
 	{
 		// A client standing near the matched zone point is legitimate even when the
 		// water map has no zoneline volume there (incomplete map data), so only flag
-		// requests made far from any zone point as a possible cheat.
-		if (closest_dist > 400.0f && closest_dist < max_distance2 &&
-			!client->cheat_manager.GetExemptStatus(Port)) {
+		// requests made away from the zone point as a possible cheat. Proximity is
+		// checked in 3D (closest_dist is horizontal only) so a client on a stacked
+		// floor above or below the zone point does not suppress the detector.
+		bool near_zone_point = closest_dist <= 400.0f && closest_zp &&
+							   (closest_zp->z == 999999 || closest_zp->z == -999999 ||
+								std::abs(closest_zp->z - location.z) <= 100.0f);
+		if (!near_zone_point && !client->cheat_manager.GetExemptStatus(Port)) {
 			client->cheat_manager.CheatDetected(MQZoneUnknownDest, location);
 		}
 

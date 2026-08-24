@@ -4987,10 +4987,13 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	// Boat motion is folded into the world coordinates above and is not player
 	// movement. vehicle_id (and OP_BoardBoat, which sets controlling_boat_id
 	// from a client-supplied name) are client-controlled, so only skip the
-	// movement check when the client's server-side position corroborates that
-	// it is actually aboard the resolved vessel. Accepted positions therefore
-	// stay confined to the vessel's vicinity.
-	bool is_aboard_boat = boat && DistanceNoZ(GetPosition(), boat->GetPosition()) <= 350.0f;
+	// movement check when the server-side position corroborates that the
+	// client is aboard the resolved vessel AND the transformed position stays
+	// on the vessel. Both bounds together confine skipped updates to the
+	// vessel's vicinity; anything else goes through the normal movement check.
+	bool is_aboard_boat = boat &&
+						  DistanceNoZ(GetPosition(), boat->GetPosition()) <= 350.0f &&
+						  DistanceNoZ(glm::vec3(cx, cy, cz), glm::vec3(boat->GetPosition())) <= 350.0f;
 	if (!is_aboard_boat) {
 		cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
 	}
@@ -16541,12 +16544,12 @@ void Client::Handle_OP_UnderWorld(const EQApplicationPacket *app)
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, zone->newzone_data.underworld),
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
 	// The packet's coordinates are client-supplied, so only grant the Port
-	// exemption when the server-observed position corroborates that the client
-	// is actually at or below the underworld plane; a forged report from
-	// normal elevation gets no exemption and falls through to the movement
-	// check below.
+	// exemption when the server-observed position corroborates the report both
+	// vertically (at or below the underworld plane) and horizontally; a forged
+	// report gets no exemption and falls through to the movement check below.
 	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0 &&
-		GetPosition().z <= zone->newzone_data.underworld + 200.0f) {
+		GetPosition().z <= zone->newzone_data.underworld + 200.0f &&
+		DistanceNoZ(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, 0.0f), glm::vec3(GetPosition())) <= 200.0f) {
 		cheat_manager.SetExemptStatus(Port, true);
 	}
 	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
