@@ -2050,6 +2050,7 @@ ZonePoint* Zone::GetClosestZonePoint(const glm::vec3& location, uint32 to, Clien
 
 	float closest_dist = FLT_MAX;
 	float max_distance2 = max_distance * max_distance;
+	bool near_zone_point = false;
 	iterator.Reset();
 	while(iterator.MoreElements())
 	{
@@ -2066,6 +2067,14 @@ ZonePoint* Zone::GetClosestZonePoint(const glm::vec3& location, uint32 to, Clien
 			if ((zp->x == 999999 || zp->x == -999999) && (zp->y == 999999 || zp->y == -999999))
 				dist = 0;
 
+			// Track whether the client is near any zone point to this
+			// destination in 3D (dist is horizontal only), so a point on a
+			// stacked floor above or below does not count.
+			if (dist <= 400.0f &&
+				(zp->z == 999999 || zp->z == -999999 || std::abs(zp->z - location.z) <= 100.0f)) {
+				near_zone_point = true;
+			}
+
 			if (dist < closest_dist)
 			{
 				closest_zp = zp;
@@ -2079,14 +2088,9 @@ ZonePoint* Zone::GetClosestZonePoint(const glm::vec3& location, uint32 to, Clien
 	// this shouldn't open up any exploits since those situations are detected later on
 	if ((client && zone->HasWaterMap() && !zone->watermap->InZoneLine(glm::vec3(client->GetPosition()))) || (!zone->HasWaterMap() && closest_dist > 400.0f && closest_dist < max_distance2))
 	{
-		// A client standing near the matched zone point is legitimate even when the
+		// A client standing near a matching zone point is legitimate even when the
 		// water map has no zoneline volume there (incomplete map data), so only flag
-		// requests made away from the zone point as a possible cheat. Proximity is
-		// checked in 3D (closest_dist is horizontal only) so a client on a stacked
-		// floor above or below the zone point does not suppress the detector.
-		bool near_zone_point = closest_dist <= 400.0f && closest_zp &&
-							   (closest_zp->z == 999999 || closest_zp->z == -999999 ||
-								std::abs(closest_zp->z - location.z) <= 100.0f);
+		// requests made away from every zone point as a possible cheat.
 		if (!near_zone_point && !client->cheat_manager.GetExemptStatus(Port)) {
 			client->cheat_manager.CheatDetected(MQZoneUnknownDest, location);
 		}

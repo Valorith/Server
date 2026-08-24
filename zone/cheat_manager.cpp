@@ -29,16 +29,6 @@ void CheatManager::SetExemptStatus(ExemptionType type, bool v)
 
 bool CheatManager::GetExemptStatus(ExemptionType type)
 {
-	// Timed expiry applies only to the movement exemptions; Assist and Sense
-	// are consumed on use by the targeting path. The unsigned elapsed-time
-	// comparison is safe across uint32 tick wrap.
-	if (m_exemption[type] &&
-		(type == ShadowStep || type == KnockBack || type == Port) &&
-		(Timer::GetCurrentTime() - m_exemption_set_time[type]) > ExemptionGracePeriodMS) {
-		m_exemption[type] = false;
-		m_exemption_set_time[type] = 0;
-		return false;
-	}
 	return m_exemption[type];
 }
 
@@ -312,11 +302,15 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 							to
 						);
 					}
+					// The displacement this exemption was granted for has now
+					// been evaluated; consume it so it cannot cover more moves.
+					SetExemptStatus(ShadowStep, false);
 				}
 				else if (GetExemptStatus(KnockBack)) {
 					if (estimated_speed > 30.0f) {
 						CheatDetected(MQWarpKnockBack, from, to);
 					}
+					SetExemptStatus(KnockBack, false);
 				}
 				else {
 					if (estimated_speed > (run_speed * 1.5)) {
@@ -329,6 +323,15 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 						CheatDetected(MQWarpLight, from, to);
 					}
 				}
+			}
+		}
+		// Movement exemptions survive a deferred evaluation of a displacement
+		// that occurred while they were valid, and lapse at the first
+		// evaluation after their grace period. The unsigned elapsed-time
+		// comparison is safe across uint32 tick wrap.
+		for (ExemptionType type : {ShadowStep, KnockBack, Port}) {
+			if (m_exemption[type] && (cur_time - m_exemption_set_time[type]) > ExemptionGracePeriodMS) {
+				SetExemptStatus(type, false);
 			}
 		}
 		m_time_since_last_position_check     = cur_time;
