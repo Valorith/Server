@@ -16540,7 +16540,13 @@ void Client::Handle_OP_UnderWorld(const EQApplicationPacket *app)
 	auto dist = Distance(
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, zone->newzone_data.underworld),
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
-	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0) {
+	// The packet's coordinates are client-supplied, so only grant the Port
+	// exemption when the server-observed position corroborates that the client
+	// is actually at or below the underworld plane; a forged report from
+	// normal elevation gets no exemption and falls through to the movement
+	// check below.
+	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0 &&
+		GetPosition().z <= zone->newzone_data.underworld + 200.0f) {
 		cheat_manager.SetExemptStatus(Port, true);
 	}
 	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
