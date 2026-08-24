@@ -5,14 +5,11 @@
 #include "zone/quest_parser_collection.h"
 #include "zone/worldserver.h"
 #include "zone/queryserv.h"
-#include "zone/water_map.h"
-#include "zone/zone.h"
 
 #include <algorithm>
 
 extern WorldServer worldserver;
 extern QueryServ *QServ;
-extern Zone *zone;
 
 void CheatManager::SetClient(Client *cli)
 {
@@ -32,8 +29,11 @@ void CheatManager::SetExemptStatus(ExemptionType type, bool v)
 
 bool CheatManager::GetExemptStatus(ExemptionType type)
 {
-	// Unsigned elapsed-time comparison is safe across uint32 tick wrap.
+	// Timed expiry applies only to the movement exemptions; Assist and Sense
+	// are consumed on use by the targeting path. The unsigned elapsed-time
+	// comparison is safe across uint32 tick wrap.
 	if (m_exemption[type] &&
+		(type == ShadowStep || type == KnockBack || type == Port) &&
 		(Timer::GetCurrentTime() - m_exemption_set_time[type]) > ExemptionGracePeriodMS) {
 		m_exemption[type] = false;
 		m_exemption_set_time[type] = 0;
@@ -361,25 +361,15 @@ void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 		return;
 	}
 
+	// Note: ZoneLine entries are client-supplied and are deliberately not
+	// honored as a Port exemption; every legitimate flow that snaps position
+	// within this zone process already sets the exemption server-side
+	// (SendZoneCancel, SendZoneError, ZonePC, and the underworld handler).
 	for (int index = 0; index < (app->size) / sizeof(UpdateMovementEntry); index++) {
 		glm::vec3 to = glm::vec3(m_MovementHistory[index].X, m_MovementHistory[index].Y, m_MovementHistory[index].Z);
 		switch (m_MovementHistory[index].type) {
-			case UpdateMovementType::ZoneLine: {
-				// Entry types are client-supplied, so only honor a zone-line
-				// crossing when the server-side position corroborates it;
-				// otherwise a hacked client could self-grant a Port exemption
-				// by forging this entry.
-				const auto& pos = m_target->GetPosition();
-				bool near_zone_line =
-					(zone->HasWaterMap() && zone->watermap->InZoneLine(glm::vec3(pos))) ||
-					zone->GetClosestZonePointWithoutZone(pos.x, pos.y, pos.z, m_target, 400.0f) != nullptr;
-				if (near_zone_line) {
-					SetExemptStatus(Port, true);
-				}
-				break;
-			}
 			case UpdateMovementType::TeleportA:
-				if (index != 0 && !GetExemptStatus(Port)) {
+				if (index != 0) {
 					glm::vec3 from = glm::vec3(
 						m_MovementHistory[index - 1].X,
 						m_MovementHistory[index - 1].Y,
