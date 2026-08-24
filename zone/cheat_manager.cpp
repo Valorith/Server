@@ -277,6 +277,18 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 							  RuleR(Cheat, MQWarpDetectionDistanceFactor),
 							  1.0f
 						  );
+		// Lapse movement exemptions that were already past their grace period
+		// when this window's movement began accumulating, before they are
+		// applied below. An exemption still valid at the window start covers
+		// the deferred evaluation of that movement; one granted mid-window
+		// (negative difference) is also kept. The signed comparison of the
+		// unsigned tick difference is safe across uint32 wrap.
+		for (ExemptionType type : {ShadowStep, KnockBack, Port}) {
+			if (m_exemption[type] &&
+				(int32)(m_time_since_last_position_check - m_exemption_set_time[type]) > (int32)ExemptionGracePeriodMS) {
+				SetExemptStatus(type, false);
+			}
+		}
 		if (estimated_speed > run_speed) {
 			bool using_gm_speed = m_target->GetGMSpeed();
 			bool is_immobile    = m_target->GetRunspeed() == 0; // this covers stuns, roots, mez, and pseudorooted.
@@ -323,15 +335,6 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 						CheatDetected(MQWarpLight, from, to);
 					}
 				}
-			}
-		}
-		// Movement exemptions survive a deferred evaluation of a displacement
-		// that occurred while they were valid, and lapse at the first
-		// evaluation after their grace period. The unsigned elapsed-time
-		// comparison is safe across uint32 tick wrap.
-		for (ExemptionType type : {ShadowStep, KnockBack, Port}) {
-			if (m_exemption[type] && (cur_time - m_exemption_set_time[type]) > ExemptionGracePeriodMS) {
-				SetExemptStatus(type, false);
 			}
 		}
 		m_time_since_last_position_check     = cur_time;
