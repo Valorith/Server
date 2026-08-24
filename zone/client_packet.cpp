@@ -4943,6 +4943,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	// position is actually an offset from the boat he is inside.
 
 	bool	on_boat = (ppu->vehicle_id != 0);
+	Mob	*boat = nullptr;
 
 	// From this point forward, we need to use a new set of variables for client
 	// position.  If the client is in a boat, we need to add the boat pos and
@@ -4954,8 +4955,9 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	float 	new_heading = EQ12toFloat(ppu->heading);
 
 	if (on_boat) {
-		Mob *boat = entity_list.GetMob(ppu->vehicle_id);
-		if (boat == 0) {
+		boat = entity_list.GetMob(ppu->vehicle_id);
+		if (boat == nullptr || !boat->GetIsBoat()) {
+			boat = nullptr;
 			LogError("Can't find boat for client position offset.");
 		}
 		else {
@@ -4982,8 +4984,11 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 		}
 	}
 
-	// Boat motion is applied to world coordinates above and is not player movement.
-	if (!on_boat) {
+	// Boat motion is folded into the world coordinates above and is not player
+	// movement. vehicle_id is client-controlled, so only skip the movement check
+	// when it resolved to a real boat; otherwise a hacked client could set it to
+	// disable warp detection entirely.
+	if (!boat) {
 		cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
 	}
 
