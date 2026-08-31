@@ -396,9 +396,9 @@ hand-calculating the value.
 | `2` | Set | Replaces progress with the current observed value. Use when state must fall as well as rise, such as current item ownership. |
 | `3` | Boolean | Writes the component's full `required_count` on a qualifying event and `0` when a reconciled absolute fact falls below `target_value`. |
 
-Increment is rejected for Level, Own Item, Skill Value, Skill Cap, AA spent,
-specific tasks, and achievement dependencies because those facts are replayed
-or absolute. Use Highest, Set, or Boolean.
+Increment is rejected for Level, Zone Enter, Own Item, Skill Value, Skill Cap,
+AA spent, specific tasks, and achievement dependencies because those facts are
+replayed or absolute. Use Highest, Set, or Boolean.
 
 For non-absolute events, an observation below a positive `target_value` is
 ignored. For absolute events, Set and Boolean can clear stale progress when the

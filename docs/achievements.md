@@ -491,10 +491,10 @@ Every criterion that targets the same component must use the same behavior and
 effective required count, event type, and progress mode. The manager rejects
 conflicting alternate policy instead of depending on row order. Increment mode
 is also rejected for reconciled absolute facts (level, owned-item count, raw
-skill, DB-backed skill cap, and spent AA), for specifically targeted one-time
-tasks, and for all
-achievement-completion dependency criteria; use Highest, Set, or Boolean for
-those. Boolean criteria over absolute facts
+skill, DB-backed skill cap, and spent AA), replayed zone-entry facts,
+specifically targeted one-time tasks, and all achievement-completion dependency
+criteria; use Highest, Set, or Boolean for those. Boolean criteria over
+absolute facts
 must also specify a positive `target_value`, so an owned count or skill value
 of zero cannot satisfy them during login reconciliation. Set and Boolean
 absolute facts are actively cleared when they fall below the threshold.
