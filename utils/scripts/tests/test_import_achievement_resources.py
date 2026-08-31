@@ -1706,12 +1706,17 @@ class SlayerCriteriaTests(unittest.TestCase):
             SCRIPT_PATH.parents[2] / "common" / "races.h"
         ).read_text(encoding="utf-8")
         declared_ids = {
-            int(value)
+            int(value, 0)
             for value in re.findall(
-                r"constexpr\s+uint16\s+\w+\s*=\s*(\d+)\s*;",
+                r"constexpr\s+uint16\s+\w+\s*=\s*(0[xX][0-9a-fA-F]+|\d+)\s*;",
                 races_header,
             )
         }
+        self.assertGreater(
+            len(declared_ids),
+            100,
+            "common/races.h declaration format changed; update the parser",
+        )
         mapped_ids = {
             race_id
             for race_ids in (
@@ -2415,6 +2420,67 @@ class ReviewedDonCoverageTests(unittest.TestCase):
 
 
 class ResourceFileValidationTests(unittest.TestCase):
+    def test_dangling_references_warn_by_default_and_fail_in_strict_mode(self):
+        loader_results = (
+            ("_load_categories", (category(10, 0, "General"),)),
+            ("_load_achievements", (achievement(100, "Present"),)),
+            (
+                "_load_category_associations",
+                (association(10, 999),),
+            ),
+            (
+                "_load_components",
+                (component(100, 1, 1, 1000, "Present"),),
+            ),
+            (
+                "_load_component_counts",
+                (IMPORTER.ComponentCount(1000, 1),),
+            ),
+        )
+
+        with (
+            mock.patch.object(
+                IMPORTER,
+                loader_results[0][0],
+                return_value=loader_results[0][1],
+            ),
+            mock.patch.object(
+                IMPORTER,
+                loader_results[1][0],
+                return_value=loader_results[1][1],
+            ),
+            mock.patch.object(
+                IMPORTER,
+                loader_results[2][0],
+                return_value=loader_results[2][1],
+            ),
+            mock.patch.object(
+                IMPORTER,
+                loader_results[3][0],
+                return_value=loader_results[3][1],
+            ),
+            mock.patch.object(
+                IMPORTER,
+                loader_results[4][0],
+                return_value=loader_results[4][1],
+            ),
+        ):
+            resources = IMPORTER.load_resources(Path(__file__).parent)
+            self.assertEqual(
+                resources.warnings,
+                (
+                    "AchievementCategoryAssociationsClient.txt references "
+                    "missing achievements (1 IDs; first values): 999",
+                ),
+            )
+            with self.assertRaisesRegex(
+                IMPORTER.ResourceError,
+                r"missing achievements \(1 IDs; first values\): 999",
+            ):
+                IMPORTER.load_resources(
+                    Path(__file__).parent, strict_references=True
+                )
+
     def test_empty_resource_snapshot_is_rejected(self):
         with (
             mock.patch.object(

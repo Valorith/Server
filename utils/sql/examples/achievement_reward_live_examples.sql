@@ -119,6 +119,7 @@ SELECT
 	1,
 	'Experience',
 	1
+FROM DUAL
 WHERE @mastering_achievements_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -145,6 +146,7 @@ SELECT
 	100,
 	'0p, 0g, 10s, 0c',
 	1
+FROM DUAL
 WHERE @mastering_achievements_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -174,6 +176,7 @@ SELECT
 	1,
 	'Apprentice Collector''s Rucksack',
 	1
+FROM DUAL
 WHERE @norrathian_seeker_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -205,6 +208,7 @@ SELECT
 	2271122,
 	'2% of the experience required to go from level 111 to 112 (No AA Experience)',
 	1
+FROM DUAL
 WHERE @norrathian_seeker_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -232,6 +236,7 @@ SELECT
 	1,
 	'Omenslayer''s Chest',
 	1
+FROM DUAL
 WHERE @omenslayer_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -287,6 +292,7 @@ SELECT
 	1,
 	'Apprentice Collector''s Rucksack (Alternate Test Choice)',
 	1
+FROM DUAL
 WHERE @omenslayer_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`reward_type` = VALUES(`reward_type`),
@@ -318,6 +324,7 @@ SELECT
 	@omenslayer_id,
 	'Omenslayer - Example Item Choice',
 	1
+FROM DUAL
 WHERE @omenslayer_id IS NOT NULL
 ON DUPLICATE KEY UPDATE
 	`title` = VALUES(`title`),
