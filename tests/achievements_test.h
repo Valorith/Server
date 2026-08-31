@@ -389,6 +389,32 @@ private:
 		TEST_ASSERT(reader.Read<uint16_t>() == 0x0002);
 		TEST_ASSERT(reader.Read<uint32_t>() == 0x12345678);
 		TEST_ASSERT(reader.position == reader.size);
+
+		State mismatched;
+		mismatched.satisfied[1] = {1};
+		mismatched.satisfied[2] = {1, 1};
+		mismatched.counts[1] = {7};
+		mismatched.counts[2] = {8, 9};
+
+		SerializeBuffer mismatched_packet;
+		SerializeState(mismatched_packet, definition, mismatched, true);
+		Reader mismatched_reader{
+			mismatched_packet.buffer(),
+			mismatched_packet.size()
+		};
+		TEST_ASSERT(mismatched_reader.Read<int16_t>() == 1);
+		TEST_ASSERT(mismatched_reader.Read<uint16_t>() == 0x0001);
+		TEST_ASSERT(mismatched_reader.Read<uint16_t>() == 0x0000);
+		TEST_ASSERT(mismatched_reader.Read<uint16_t>() == 0x0001);
+		TEST_ASSERT(mismatched_reader.Read<uint16_t>() == 0x0000);
+		TEST_ASSERT(mismatched_reader.Read<uint32_t>() == 7);
+		for (size_t index = 1; index < 17; ++index) {
+			TEST_ASSERT(mismatched_reader.Read<uint32_t>() == 0);
+		}
+		TEST_ASSERT(mismatched_reader.Read<uint32_t>() == 8);
+		TEST_ASSERT(mismatched_reader.Read<uint32_t>() == 0);
+		TEST_ASSERT(mismatched_reader.Read<uint32_t>() == 0);
+		TEST_ASSERT(mismatched_reader.position == mismatched_reader.size);
 	}
 
 	void IncrementalAndProgressLayouts()
