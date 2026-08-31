@@ -23,7 +23,11 @@
 #include "luabind/iterator_policy.hpp"
 #include "luabind/luabind.hpp"
 
+#include <cmath>
+#include <fmt/format.h>
 #include <initializer_list>
+#include <limits>
+#include <unordered_set>
 
 struct InventoryWhere { };
 
@@ -2851,92 +2855,342 @@ int Lua_Client::GetSpellDamage() {
 	return self->GetSpellDmg();
 }
 
-bool Lua_Client::CreateRewardSelection(uint32 selection_id, std::string title) {
+static const std::unordered_set<std::string> &LuaRewardSelectionRewardKeys()
+{
+	static const std::unordered_set<std::string> keys = {"item_id",
+	    "experience",
+	    "experience_no_aa",
+	    "aa_points",
+	    "money",
+	    "alternate_currency_id",
+	    "title_set_id",
+	    "quantity",
+	    "amount",
+	    "description"};
+	return keys;
+}
+
+static bool LuaRewardSelectionValidateKeys(luabind::object table,
+    const std::unordered_set<std::string> &allowed,
+    const std::string &path,
+    std::string &error)
+{
+	luabind::raw_iterator end;
+	for (luabind::raw_iterator it(table); it != end; ++it) {
+		const auto key_object = it.key();
+		if (luabind::type(key_object) != LUA_TSTRING) {
+			error = fmt::format("{} must use string field names", path);
+			return false;
+		}
+		const auto key = luabind::object_cast<std::string>(key_object);
+		if (!allowed.count(key)) {
+			error = fmt::format("{}.{} is not a supported field", path, key);
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool LuaRewardSelectionReadUInt(luabind::object value,
+    uint64_t &output,
+    const std::string &path,
+    std::string &error)
+{
+	if (luabind::type(value) != LUA_TNUMBER) {
+		error = fmt::format("{} must be an unsigned integer", path);
+		return false;
+	}
+	const double number = luabind::object_cast<double>(value);
+	constexpr double maximum_exact_integer = 9007199254740991.0;
+	if (!std::isfinite(number) || number < 0.0 ||
+	    number > maximum_exact_integer || std::floor(number) != number) {
+		error = fmt::format("{} must be an unsigned integer", path);
+		return false;
+	}
+	output = static_cast<uint64_t>(number);
+	return true;
+}
+
+static bool LuaRewardSelectionReadOptionalUInt(luabind::object table,
+    const char *key,
+    std::optional<uint64_t> &output,
+    const std::string &path,
+    std::string &error)
+{
+	auto value = table[key];
+	if (luabind::type(value) == LUA_TNIL) {
+		return true;
+	}
+	uint64_t number = 0;
+	if (!LuaRewardSelectionReadUInt(
+	        value, number, fmt::format("{}.{}", path, key), error)) {
+		return false;
+	}
+	output = number;
+	return true;
+}
+
+static bool LuaRewardSelectionReadOptionalString(luabind::object table,
+    const char *key,
+    std::string &output,
+    const std::string &path,
+    std::string &error)
+{
+	auto value = table[key];
+	if (luabind::type(value) == LUA_TNIL) {
+		return true;
+	}
+	if (luabind::type(value) != LUA_TSTRING) {
+		error = fmt::format("{}.{} must be a string", path, key);
+		return false;
+	}
+	output = luabind::object_cast<std::string>(value);
+	return true;
+}
+
+static bool LuaRewardSelectionArraySize(luabind::object table,
+    const std::string &path,
+    size_t &size,
+    std::string &error)
+{
+	if (luabind::type(table) != LUA_TTABLE) {
+		error = fmt::format("{} must be an array table", path);
+		return false;
+	}
+	size_t count = 0;
+	size_t maximum_index = 0;
+	luabind::raw_iterator end;
+	for (luabind::raw_iterator it(table); it != end; ++it) {
+		uint64_t index = 0;
+		if (!LuaRewardSelectionReadUInt(
+		        it.key(), index, path + " index", error)) {
+			return false;
+		}
+		if (!index || index > std::numeric_limits<uint32_t>::max()) {
+			error = fmt::format("{} indices must start at 1", path);
+			return false;
+		}
+		++count;
+		maximum_index = std::max(maximum_index, static_cast<size_t>(index));
+	}
+	if (count != maximum_index) {
+		error =
+		    fmt::format("{} must be a dense array starting at index 1", path);
+		return false;
+	}
+	size = count;
+	return true;
+}
+
+static bool LuaRewardSelectionParseReward(luabind::object table,
+    bool allow_option_keys,
+    const std::string &path,
+    RewardSelectionReward &reward,
+    std::string &error)
+{
+	if (luabind::type(table) != LUA_TTABLE) {
+		error = fmt::format("{} must be a table", path);
+		return false;
+	}
+	auto allowed = LuaRewardSelectionRewardKeys();
+	if (allow_option_keys) {
+		allowed.insert("option_id");
+		allowed.insert("label");
+		allowed.insert("rewards");
+	}
+	if (!LuaRewardSelectionValidateKeys(table, allowed, path, error)) {
+		return false;
+	}
+
+	ScriptRewardSelectionRewardConfig config;
+	if (!LuaRewardSelectionReadOptionalUInt(
+	        table, "item_id", config.item_id, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "experience", config.experience, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "experience_no_aa", config.experience_no_aa, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "aa_points", config.aa_points, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "money", config.money, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(table,
+	        "alternate_currency_id",
+	        config.alternate_currency_id,
+	        path,
+	        error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "title_set_id", config.title_set_id, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "quantity", config.quantity, path, error) ||
+	    !LuaRewardSelectionReadOptionalUInt(
+	        table, "amount", config.amount, path, error) ||
+	    !LuaRewardSelectionReadOptionalString(
+	        table, "description", config.description, path, error)) {
+		return false;
+	}
+
+	std::string reward_error;
+	const auto parsed = MakeScriptRewardSelectionReward(config, &reward_error);
+	if (!parsed) {
+		error = fmt::format("{}: {}", path, reward_error);
+		return false;
+	}
+	reward = *parsed;
+	return true;
+}
+
+static bool LuaRewardSelectionParseRewardArray(luabind::object table,
+    const std::string &path,
+    bool require_nonempty,
+    std::vector<RewardSelectionReward> &rewards,
+    std::string &error)
+{
+	size_t size = 0;
+	if (!LuaRewardSelectionArraySize(table, path, size, error)) {
+		return false;
+	}
+	if (require_nonempty && !size) {
+		error = fmt::format("{} must contain at least one reward", path);
+		return false;
+	}
+	rewards.reserve(size);
+	for (size_t index = 1; index <= size; ++index) {
+		RewardSelectionReward reward;
+		if (!LuaRewardSelectionParseReward(table[index],
+		        false,
+		        fmt::format("{}[{}]", path, index),
+		        reward,
+		        error)) {
+			return false;
+		}
+		rewards.emplace_back(std::move(reward));
+	}
+	return true;
+}
+
+bool Lua_Client::OfferRewardSelection(luabind::object config)
+{
 	Lua_Safe_Call_Bool();
-	return self->GetRewardSelection().BeginScriptOffer(selection_id, title);
-}
+	std::string error;
+	ScriptRewardSelectionOffer offer;
+	if (luabind::type(config) != LUA_TTABLE) {
+		LogError(
+		    "OfferRewardSelection Lua config error: config must be a table");
+		return false;
+	}
+	static const std::unordered_set<std::string> top_keys = {
+	    "selection_id", "title", "options", "common_rewards"};
+	LuaRewardSelectionValidateKeys(config, top_keys, "config", error);
 
-bool Lua_Client::AddRewardSelectionOption(uint32 option_id, std::string label) {
-	return AddRewardSelectionOption(option_id, label, false);
-}
+	uint64_t selection_id = 0;
+	if (error.empty()) {
+		if (luabind::type(config["selection_id"]) == LUA_TNIL) {
+			error = "config.selection_id is required";
+		} else if (LuaRewardSelectionReadUInt(config["selection_id"],
+		               selection_id,
+		               "config.selection_id",
+		               error)) {
+			if (selection_id > std::numeric_limits<uint32_t>::max()) {
+				error = "config.selection_id exceeds the supported range";
+			} else {
+				offer.selection_id = static_cast<uint32_t>(selection_id);
+			}
+		}
+	}
 
-bool Lua_Client::AddRewardSelectionOption(
-	uint32 option_id,
-	std::string label,
-	bool common_to_all
-) {
-	Lua_Safe_Call_Bool();
-	return self->GetRewardSelection().AddScriptOption(
-		option_id,
-		label,
-		common_to_all
-	);
-}
+	if (error.empty()) {
+		LuaRewardSelectionReadOptionalString(
+		    config, "title", offer.title, "config", error);
+	}
+	auto options_table = config["options"];
+	size_t option_count = 0;
+	if (error.empty()) {
+		if (luabind::type(options_table) == LUA_TNIL) {
+			error = "config.options is required";
+		} else if (LuaRewardSelectionArraySize(
+		               options_table, "config.options", option_count, error) &&
+		           !option_count) {
+			error = "config.options must contain at least one choice";
+		}
+	}
 
-bool Lua_Client::AddRewardSelectionReward(
-	uint32 option_id,
-	std::string reward_type,
-	uint64 value
-) {
-	return AddRewardSelectionReward(
-		option_id,
-		reward_type,
-		value,
-		0
-	);
-}
+	for (size_t index = 1; error.empty() && index <= option_count; ++index) {
+		auto option_table = options_table[index];
+		const auto path = fmt::format("config.options[{}]", index);
+		if (luabind::type(option_table) != LUA_TTABLE) {
+			error = fmt::format("{} must be a table", path);
+			break;
+		}
+		auto allowed = LuaRewardSelectionRewardKeys();
+		allowed.insert("option_id");
+		allowed.insert("label");
+		allowed.insert("rewards");
+		if (!LuaRewardSelectionValidateKeys(
+		        option_table, allowed, path, error)) {
+			break;
+		}
 
-bool Lua_Client::AddRewardSelectionReward(
-	uint32 option_id,
-	std::string reward_type,
-	uint64 value,
-	std::string description
-) {
-	Lua_Safe_Call_Bool();
-	return self->GetRewardSelection().AddScriptReward(
-		option_id,
-		reward_type,
-		value,
-		0,
-		description
-	);
-}
+		RewardSelectionOption option;
+		uint64_t option_id = index;
+		if (luabind::type(option_table["option_id"]) != LUA_TNIL &&
+		    !LuaRewardSelectionReadUInt(option_table["option_id"],
+		        option_id,
+		        path + ".option_id",
+		        error)) {
+			break;
+		}
+		if (!option_id || option_id > std::numeric_limits<uint32_t>::max()) {
+			error = fmt::format(
+			    "{}.option_id is outside the supported range", path);
+			break;
+		}
+		option.option_id = static_cast<uint32_t>(option_id);
+		if (!LuaRewardSelectionReadOptionalString(
+		        option_table, "label", option.label, path, error)) {
+			break;
+		}
 
-bool Lua_Client::AddRewardSelectionReward(
-	uint32 option_id,
-	std::string reward_type,
-	uint64 value,
-	uint64 secondary_amount
-) {
-	return AddRewardSelectionReward(
-		option_id,
-		reward_type,
-		value,
-		secondary_amount,
-		""
-	);
-}
+		if (luabind::type(option_table["rewards"]) != LUA_TNIL) {
+			for (const auto &key : LuaRewardSelectionRewardKeys()) {
+				if (luabind::type(option_table[key]) != LUA_TNIL) {
+					error = fmt::format(
+					    "{} cannot mix rewards with flat reward fields", path);
+					break;
+				}
+			}
+			if (error.empty() &&
+			    !LuaRewardSelectionParseRewardArray(option_table["rewards"],
+			        path + ".rewards",
+			        true,
+			        option.rewards,
+			        error)) {
+				break;
+			}
+		} else {
+			RewardSelectionReward reward;
+			if (!LuaRewardSelectionParseReward(
+			        option_table, true, path, reward, error)) {
+				break;
+			}
+			option.rewards.emplace_back(std::move(reward));
+		}
+		offer.options.emplace_back(std::move(option));
+	}
 
-bool Lua_Client::AddRewardSelectionReward(
-	uint32 option_id,
-	std::string reward_type,
-	uint64 value,
-	uint64 secondary_amount,
-	std::string description
-) {
-	Lua_Safe_Call_Bool();
-	return self->GetRewardSelection().AddScriptReward(
-		option_id,
-		reward_type,
-		value,
-		secondary_amount,
-		description
-	);
-}
+	if (error.empty() && luabind::type(config["common_rewards"]) != LUA_TNIL) {
+		LuaRewardSelectionParseRewardArray(config["common_rewards"],
+		    "config.common_rewards",
+		    false,
+		    offer.common_rewards,
+		    error);
+	}
 
-bool Lua_Client::OpenRewardSelection() {
-	Lua_Safe_Call_Bool();
-	return self->GetRewardSelection().OpenScriptOffer();
+	if (error.empty() && self->GetRewardSelection().OfferScriptSelection(
+	                         std::move(offer), error)) {
+		return true;
+	}
+	LogError("OfferRewardSelection Lua config error: {}", error);
+	return false;
 }
 
 void Lua_Client::ClearRewardSelection() {
@@ -4047,12 +4301,6 @@ luabind::scope lua_register_client() {
 	.def("AddPlatinum", (void(Lua_Client::*)(uint32,bool))&Lua_Client::AddPlatinum)
 	.def("AddPVPPoints", (void(Lua_Client::*)(uint32))&Lua_Client::AddPVPPoints)
 	.def("AddRadiantCrystals", (void(Lua_Client::*)(uint32))&Lua_Client::AddRadiantCrystals)
-	.def("AddRewardSelectionOption", (bool(Lua_Client::*)(uint32,std::string))&Lua_Client::AddRewardSelectionOption)
-	.def("AddRewardSelectionOption", (bool(Lua_Client::*)(uint32,std::string,bool))&Lua_Client::AddRewardSelectionOption)
-	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,std::string,uint64))&Lua_Client::AddRewardSelectionReward)
-	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,std::string,uint64,std::string))&Lua_Client::AddRewardSelectionReward)
-	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,std::string,uint64,uint64))&Lua_Client::AddRewardSelectionReward)
-	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,std::string,uint64,uint64,std::string))&Lua_Client::AddRewardSelectionReward)
 	.def("AddSkill", (void(Lua_Client::*)(int,int))&Lua_Client::AddSkill)
 	.def("Admin", (int16(Lua_Client::*)(void))&Lua_Client::Admin)
 	.def("ApplySpell", (void(Lua_Client::*)(int))&Lua_Client::ApplySpell)
@@ -4125,7 +4373,6 @@ luabind::scope lua_register_client() {
 	.def("CheckExpedition", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::CheckExpedition)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::GetExpeditionTemplate)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::GetExpeditionTemplate)
-	.def("CreateRewardSelection", (bool(Lua_Client::*)(uint32,std::string))&Lua_Client::CreateRewardSelection)
 	.def("CreateTaskDynamicZone", &Lua_Client::CreateTaskDynamicZone)
 	.def("CanCreateExpedition", &Lua_Client::CanCreateExpedition)
 	.def("DecreaseByID", (bool(Lua_Client::*)(uint32,int))&Lua_Client::DecreaseByID)
@@ -4422,7 +4669,7 @@ luabind::scope lua_register_client() {
 	.def("NukeItem", (void(Lua_Client::*)(uint32))&Lua_Client::NukeItem)
 	.def("NukeItem", (void(Lua_Client::*)(uint32,int))&Lua_Client::NukeItem)
 	.def("OpenLFGuildWindow", (void(Lua_Client::*)(void))&Lua_Client::OpenLFGuildWindow)
-	.def("OpenRewardSelection", (bool(Lua_Client::*)(void))&Lua_Client::OpenRewardSelection)
+	.def("OfferRewardSelection", (bool(Lua_Client::*)(luabind::object))&Lua_Client::OfferRewardSelection)
 	.def("PlayMP3", (void(Lua_Client::*)(std::string))&Lua_Client::PlayMP3)
 	.def("Popup", (void(Lua_Client::*)(const char*,const char*))&Lua_Client::Popup)
 	.def("Popup", (void(Lua_Client::*)(const char*,const char*,uint32))&Lua_Client::Popup)

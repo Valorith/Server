@@ -581,34 +581,7 @@ public:
 
 	void SetPrimaryWeaponOrnamentation(uint32 model_id);
 	void SetSecondaryWeaponOrnamentation(uint32 model_id);
-	bool CreateRewardSelection(uint32 selection_id, std::string title);
-	bool AddRewardSelectionOption(uint32 option_id, std::string label);
-	bool AddRewardSelectionOption(uint32 option_id, std::string label, bool common_to_all);
-	bool AddRewardSelectionReward(
-		uint32 option_id,
-		std::string reward_type,
-		uint64 value
-	);
-	bool AddRewardSelectionReward(
-		uint32 option_id,
-		std::string reward_type,
-		uint64 value,
-		std::string description
-	);
-	bool AddRewardSelectionReward(
-		uint32 option_id,
-		std::string reward_type,
-		uint64 value,
-		uint64 secondary_amount
-	);
-	bool AddRewardSelectionReward(
-		uint32 option_id,
-		std::string reward_type,
-		uint64 value,
-		uint64 secondary_amount,
-		std::string description
-	);
-	bool OpenRewardSelection();
+	bool OfferRewardSelection(luabind::object config);
 	void ClearRewardSelection();
 	bool HasRewardSelection();
 	void TaskSelector(luabind::adl::object table);

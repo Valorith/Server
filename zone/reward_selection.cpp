@@ -32,6 +32,139 @@ uint32_t RewardDisplayValue(uint64_t value)
 	));
 }
 
+std::string AlternateCurrencyDisplayName(uint32_t currency_id)
+{
+	if (!zone) {
+		return {};
+	}
+
+	const auto item_id = zone->GetCurrencyItemID(currency_id);
+	const auto item = item_id ? database.GetItem(item_id) : nullptr;
+	return item ? item->Name : std::string{};
+}
+
+std::string TitleDisplayName(uint32_t title_set_id)
+{
+	std::unordered_set<std::string> names;
+	for (const auto &title : title_manager.GetTitles()) {
+		if (title.title_set != static_cast<int32_t>(title_set_id)) {
+			continue;
+		}
+		if (!title.prefix.empty()) {
+			names.insert(title.prefix);
+		}
+		if (!title.suffix.empty()) {
+			names.insert(title.suffix);
+		}
+	}
+
+	return names.size() == 1 ? *names.begin() : std::string{};
+}
+
+std::string RewardDisplayName(const RewardSelectionReward &reward)
+{
+	switch (reward.type) {
+	case RewardSelectionRewardType::Item: {
+		const auto item = database.GetItem(reward.data_id);
+		return item ? item->Name : fmt::format("Item {}", reward.data_id);
+	}
+	case RewardSelectionRewardType::Experience:
+		return reward.data_id == static_cast<uint32_t>(
+		                             RewardSelectionExperienceMode::NormalOnly)
+		           ? "Experience (No AA)"
+		           : "Experience";
+	case RewardSelectionRewardType::AlternateAdvancement:
+		return "Alternate Advancement";
+	case RewardSelectionRewardType::Copper:
+		return "Coin";
+	case RewardSelectionRewardType::AlternateCurrency: {
+		const auto name = AlternateCurrencyDisplayName(reward.data_id);
+		return name.empty() ? "Alternate Currency" : name;
+	}
+	case RewardSelectionRewardType::Title: {
+		const auto name = TitleDisplayName(reward.data_id);
+		return name.empty() ? "Title Unlock" : name;
+	}
+	}
+
+	return "Reward";
+}
+
+std::string FormatCoinDescription(uint64_t copper)
+{
+	const auto platinum = copper / 1000;
+	const auto gold = (copper % 1000) / 100;
+	const auto silver = (copper % 100) / 10;
+	const auto remaining_copper = copper % 10;
+	std::string description;
+	const auto append = [&description](uint64_t amount, const char *suffix) {
+		if (!amount) {
+			return;
+		}
+		if (!description.empty()) {
+			description += " ";
+		}
+		description += fmt::format("{}{}", amount, suffix);
+	};
+	append(platinum, "pp");
+	append(gold, "gp");
+	append(silver, "sp");
+	append(remaining_copper, "cp");
+	return description.empty() ? "0cp" : description;
+}
+
+std::string InferredRewardDescription(const RewardSelectionReward &reward)
+{
+	if (!reward.description.empty()) {
+		return reward.description;
+	}
+
+	const auto name = RewardDisplayName(reward);
+	switch (reward.type) {
+	case RewardSelectionRewardType::Item:
+		return reward.amount == 1 ? name
+		                          : fmt::format("{} x {}", reward.amount, name);
+	case RewardSelectionRewardType::Experience:
+		return fmt::format("{} {}", reward.amount, name);
+	case RewardSelectionRewardType::AlternateAdvancement:
+		return fmt::format("{} Alternate Advancement Point{}",
+		    reward.amount,
+		    reward.amount == 1 ? "" : "s");
+	case RewardSelectionRewardType::Copper:
+		return FormatCoinDescription(reward.amount);
+	case RewardSelectionRewardType::AlternateCurrency:
+		return fmt::format("{} {}", reward.amount, name);
+	case RewardSelectionRewardType::Title:
+		return name == "Title Unlock"
+		           ? "Unlocks a player title"
+		           : fmt::format("Unlocks the title '{}'", name);
+	}
+
+	return name;
+}
+
+std::string InferredOptionLabel(const RewardSelectionOption &option)
+{
+	if (!option.label.empty()) {
+		return option.label;
+	}
+	if (option.common_to_all) {
+		return "Also Includes";
+	}
+	if (option.rewards.empty()) {
+		return "Reward";
+	}
+
+	std::string label = RewardDisplayName(option.rewards.front());
+	if (option.rewards.size() >= 2) {
+		label += " + " + RewardDisplayName(option.rewards[1]);
+	}
+	if (option.rewards.size() > 2) {
+		label += fmt::format(" + {} more", option.rewards.size() - 2);
+	}
+	return label;
+}
+
 EQ::RewardSelection::DisplayEntry BuildDisplayEntry(
 	const RewardSelectionReward &reward
 )
@@ -40,7 +173,7 @@ EQ::RewardSelection::DisplayEntry BuildDisplayEntry(
 
 	DisplayEntry entry;
 	entry.fields[0] = static_cast<uint32_t>(reward.entry_id);
-	entry.description = reward.description;
+	entry.description = InferredRewardDescription(reward);
 
 	switch (reward.type) {
 	case RewardSelectionRewardType::Item: {
@@ -117,7 +250,8 @@ EQ::RewardSelection::DisplaySet BuildDisplaySet(
 	EQ::RewardSelection::DisplaySet display;
 	display.pending_reward_id = session.pending_reward_id;
 	display.reward_set_id = session.reward_set.reward_set_id;
-	display.title = session.reward_set.title;
+	display.title = session.reward_set.title.empty() ? "Choose a Reward"
+	                                                 : session.reward_set.title;
 	display.subsets.reserve(session.reward_set.options.size());
 
 	for (const auto &option : session.reward_set.options) {
@@ -125,7 +259,7 @@ EQ::RewardSelection::DisplaySet BuildDisplaySet(
 		subset.subset_id = option.wire_option_id;
 		subset.common_to_all = option.common_to_all;
 		subset.flags = option.flags;
-		subset.option_label = option.label;
+		subset.option_label = InferredOptionLabel(option);
 		subset.entries.reserve(option.rewards.size());
 		for (const auto &reward : option.rewards) {
 			subset.entries.push_back(BuildDisplayEntry(reward));
@@ -167,153 +301,160 @@ ClientRewardSelection::ClientRewardSelection(Client &client)
 {
 }
 
-bool ClientRewardSelection::BeginScriptOffer(
-	uint32_t selection_id,
-	const std::string &title
-)
+bool ClientRewardSelection::ValidateScriptRewardContent(
+    const RewardSelectionReward &reward, std::string &error) const
 {
-	if (
-		!SupportsRewardSelection(m_client) ||
-		!selection_id ||
-		m_claimable_channel.claim_in_flight
-	) {
+	if (!IsValidRewardSelectionRewardDefinition(
+	        reward.type, reward.data_id, reward.amount)) {
+		error = "reward definition is invalid";
 		return false;
 	}
 
-	ClearScriptOffer();
+	switch (reward.type) {
+	case RewardSelectionRewardType::Item:
+		if (!database.GetItem(reward.data_id)) {
+			error = fmt::format("item_id {} does not exist", reward.data_id);
+			return false;
+		}
+		break;
+	case RewardSelectionRewardType::AlternateCurrency:
+		if (!zone || !zone->DoesAlternateCurrencyExist(reward.data_id)) {
+			error = fmt::format(
+			    "alternate_currency_id {} does not exist", reward.data_id);
+			return false;
+		}
+		break;
+	case RewardSelectionRewardType::Title:
+		if (std::none_of(title_manager.GetTitles().begin(),
+		        title_manager.GetTitles().end(),
+		        [&reward](const auto &title) {
+			        return title.title_set ==
+			               static_cast<int32_t>(reward.data_id);
+		        })) {
+			error =
+			    fmt::format("title_set_id {} does not exist", reward.data_id);
+			return false;
+		}
+		break;
+	default:
+		break;
+	}
+	return true;
+}
+
+bool ClientRewardSelection::OfferScriptSelection(
+    ScriptRewardSelectionOffer offer, std::string &error)
+{
+	error.clear();
+	if (!SupportsRewardSelection(m_client)) {
+		error = "reward selection requires the RoF2 client";
+		return false;
+	}
+	if (!offer.selection_id) {
+		error = "selection_id must be greater than zero";
+		return false;
+	}
+	if (offer.options.empty()) {
+		error = "options must contain at least one choice";
+		return false;
+	}
+	if (offer.options.size() > std::numeric_limits<uint32_t>::max()) {
+		error = "options contains too many choices";
+		return false;
+	}
+	if (m_claimable_channel.claim_in_flight) {
+		error = "a reward selection claim is already in progress";
+		return false;
+	}
+
+	std::unordered_set<uint32_t> option_ids;
+	uint64_t next_entry_id = 1;
+	for (size_t index = 0; index < offer.options.size(); ++index) {
+		auto &option = offer.options[index];
+		if (!option.option_id) {
+			error = fmt::format(
+			    "options[{}].option_id must be greater than zero", index + 1);
+			return false;
+		}
+		if (!option_ids.insert(option.option_id).second) {
+			error = fmt::format("duplicate option_id {}", option.option_id);
+			return false;
+		}
+		if (option.rewards.empty()) {
+			error = fmt::format("options[{}] has no rewards", index + 1);
+			return false;
+		}
+		option.sequence = static_cast<uint32_t>(index);
+		option.common_to_all = false;
+		for (size_t reward_index = 0; reward_index < option.rewards.size();
+		     ++reward_index) {
+			auto &reward = option.rewards[reward_index];
+			std::string content_error;
+			if (!ValidateScriptRewardContent(reward, content_error)) {
+				error = fmt::format("options[{}].rewards[{}]: {}",
+				    index + 1,
+				    reward_index + 1,
+				    content_error);
+				return false;
+			}
+			if (next_entry_id > std::numeric_limits<uint32_t>::max()) {
+				error = "options contains too many reward entries";
+				return false;
+			}
+			reward.entry_id = next_entry_id++;
+		}
+	}
+
+	if (!offer.common_rewards.empty()) {
+		uint32_t common_option_id = std::numeric_limits<uint32_t>::max();
+		while (common_option_id && option_ids.count(common_option_id)) {
+			--common_option_id;
+		}
+		if (!common_option_id) {
+			error = "no internal option ID is available for common_rewards";
+			return false;
+		}
+
+		RewardSelectionOption common_option;
+		common_option.option_id = common_option_id;
+		common_option.sequence = static_cast<uint32_t>(offer.options.size());
+		common_option.common_to_all = true;
+		common_option.rewards = std::move(offer.common_rewards);
+		for (size_t index = 0; index < common_option.rewards.size(); ++index) {
+			auto &reward = common_option.rewards[index];
+			std::string content_error;
+			if (!ValidateScriptRewardContent(reward, content_error)) {
+				error = fmt::format(
+				    "common_rewards[{}]: {}", index + 1, content_error);
+				return false;
+			}
+			if (next_entry_id > std::numeric_limits<uint32_t>::max()) {
+				error = "offer contains too many reward entries";
+				return false;
+			}
+			reward.entry_id = next_entry_id++;
+		}
+		offer.options.emplace_back(std::move(common_option));
+	}
 
 	RewardSelectionSession session;
 	session.source.source = RewardSelectionSource::General;
-	session.source.source_id = selection_id;
+	session.source.source_id = offer.selection_id;
 	session.source.source_instance_id = ScriptOriginKey();
 	session.channel = RewardSelectionChannel::Claimable;
-	session.pending_reward_id = selection_id;
-	session.reward_set.reward_set_id = selection_id;
-	session.reward_set.title = title;
-	m_script_draft = std::move(session);
-	m_script_next_entry_id = 1;
-	return true;
-}
-
-bool ClientRewardSelection::AddScriptOption(
-	uint32_t option_id,
-	const std::string &label,
-	bool common_to_all
-)
-{
-	if (!m_script_draft || !option_id) {
+	session.pending_reward_id = offer.selection_id;
+	session.reward_set.reward_set_id = offer.selection_id;
+	session.reward_set.title = std::move(offer.title);
+	session.reward_set.options = std::move(offer.options);
+	if (!OpenInternal({session}, RewardSelectionSource::General)) {
+		error = "the reward selection could not be opened";
 		return false;
 	}
-
-	const auto duplicate = std::any_of(
-		m_script_draft->reward_set.options.begin(),
-		m_script_draft->reward_set.options.end(),
-		[option_id](const RewardSelectionOption &option) {
-			return option.option_id == option_id;
-		}
-	);
-	if (duplicate) {
-		return false;
-	}
-
-	RewardSelectionOption option;
-	option.option_id = option_id;
-	option.sequence = static_cast<uint32_t>(
-		m_script_draft->reward_set.options.size()
-	);
-	option.label = label;
-	option.common_to_all = common_to_all;
-	m_script_draft->reward_set.options.emplace_back(std::move(option));
-	return true;
-}
-
-bool ClientRewardSelection::AddScriptReward(
-	uint32_t option_id,
-	RewardSelectionRewardType type,
-	uint32_t data_id,
-	uint64_t amount,
-	const std::string &description
-)
-{
-	if (
-		!m_script_draft ||
-		!option_id ||
-		m_script_next_entry_id > std::numeric_limits<uint32_t>::max() ||
-		!IsValidRewardSelectionRewardDefinition(type, data_id, amount)
-	) {
-		return false;
-	}
-
-	const auto option = std::find_if(
-		m_script_draft->reward_set.options.begin(),
-		m_script_draft->reward_set.options.end(),
-		[option_id](const RewardSelectionOption &candidate) {
-			return candidate.option_id == option_id;
-		}
-	);
-	if (option == m_script_draft->reward_set.options.end()) {
-		return false;
-	}
-
-	RewardSelectionReward reward;
-	reward.entry_id = m_script_next_entry_id++;
-	reward.type = type;
-	reward.data_id = data_id;
-	reward.amount = amount;
-	reward.description = description;
-	option->rewards.emplace_back(std::move(reward));
-	return true;
-}
-
-bool ClientRewardSelection::AddScriptReward(
-	uint32_t option_id,
-	std::string_view reward_type,
-	uint64_t value,
-	uint64_t secondary_amount,
-	const std::string &description
-)
-{
-	const auto reward = MakeScriptRewardSelectionReward(
-		reward_type,
-		value,
-		secondary_amount,
-		description
-	);
-	return reward && AddScriptReward(
-		option_id,
-		reward->type,
-		reward->data_id,
-		reward->amount,
-		reward->description
-	);
-}
-
-bool ClientRewardSelection::OpenScriptOffer()
-{
-	if (!m_script_draft || m_claimable_channel.claim_in_flight) {
-		return false;
-	}
-
-	const auto session = *m_script_draft;
-	ClearSource(
-		RewardSelectionChannel::Claimable,
-		RewardSelectionSource::General,
-		0,
-		false
-	);
-	if (!Open(session)) {
-		return false;
-	}
-
-	m_script_draft.reset();
-	m_script_next_entry_id = 1;
 	return true;
 }
 
 void ClientRewardSelection::ClearScriptOffer(bool notify_client)
 {
-	m_script_draft.reset();
-	m_script_next_entry_id = 1;
 	if (m_claimable_channel.claim_in_flight) {
 		m_script_clear_requested_during_claim = true;
 		return;
@@ -346,24 +487,18 @@ void ClientRewardSelection::ClearScriptOfferForOrigin(
 			session.source.source == RewardSelectionSource::General &&
 			session.source.source_instance_id == origin_key;
 	};
-	const bool draft_matches =
-		m_script_draft && matches_origin(*m_script_draft);
 	const bool open_matches = std::any_of(
 		m_claimable_channel.sessions.begin(),
 		m_claimable_channel.sessions.end(),
 		matches_origin
 	);
-	if (draft_matches || open_matches) {
+	if (open_matches) {
 		ClearScriptOffer();
 	}
 }
 
 bool ClientRewardSelection::HasScriptOffer() const
 {
-	if (m_script_draft) {
-		return true;
-	}
-
 	return std::any_of(
 		m_claimable_channel.sessions.begin(),
 		m_claimable_channel.sessions.end(),
@@ -502,8 +637,14 @@ bool ClientRewardSelection::Open(const RewardSelectionSession &session)
 }
 
 bool ClientRewardSelection::Open(
-	const std::vector<RewardSelectionSession> &sessions
-)
+    const std::vector<RewardSelectionSession> &sessions)
+{
+	return OpenInternal(sessions, std::nullopt);
+}
+
+bool ClientRewardSelection::OpenInternal(
+    const std::vector<RewardSelectionSession> &sessions,
+    std::optional<RewardSelectionSource> replace_source)
 {
 	if (!SupportsRewardSelection(m_client) || sessions.empty()) {
 		return false;
@@ -514,16 +655,12 @@ bool ClientRewardSelection::Open(
 		if (session.channel != channel || !ValidateSession(session)) {
 			return false;
 		}
-		if (
-			channel == RewardSelectionChannel::Claimable &&
-			std::none_of(
-				session.reward_set.options.begin(),
-				session.reward_set.options.end(),
-				[](const RewardSelectionOption &option) {
-					return !option.common_to_all;
-				}
-			)
-		) {
+		if (channel == RewardSelectionChannel::Claimable &&
+		    std::none_of(session.reward_set.options.begin(),
+		        session.reward_set.options.end(),
+		        [](const RewardSelectionOption &option) {
+			        return !option.common_to_all;
+		        })) {
 			return false;
 		}
 	}
@@ -534,25 +671,30 @@ bool ClientRewardSelection::Open(
 	}
 
 	auto next_sessions = state.sessions;
+	if (replace_source) {
+		if (channel != RewardSelectionChannel::Claimable) {
+			return false;
+		}
+		std::erase_if(next_sessions, [replace_source](const auto &session) {
+			return session.source.source == *replace_source;
+		});
+	}
+
 	if (channel == RewardSelectionChannel::Preview) {
 		if (sessions.size() != 1) {
 			return false;
 		}
 		next_sessions = sessions;
-	}
-	else {
+	} else {
 		for (const auto &session : sessions) {
-			const auto found = std::find_if(
-				next_sessions.begin(),
-				next_sessions.end(),
-				[&session](const RewardSelectionSession &existing) {
-					return SameSession(existing, session);
-				}
-			);
+			const auto found = std::find_if(next_sessions.begin(),
+			    next_sessions.end(),
+			    [&session](const RewardSelectionSession &existing) {
+				    return SameSession(existing, session);
+			    });
 			if (found == next_sessions.end()) {
 				next_sessions.push_back(session);
-			}
-			else {
+			} else {
 				*found = session;
 			}
 		}
@@ -664,8 +806,6 @@ void ClientRewardSelection::ClearSource(
 
 void ClientRewardSelection::ClearAll(bool notify_client)
 {
-	m_script_draft.reset();
-	m_script_next_entry_id = 1;
 	Clear(RewardSelectionChannel::Claimable, notify_client);
 	Clear(RewardSelectionChannel::Preview, notify_client);
 }

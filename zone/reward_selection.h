@@ -7,7 +7,6 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 class Client;
@@ -109,95 +108,120 @@ struct RewardSelectionReward {
 	std::string               description;
 };
 
-inline std::optional<RewardSelectionReward> MakeScriptRewardSelectionReward(
-	std::string_view reward_type,
-	uint64_t value,
-	uint64_t secondary_amount = 0,
-	const std::string &description = {}
-)
+// Parser-neutral input shared by the Perl hashref and Lua table bindings.
+// Exactly one reward discriminator must be present.
+struct ScriptRewardSelectionRewardConfig
 {
-	std::string normalized_type;
-	normalized_type.reserve(reward_type.size());
-	for (const auto character : reward_type) {
-		if (character >= 'A' && character <= 'Z') {
-			normalized_type.push_back(
-				static_cast<char>(character - 'A' + 'a')
-			);
+	std::optional<uint64_t> item_id;
+	std::optional<uint64_t> experience;
+	std::optional<uint64_t> experience_no_aa;
+	std::optional<uint64_t> aa_points;
+	std::optional<uint64_t> money;
+	std::optional<uint64_t> alternate_currency_id;
+	std::optional<uint64_t> title_set_id;
+	std::optional<uint64_t> quantity;
+	std::optional<uint64_t> amount;
+	std::string description;
+};
+
+inline std::optional<RewardSelectionReward> MakeScriptRewardSelectionReward(
+    const ScriptRewardSelectionRewardConfig &config,
+    std::string *error = nullptr)
+{
+	const auto fail = [error](const std::string &message) {
+		if (error) {
+			*error = message;
 		}
-		else if (character >= 'a' && character <= 'z') {
-			normalized_type.push_back(character);
-		}
-		else if (character != '_' && character != '-' && character != ' ') {
-			return std::nullopt;
-		}
+		return std::optional<RewardSelectionReward>{};
+	};
+	if (error) {
+		error->clear();
+	}
+
+	const size_t discriminator_count =
+	    static_cast<size_t>(config.item_id.has_value()) +
+	    static_cast<size_t>(config.experience.has_value()) +
+	    static_cast<size_t>(config.experience_no_aa.has_value()) +
+	    static_cast<size_t>(config.aa_points.has_value()) +
+	    static_cast<size_t>(config.money.has_value()) +
+	    static_cast<size_t>(config.alternate_currency_id.has_value()) +
+	    static_cast<size_t>(config.title_set_id.has_value());
+	if (discriminator_count != 1) {
+		return fail("reward must contain exactly one reward-type field");
 	}
 
 	RewardSelectionReward reward;
-	reward.description = description;
-
-	if (normalized_type == "item") {
-		if (value > std::numeric_limits<uint32_t>::max()) {
-			return std::nullopt;
+	reward.description = config.description;
+	if (config.item_id) {
+		if (config.amount) {
+			return fail("item rewards use quantity, not amount");
+		}
+		if (*config.item_id > std::numeric_limits<uint32_t>::max()) {
+			return fail("item_id exceeds the supported range");
 		}
 		reward.type = RewardSelectionRewardType::Item;
-		reward.data_id = static_cast<uint32_t>(value);
-		reward.amount = secondary_amount ? secondary_amount : 1;
-	}
-	else if (
-		normalized_type == "experience" ||
-		normalized_type == "experiencenoaa"
-	) {
-		if (secondary_amount) {
-			return std::nullopt;
+		reward.data_id = static_cast<uint32_t>(*config.item_id);
+		reward.amount = config.quantity.value_or(1);
+	} else if (config.experience) {
+		if (config.quantity || config.amount) {
+			return fail("experience rewards do not accept quantity or amount");
 		}
 		reward.type = RewardSelectionRewardType::Experience;
-		reward.data_id = static_cast<uint32_t>(
-			normalized_type == "experiencenoaa"
-				? RewardSelectionExperienceMode::NormalOnly
-				: RewardSelectionExperienceMode::Default
-		);
-		reward.amount = value;
-	}
-	else if (normalized_type == "aa" || normalized_type == "money") {
-		if (secondary_amount) {
-			return std::nullopt;
+		reward.data_id =
+		    static_cast<uint32_t>(RewardSelectionExperienceMode::Default);
+		reward.amount = *config.experience;
+	} else if (config.experience_no_aa) {
+		if (config.quantity || config.amount) {
+			return fail(
+			    "experience_no_aa rewards do not accept quantity or amount");
 		}
-		reward.type = normalized_type == "aa"
-			? RewardSelectionRewardType::AlternateAdvancement
-			: RewardSelectionRewardType::Copper;
-		reward.amount = value;
-	}
-	else if (normalized_type == "alternatecurrency") {
-		if (
-			!secondary_amount ||
-			value > std::numeric_limits<uint32_t>::max()
-		) {
-			return std::nullopt;
+		reward.type = RewardSelectionRewardType::Experience;
+		reward.data_id =
+		    static_cast<uint32_t>(RewardSelectionExperienceMode::NormalOnly);
+		reward.amount = *config.experience_no_aa;
+	} else if (config.aa_points) {
+		if (config.quantity || config.amount) {
+			return fail("aa_points rewards do not accept quantity or amount");
+		}
+		reward.type = RewardSelectionRewardType::AlternateAdvancement;
+		reward.amount = *config.aa_points;
+	} else if (config.money) {
+		if (config.quantity || config.amount) {
+			return fail("money rewards do not accept quantity or amount");
+		}
+		reward.type = RewardSelectionRewardType::Copper;
+		reward.amount = *config.money;
+	} else if (config.alternate_currency_id) {
+		if (config.quantity) {
+			return fail("alternate currency rewards use amount, not quantity");
+		}
+		if (!config.amount) {
+			return fail("alternate currency rewards require amount");
+		}
+		if (*config.alternate_currency_id >
+		    std::numeric_limits<uint32_t>::max()) {
+			return fail("alternate_currency_id exceeds the supported range");
 		}
 		reward.type = RewardSelectionRewardType::AlternateCurrency;
-		reward.data_id = static_cast<uint32_t>(value);
-		reward.amount = secondary_amount;
-	}
-	else if (normalized_type == "title") {
-		if (
-			secondary_amount ||
-			value > std::numeric_limits<uint32_t>::max()
-		) {
-			return std::nullopt;
+		reward.data_id = static_cast<uint32_t>(*config.alternate_currency_id);
+		reward.amount = *config.amount;
+	} else {
+		if (config.quantity || config.amount) {
+			return fail("title rewards do not accept quantity or amount");
+		}
+		if (*config.title_set_id > std::numeric_limits<uint32_t>::max()) {
+			return fail("title_set_id exceeds the supported range");
 		}
 		reward.type = RewardSelectionRewardType::Title;
-		reward.data_id = static_cast<uint32_t>(value);
+		reward.data_id = static_cast<uint32_t>(*config.title_set_id);
 		reward.amount = 1;
 	}
-	else {
-		return std::nullopt;
-	}
 
-	return IsValidRewardSelectionRewardDefinition(
-		reward.type,
-		reward.data_id,
-		reward.amount
-	) ? std::make_optional(std::move(reward)) : std::nullopt;
+	if (!IsValidRewardSelectionRewardDefinition(
+	        reward.type, reward.data_id, reward.amount)) {
+		return fail("reward value is zero or exceeds the supported range");
+	}
+	return reward;
 }
 
 struct RewardSelectionOption {
@@ -216,6 +240,14 @@ struct RewardSelectionSet {
 	uint32_t                           reward_set_id = 0;
 	std::string                        title;
 	std::vector<RewardSelectionOption> options;
+};
+
+struct ScriptRewardSelectionOffer
+{
+	uint32_t selection_id = 0;
+	std::string title;
+	std::vector<RewardSelectionOption> options;
+	std::vector<RewardSelectionReward> common_rewards;
 };
 
 struct RewardSelectionSourceKey {
@@ -312,30 +344,9 @@ public:
 	);
 	void ClearAll(bool notify_client = true);
 
-	// Quest-script offers are transient, RoF2-only claimable sessions. Scripts
-	// define the exact display/grant here, then EVENT_REWARD_SELECT authorizes
-	// the shared server grant before the claim is acknowledged.
-	bool BeginScriptOffer(uint32_t selection_id, const std::string &title);
-	bool AddScriptOption(
-		uint32_t option_id,
-		const std::string &label,
-		bool common_to_all = false
-	);
-	bool AddScriptReward(
-		uint32_t option_id,
-		RewardSelectionRewardType type,
-		uint32_t data_id,
-		uint64_t amount,
-		const std::string &description = {}
-	);
-	bool AddScriptReward(
-		uint32_t option_id,
-		std::string_view reward_type,
-		uint64_t value,
-		uint64_t secondary_amount = 0,
-		const std::string &description = {}
-	);
-	bool OpenScriptOffer();
+	// Fully parsed offers replace an existing General session atomically.
+	bool OfferScriptSelection(
+	    ScriptRewardSelectionOffer offer, std::string &error);
 	void ClearScriptOffer(bool notify_client = true);
 	void ClearScriptOfferForOrigin(uint32_t npc_type_id, uint16_t entity_id);
 	bool HasScriptOffer() const;
@@ -405,6 +416,10 @@ private:
 	static bool AssignWireOptionIds(
 		std::vector<RewardSelectionSession> &sessions
 	);
+	bool OpenInternal(const std::vector<RewardSelectionSession> &sessions,
+	    std::optional<RewardSelectionSource> replace_source);
+	bool ValidateScriptRewardContent(
+	    const RewardSelectionReward &reward, std::string &error) const;
 	ChannelState &State(RewardSelectionChannel channel);
 	const ChannelState &State(RewardSelectionChannel channel) const;
 	bool SendSessions(RewardSelectionChannel channel);
@@ -426,7 +441,5 @@ private:
 	Client       &m_client;
 	ChannelState  m_claimable_channel;
 	ChannelState  m_preview_channel;
-	std::optional<RewardSelectionSession> m_script_draft;
-	uint64_t m_script_next_entry_id = 1;
 	bool m_script_clear_requested_during_claim = false;
 };

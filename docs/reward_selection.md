@@ -50,121 +50,192 @@ the set so content does not award it twice.
 
 ## Scripted offers
 
-Perl and Lua quests can build a transient, manual offer on the claimable lane.
-Every builder method returns false when its input or the client is invalid.
-The feature is RoF2-only, so scripts should check the return values and provide
-another interaction for older clients when needed.
+Perl and Lua quests can offer a transient reward selector with one atomic call.
+The script supplies the complete selection as a Perl hash reference or Lua
+table; the server parses and validates the entire definition before replacing
+any currently open scripted offer. Invalid input returns `false`, logs the
+precise field path, and leaves the current offer unchanged.
 
-| Client method | Purpose |
-| --- | --- |
-| **CreateRewardSelection(selection_id, title)** | Starts a new draft and clears any previous scripted offer. |
-| **AddRewardSelectionOption(option_id, label[, common_to_all])** | Adds a unique option. At least one option must not be common. |
-| **AddRewardSelectionReward(option_id, reward_type, value[, secondary_amount][, description])** | Adds one display reward using the named types below. A description may be supplied directly as the fourth argument when no secondary amount is needed. |
-| **OpenRewardSelection()** | Validates and sends the completed draft. |
-| **ClearRewardSelection()** | Removes the draft and any open scripted offer. |
-| **HasRewardSelection()** | Reports whether a draft or open scripted offer exists. |
+The scripting surface intentionally contains only three methods:
 
-`AddRewardSelectionReward` has one name and four overloads in both languages:
-
-- `(option_id, reward_type, value)`
-- `(option_id, reward_type, value, description)`
-- `(option_id, reward_type, value, secondary_amount)`
-- `(option_id, reward_type, value, secondary_amount, description)`
-
-The canonical reward types are:
-
-| `reward_type` | `value` | `secondary_amount` |
+| Client method | Return | Purpose |
 | --- | --- | --- |
-| **item** | Item ID | Optional quantity; defaults to 1 |
-| **experience** | Experience amount using normal AA allocation | Omit |
-| **experience_no_aa** | Fixed normal experience amount that preserves AA experience | Omit |
-| **aa** | AA points | Omit |
-| **money** | Total copper | Omit |
-| **alternate_currency** | Currency ID | Required currency amount |
-| **title** | Title-set ID | Omit |
+| **OfferRewardSelection(config)** | Boolean | Validates and opens one complete scripted offer. |
+| **ClearRewardSelection()** | None | Removes the client's open scripted offer. During the selection callback it also cancels automatic delivery and reopening. |
+| **HasRewardSelection()** | Boolean | Reports whether the client currently has an open scripted offer. |
 
-Reward type names are case-insensitive. Spaces, hyphens, and underscores are
-treated equivalently, so `alternate_currency`, `Alternate Currency`, and
-`alternate-currency` all select the same type. Unknown names, unexpected
-secondary amounts, zero values, and out-of-range values return false without
-changing the draft.
+The feature is RoF2-only. `OfferRewardSelection` returns `false` for older
+clients, so a quest can provide a fallback interaction. Calling it while a
+claim is being processed also returns `false` rather than replacing the
+in-flight selection.
 
-Selection IDs, option IDs, item IDs, currency IDs, and title-set IDs must be
-nonzero unsigned 32-bit values. Option IDs need only be unique within the
-offer. Every option must contain at least one display reward.
-OpenRewardSelection leaves an invalid draft intact so a script can correct or
-clear it.
+### Offer config
 
-The builder rejects values outside the selector and task-delivery envelopes:
-item quantities are limited to 32,767; experience to 4,294,967,295; AA and
-alternate currency to 2,147,483,647; total coin to 2,147,483,647,999 copper;
-and title-set IDs to 2,147,483,647. Building an offer does not reserve
-inventory, check balances, or verify content IDs. Those delivery checks run
-after the script authorizes the selection.
-
-The entries added by these methods are both the display definition and the
-exact grant definition. When the player chooses a non-common option, the server
-calls EVENT_REWARD_SELECT in Perl or event_reward_select in Lua. An NPC quest
-that created the offer receives the event while that exact NPC lifetime remains
-in the zone. Removing the NPC clears its outstanding offers before the entity
-ID can be reused. If the live originating NPC has no handler, the player quest
-is the fallback. The event receives:
-
-| Language/context | Selection ID | Chosen option ID | Client |
+| Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
-| Perl NPC or player | **$reward_selection_id** | **$reward_option_id** | **$client** |
-| Lua NPC | **e.selection_id** | **e.option_id** | **e.other** |
-| Lua player | **e.selection_id** | **e.option_id** | **e.self** |
+| `selection_id` | Yes | Unsigned 32-bit integer, greater than zero | Script-defined identity returned to the selection event. |
+| `title` | No | String | Window title. Defaults to **Choose a Reward**. |
+| `options` | Yes | Ordered, dense array | One or more player-selectable choices. |
+| `common_rewards` | No | Ordered, dense array of reward tables | Rewards displayed as **Also Includes** and granted with every choice. |
 
-The handler validates quest-specific entitlement and returns a nonzero value to
-authorize delivery. It must not manually grant the declared rewards. The shared
-server grant engine then validates and persists every common entry plus the
-chosen option before acknowledging the claim. Returning 0, omitting the
-handler, or raising a script error rejects the claim and reopens the offer.
-Calling ClearRewardSelection during the callback cancels the offer and
-suppresses that automatic reopen. Claim retries are limited to one attempt
-every 500 milliseconds per client. A common option is displayed with every
-choice, but the event reports only the chosen non-common option ID; the server
-automatically delivers both portions after authorization. Normal local, global,
-and encounter event routing still applies, so define only one authorizing
-handler for an offer.
+Unknown fields are rejected. Arrays must start at index 1 and contain no
+holes. Perl array references naturally preserve their declared order; Lua
+tables used as arrays may not contain string keys or sparse numeric indices.
+
+Each option supports either a concise flat reward or an explicit reward
+bundle:
+
+| Field | Required | Type | Meaning |
+| --- | --- | --- | --- |
+| `option_id` | No | Unsigned 32-bit integer, greater than zero | Event identity for this choice. Defaults to its 1-based array position. IDs must be unique within the offer. |
+| `label` | No | String | Choice label. When omitted, the server infers it from the reward definitions. |
+| One reward definition | Yes for a flat option | Reward fields from the table below | The shortest form for a one-reward choice, such as `{ item_id => 1001 }`. |
+| `rewards` | Yes for a bundle | Non-empty ordered array of reward tables | Grants every listed reward when this choice is authorized. Do not mix `rewards` with flat reward fields. |
+
+### Reward definitions
+
+Every reward table must contain exactly one type field. Modifiers are accepted
+only where shown; `description` is always optional and overrides the inferred
+detail text.
+
+| Reward | Required fields | Optional fields | Grant and limits |
+| --- | --- | --- | --- |
+| Item | `item_id` | `quantity` (default `1`), `description` | Item stack/charge count; quantity `1..32767`. The item ID must exist. |
+| Experience | `experience` | `description` | Uses normal AA allocation; amount `1..4294967295`. |
+| Experience without AA allocation | `experience_no_aa` | `description` | Adds fixed normal experience while preserving AA experience; amount `1..4294967295`. |
+| AA points | `aa_points` | `description` | Amount `1..2147483647`. |
+| Coin | `money` | `description` | Total copper `1..2147483647999`. |
+| Alternate currency | `alternate_currency_id`, `amount` | `description` | Amount `1..2147483647`. The currency ID must exist. |
+| Title | `title_set_id` | `description` | Unlocks the existing title set; ID `1..2147483647`. |
+
+Item, alternate-currency, and title-set IDs are resolved when the offer is
+created. A missing content definition rejects the whole offer before anything
+is shown. Numeric strings, negative values, fractions, zero reward amounts,
+out-of-range values, and combinations such as `item_id` plus `experience` are
+also rejected.
+
+### Automatic display text
+
+Scripts normally need no title, option label, or reward description:
+
+- Item options use the item name loaded from the database.
+- Experience options use **Experience** or **Experience (No AA)**.
+- AA, coin, alternate-currency, and title rewards use their natural names.
+  Currency labels use the currency's item name. A title uses its unique loaded
+  prefix or suffix when the title set resolves to one unambiguous display name.
+- A bundle joins its first two reward names and appends `+ N more` when needed.
+- Common rewards use **Also Includes**.
+- Detail text includes quantities, experience amounts, AA points, a compact
+  platinum/gold/silver/copper breakdown, currency amount and name, or the title
+  being unlocked.
+
+An explicit `title`, `label`, or `description` is always preserved. The same
+inference applies to task reward rows whose title, label, or description is
+blank, so scripts and database-backed content present consistent text.
+
+### Selection event
+
+The entries in `OfferRewardSelection` are both the display definition and the
+exact grant definition. Selecting a non-common option dispatches the existing
+reward-selection event:
+
+| Language and context | Event | Selection ID | Chosen option ID | Client |
+| --- | --- | --- | --- | --- |
+| Perl NPC or player | `EVENT_REWARD_SELECT` | `$reward_selection_id` | `$reward_option_id` | `$client` |
+| Lua NPC | `event_reward_select(e)` | `e.selection_id` | `e.option_id` | `e.other` |
+| Lua player | `event_reward_select(e)` | `e.selection_id` | `e.option_id` | `e.self` |
+
+The handler validates quest-specific entitlement and returns a nonzero value
+to authorize delivery. It must not manually grant the declared rewards. The
+server grants every common reward plus the chosen option only after the event
+authorizes the claim, then acknowledges the client.
+
+Returning `0`, omitting the handler, or raising a script error rejects the
+claim and reopens the offer. Calling `ClearRewardSelection` during the callback
+cancels the offer and suppresses that reopen. The event reports only the chosen
+non-common `option_id`; common rewards are automatic. Normal local, global, and
+encounter event routing still applies, so only one handler should authorize a
+given offer.
+
+An NPC-created offer remains associated with that exact NPC lifetime. Removing
+the NPC clears its outstanding offers before the entity ID can be reused. If
+the live originating NPC has no handler, the player quest is the fallback.
 
 Scripted offers intentionally have no database ledger. Zoning, disconnecting,
 or restarting the zone discards them. The grant engine stops at the first
-delivery failure. A retryable failure before any entry commits reopens the
-offer; a persistence-ambiguous entry, or a failure after an earlier entry
-commits, closes the offer without automatic retry so the successful prefix
+delivery failure. A retryable failure before any reward commits reopens the
+offer. A persistence-ambiguous result, or a failure after an earlier reward
+commits, closes it without automatic retry so an already delivered prefix
 cannot be duplicated. Keep authorizing handlers short and idempotent because
-their own side effects are outside this no-ledger delivery boundary.
+their own side effects are outside this no-ledger boundary. Claim retries are
+limited to one attempt every 500 milliseconds per client.
 
-### Perl example
+### Minimal Perl example
 
 ~~~perl
 sub EVENT_SAY {
 	return unless $text =~ /reward/i;
 
-	unless (
-		$client->CreateRewardSelection(9001, "Choose a Reward") &&
-		$client->AddRewardSelectionOption(1, "A polished sword") &&
-		$client->AddRewardSelectionReward(1, "item", 1001, 1) &&
-		$client->AddRewardSelectionOption(2, "Experience") &&
-		$client->AddRewardSelectionReward(2, "experience", 5000)
-	) {
-		$client->ClearRewardSelection();
-		return;
-	}
-
-	$client->OpenRewardSelection();
+	$client->OfferRewardSelection({
+		selection_id => 9001,
+		options => [
+			{ item_id => 1001 },
+			{ experience => 5000 },
+		],
+	});
 }
 
 sub EVENT_REWARD_SELECT {
 	return 0 unless $reward_selection_id == 9001;
-	return 1 if $reward_option_id == 1 || $reward_option_id == 2;
-	return 0;
+	return $reward_option_id == 1 || $reward_option_id == 2;
 }
 ~~~
 
-### Lua example
+### Complete Perl example
+
+~~~perl
+sub EVENT_SAY {
+	return unless $text =~ /rewards/i;
+
+	my $opened = $client->OfferRewardSelection({
+		selection_id => 9100,
+		title => "Veteran's Reward",
+		options => [
+			{ option_id => 101, item_id => 1001, quantity => 2 },
+			{ option_id => 102, experience => 50000 },
+			{ option_id => 103, experience_no_aa => 50000 },
+			{ option_id => 104, aa_points => 3 },
+			{ option_id => 105, money => 1234 },
+			{
+				option_id => 106,
+				alternate_currency_id => 19,
+				amount => 25,
+			},
+			{ option_id => 107, title_set_id => 71 },
+			{
+				option_id => 108,
+				label => "Adventurer bundle",
+				rewards => [
+					{ item_id => 1001 },
+					{ aa_points => 1 },
+				],
+			},
+		],
+		common_rewards => [
+			{ money => 1000, description => "Completion bonus" },
+		],
+	});
+
+	$client->Message(13, "The reward selector is unavailable.") unless $opened;
+}
+
+sub EVENT_REWARD_SELECT {
+	return 0 unless $reward_selection_id == 9100;
+	return $reward_option_id >= 101 && $reward_option_id <= 108;
+}
+~~~
+
+### Minimal Lua example
 
 ~~~lua
 function event_say(e)
@@ -172,32 +243,70 @@ function event_say(e)
 		return
 	end
 
-	local client = e.other
-	local valid =
-		client:CreateRewardSelection(9001, "Choose a Reward") and
-		client:AddRewardSelectionOption(1, "A polished sword") and
-		client:AddRewardSelectionReward(1, "item", 1001, 1) and
-		client:AddRewardSelectionOption(2, "Experience") and
-		client:AddRewardSelectionReward(2, "experience", 5000)
-
-	if not valid then
-		client:ClearRewardSelection()
-		return
-	end
-
-	client:OpenRewardSelection()
+	e.other:OfferRewardSelection({
+		selection_id = 9001,
+		options = {
+			{ item_id = 1001 },
+			{ experience = 5000 },
+		},
+	})
 end
 
 function event_reward_select(e)
 	if e.selection_id ~= 9001 then
 		return 0
 	end
+	return (e.option_id == 1 or e.option_id == 2) and 1 or 0
+end
+~~~
 
-	if e.option_id == 1 or e.option_id == 2 then
-		return 1
+### Complete Lua example
+
+~~~lua
+function event_say(e)
+	if not e.message:lower():find("rewards", 1, true) then
+		return
 	end
 
-	return 0
+	local opened = e.other:OfferRewardSelection({
+		selection_id = 9100,
+		title = "Veteran's Reward",
+		options = {
+			{ option_id = 101, item_id = 1001, quantity = 2 },
+			{ option_id = 102, experience = 50000 },
+			{ option_id = 103, experience_no_aa = 50000 },
+			{ option_id = 104, aa_points = 3 },
+			{ option_id = 105, money = 1234 },
+			{
+				option_id = 106,
+				alternate_currency_id = 19,
+				amount = 25,
+			},
+			{ option_id = 107, title_set_id = 71 },
+			{
+				option_id = 108,
+				label = "Adventurer bundle",
+				rewards = {
+					{ item_id = 1001 },
+					{ aa_points = 1 },
+				},
+			},
+		},
+		common_rewards = {
+			{ money = 1000, description = "Completion bonus" },
+		},
+	})
+
+	if not opened then
+		e.other:Message(13, "The reward selector is unavailable.")
+	end
+end
+
+function event_reward_select(e)
+	if e.selection_id ~= 9100 then
+		return 0
+	end
+	return (e.option_id >= 101 and e.option_id <= 108) and 1 or 0
 end
 ~~~
 
@@ -235,10 +344,12 @@ it is the mode for rewards described as **No AA Exp**.
 Mode 0 claims remain retryable while character experience is disabled so a
 suppressed AddEXP call can never be recorded as delivered.
 
-RoF2 supplies the visible list label **Player flags** for title/text rewards.
-The row's `description` is shown in the lower detail pane, so title content
-should use text such as `Unlocks the prefix and suffix titles Gatebreaker and
-the Gatebreaker`.
+Blank display fields use the same inference as scripted offers. An empty set
+title falls back to the task title; empty option labels and reward descriptions
+are generated from the loaded item, currency, or title data and the configured
+amount. RoF2 still supplies the visible type label **Player flags** for title
+entries. Set `title`, `label`, or `description` only when content needs wording
+that differs from the generated text.
 
 Example with one common coin entry and two item choices:
 
