@@ -47,6 +47,7 @@
 #include "common/zone_store.h"
 #include "zone/bot_command.h"
 #include "zone/cheat_manager.h"
+#include "zone/client_achievements.h"
 #include "zone/command.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
@@ -972,13 +973,15 @@ bool Client::SaveAA()
 		}
 	}
 
-	m_pp.aapoints_spent = aa_points_spent + m_epp.expended_aa;
-
-	if (v.empty()) {
-		return true;
+	const bool aa_saved =
+		v.empty() ||
+		CharacterAlternateAbilitiesRepository::ReplaceMany(database, v);
+	if (aa_saved) {
+		m_pp.aapoints_spent = aa_points_spent + m_epp.expended_aa;
+		UpdateAchievementForAA(GetAchievementAAPointsSpent());
 	}
 
-	return CharacterAlternateAbilitiesRepository::ReplaceMany(database, v);
+	return aa_saved;
 }
 
 void Client::RemoveExpendedAA(int aa_id)
@@ -993,7 +996,12 @@ void Client::RemoveExpendedAA(int aa_id)
 	);
 }
 
-bool Client::Save(uint8 iCommitNow) {
+bool Client::Save(uint8 iCommitNow)
+{
+	return Save(iCommitNow, true);
+}
+
+bool Client::Save(uint8 iCommitNow, bool update_achievements) {
 	if(!ClientDataLoaded())
 		return false;
 
@@ -1101,7 +1109,10 @@ bool Client::Save(uint8 iCommitNow) {
 		}
 	}
 
-	database.SaveCharacterData(this, &m_pp, &m_epp); /* Save Character Data */
+	const bool character_data_saved = database.SaveCharacterData(this, &m_pp, &m_epp); /* Save Character Data */
+	if (character_data_saved && update_achievements) {
+		UpdateAchievementForLevel(GetLevel());
+	}
 
 	database.SaveCharacterEXPModifier(this);
 
@@ -2065,13 +2076,16 @@ void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 		return;
 	m_pp.skills[skillid] = value; // We need to be able to #setskill 254 and 255 to reset skills
 
-	database.SaveCharacterSkill(CharacterID(), skillid, value);
+	const auto skill_saved = database.SaveCharacterSkill(CharacterID(), skillid, value);
 	auto outapp = new EQApplicationPacket(OP_SkillUpdate, sizeof(SkillUpdate_Struct));
 	SkillUpdate_Struct* skill = (SkillUpdate_Struct*)outapp->pBuffer;
 	skill->skillId=skillid;
 	skill->value=value;
 	QueuePacket(outapp);
 	safe_delete(outapp);
+	if (skill_saved) {
+		UpdateAchievementForSkill(static_cast<uint32>(skillid), value);
+	}
 }
 
 void Client::IncreaseLanguageSkill(uint8 language_id, uint8 increase)
@@ -3448,6 +3462,11 @@ void Client::Disarm(Client* disarmer, int chance) {
 			slot_id = m_inv.FindFreeSlot(false, true, inst->GetItem()->Size, (inst->GetItem()->ItemType == EQ::item::ItemTypeArrow));
 			if (slot_id != EQ::invslot::SLOT_INVALID)
 			{
+				if (!database.TransactionBeginStrict().Success()) {
+					disarmer->MessageString(Chat::Skills, DISARM_FAILED);
+					return;
+				}
+				BeginAchievementInventoryTransaction();
 				EQ::ItemInstance *InvItem = m_inv.PopItem(slot);
 				if (InvItem) { // there should be no way it is not there, but check anyway
 					EQApplicationPacket* outapp = new EQApplicationPacket(OP_MoveItem, sizeof(MoveItem_Struct));
@@ -3459,11 +3478,41 @@ void Client::Disarm(Client* disarmer, int chance) {
 					else
 						mi->number_in_stack = 0;
 					FastQueuePacket(&outapp); // this deletes item from the weapon slot on the client
-					if (PutItemInInventory(slot_id, *InvItem, true))
+					const auto destination_saved =
+						PutItemInInventory(slot_id, *InvItem, true);
+					const auto source_saved =
+						destination_saved &&
 						database.SaveInventory(CharacterID(), NULL, slot);
+					bool inventory_committed = false;
+					if (
+						source_saved &&
+						!database.TransactionStrictFailed()
+					) {
+						inventory_committed =
+							database.TransactionCommitStrict().Success();
+					}
+					else {
+						database.TransactionRollbackStrict();
+					}
+					EndAchievementInventoryTransaction(inventory_committed);
+					safe_delete(InvItem);
+					if (!inventory_committed) {
+						LogError(
+							"Disconnecting [{}] after an unresolved disarm inventory transaction",
+							GetCleanName()
+						);
+						Disconnect();
+						return;
+					}
 					auto matslot = (slot == EQ::invslot::slotPrimary ? EQ::textures::weaponPrimary : EQ::textures::weaponSecondary);
 					if (matslot != EQ::textures::materialInvalid)
 						SendWearChange(matslot);
+				}
+				else {
+					database.TransactionRollbackStrict();
+					EndAchievementInventoryTransaction(false);
+					disarmer->MessageString(Chat::Skills, DISARM_FAILED);
+					return;
 				}
 				MessageString(Chat::Skills, DISARMED);
 				if (disarmer != this)
@@ -4755,6 +4804,7 @@ bool Client::KeyRingAdd(uint32 item_id)
 	}
 
 	keyring.emplace_back(item_id);
+	UpdateAchievementForOwnItem(item_id);
 
 	if (!RuleB(World, UseItemLinksForKeyRing)) {
 		Message(Chat::LightBlue, "Added to keyring.");
@@ -4782,13 +4832,17 @@ bool Client::KeyRingClear()
 {
 	keyring.clear();
 
-	return KeyringRepository::DeleteWhere(
+	const auto cleared = KeyringRepository::DeleteWhere(
 		database,
 		fmt::format(
 			"`char_id` = {}",
 			CharacterID()
 		)
 	);
+	if (cleared) {
+		UpdateAchievementForOwnItem(0);
+	}
+	return cleared;
 }
 
 void Client::KeyRingList(Client* c)
@@ -4833,7 +4887,7 @@ bool Client::KeyRingRemove(uint32 item_id)
 		)
 	);
 
-	return KeyringRepository::DeleteWhere(
+	const auto removed = KeyringRepository::DeleteWhere(
 		database,
 		fmt::format(
 			"`char_id` = {} AND `item_id` = {}",
@@ -4841,6 +4895,10 @@ bool Client::KeyRingRemove(uint32 item_id)
 			item_id
 		)
 	);
+	if (removed) {
+		UpdateAchievementForOwnItem(item_id);
+	}
+	return removed;
 }
 
 bool Client::IsNameChangeAllowed() {

@@ -1339,6 +1339,7 @@ int ClientTaskState::IncrementDoneCount(
 	}
 
 	info->activity[activity_id].updated = true;
+	uint32 achievement_task_id = 0;
 	// Have we reached the goal count for this activity_information ?
 	if (info->activity[activity_id].done_count >= task_data->activity_information[activity_id].goal_count) {
 		LogTasks("done_count [{}] goal_count [{}] activity_id [{}]",
@@ -1377,6 +1378,7 @@ int ClientTaskState::IncrementDoneCount(
 		// updated in UnlockActivities. Send the completed task list to the
 		// client. This is the same sequence the packets are sent on live.
 		if (task_complete) {
+			achievement_task_id = static_cast<uint32>(info->task_id);
 			// world adds timers for shared tasks
 			if (task_data->type != TaskType::Shared) {
 				AddReplayTimer(client, *info, *task_data);
@@ -1435,7 +1437,13 @@ int ClientTaskState::IncrementDoneCount(
 		}
 	}
 
-	TaskManager::Instance()->SaveClientState(client, this);
+	if (
+		TaskManager::Instance()->SaveClientState(client, this) &&
+		achievement_task_id &&
+		client->IsTaskCompleted(static_cast<int>(achievement_task_id))
+	) {
+		client->UpdateAchievementForTask(achievement_task_id);
+	}
 
 	return count;
 }

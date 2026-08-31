@@ -742,6 +742,7 @@ void Client::DropItem(int16 slot_id, bool recurse)
 
 	// Take control of item in client inventory
 	auto* inst = m_inv.PopItem(slot_id);
+	const auto achievement_item_id = inst ? inst->GetID() : 0;
 	if (inst) {
 		if (EQEmuLogSys::Instance()->log_settings[Logs::Inventory].is_category_enabled) {
 			LogInventory("DropItem() Processing - full item parse:");
@@ -839,6 +840,9 @@ void Client::DropItem(int16 slot_id, bool recurse)
 		database.SaveCursor(CharacterID(), s, e);
 	} else {
 		database.SaveInventory(CharacterID(), nullptr, slot_id);
+	}
+	if (achievement_item_id) {
+		UpdateAchievementForOwnItem(achievement_item_id);
 	}
 
 	if (!inst) {
@@ -1003,6 +1007,7 @@ bool Client::DeleteItemInInventory(int16 slot_id, int16 quantity, bool client_up
 		return false;
 	}
 
+	const auto achievement_item_id = m_inv[slot_id]->GetID();
 	uint64 evolve_id = m_inv[slot_id]->GetEvolveUniqueID();
 	bool   isDeleted = m_inv.DeleteItem(slot_id, quantity);
 	if (isDeleted && evolve_id && (slot_id > EQ::invslot::TRADE_END || slot_id < EQ::invslot::TRADE_BEGIN)) {
@@ -1020,6 +1025,9 @@ bool Client::DeleteItemInInventory(int16 slot_id, int16 quantity, bool client_up
 		inst = m_inv[slot_id];
 		if(update_db)
 			database.SaveInventory(character_id, inst, slot_id);
+	}
+	if (update_db) {
+		UpdateAchievementForOwnItem(achievement_item_id);
 	}
 
 	if(client_update && IsValidSlot(slot_id)) {
@@ -1070,7 +1078,9 @@ bool Client::PushItemOnCursor(const EQ::ItemInstance& inst, bool client_update)
 	}
 
 	auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
-	return database.SaveCursor(CharacterID(), s, e);
+	const auto item_persisted = database.SaveCursor(CharacterID(), s, e);
+	UpdateAchievementForOwnItem(inst.GetItem()->ID);
+	return item_persisted;
 }
 
 // Puts an item into the person's inventory
@@ -1107,10 +1117,14 @@ bool Client::PutItemInInventory(int16 slot_id, const EQ::ItemInstance& inst, boo
 
 	if (slot_id == EQ::invslot::slotCursor) {
 		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
-		return database.SaveCursor(CharacterID(), s, e);
+		const auto item_persisted = database.SaveCursor(CharacterID(), s, e);
+		UpdateAchievementForOwnItem(inst.GetItem()->ID);
+		return item_persisted;
 	}
 
-	return database.SaveInventory(CharacterID(), &inst, slot_id);
+	const auto item_persisted = database.SaveInventory(CharacterID(), &inst, slot_id);
+	UpdateAchievementForOwnItem(inst.GetItem()->ID);
+	return item_persisted;
 
 	//CalcBonuses(); // this never fires??
 	// a lot of wasted checks and calls coded above...
@@ -1133,6 +1147,7 @@ void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, Loo
 		m_inv.PutItem(slot_id, inst);
 		database.SaveInventory(CharacterID(), &inst, slot_id);
 	}
+	UpdateAchievementForOwnItem(inst.GetItem()->ID);
 
 	// Subordinate items in cursor buffer must be sent via ItemPacketSummonItem or we just overwrite the visible cursor and desync the client
 	if (slot_id == EQ::invslot::slotCursor && !cursor_empty) {
@@ -1336,6 +1351,7 @@ void Client::MoveItemCharges(EQ::ItemInstance &from, int16 to_slot, uint8 type)
 		else {
 			database.SaveInventory(CharacterID(), tmp_inst, to_slot);
 		}
+		UpdateAchievementForOwnItem(tmp_inst->GetItem()->ID);
 	}
 }
 
@@ -2027,8 +2043,13 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 			}
 			else
 			{
-				database.SaveInventory(character_id, m_inv[src_slot_id], src_slot_id);
+				database.SaveInventory(
+					character_id,
+					m_inv[src_slot_id],
+					src_slot_id
+				);
 			}
+			UpdateAchievementForOwnItem(srcitemid);
 
 			return true;
 		}
@@ -2255,6 +2276,7 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 	}
 
 	// Step 7: Save change to the database
+	bool source_saved = false;
 	if (src_slot_id == EQ::invslot::slotCursor) {
 		// If not swapping another item to cursor and stacking items were depleted
 		if (dstitemid == 0 || all_to_stack == true)
@@ -2262,24 +2284,33 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 			SendCursorBuffer();
 		}
 		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
-		database.SaveCursor(character_id, s, e);
+		source_saved = database.SaveCursor(character_id, s, e);
 	}
 	else {
-		database.SaveInventory(character_id, m_inv.GetItem(src_slot_id), src_slot_id);
+		source_saved = database.SaveInventory(
+			character_id,
+			m_inv.GetItem(src_slot_id),
+			src_slot_id
+		);
 	}
 
+	bool destination_saved = false;
 	if (dst_slot_id == EQ::invslot::slotCursor) {
 		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
-		database.SaveCursor(character_id, s, e);
+		destination_saved = database.SaveCursor(character_id, s, e);
 	}
 	else {
-		database.SaveInventory(character_id, m_inv.GetItem(dst_slot_id), dst_slot_id);
+		destination_saved = database.SaveInventory(
+			character_id,
+			m_inv.GetItem(dst_slot_id),
+			dst_slot_id
+		);
 	}
 
 	// Step 8: Re-calc stats
 	CalcBonuses();
 	ApplyWeaponsStance();
-	return true;
+	return source_saved && destination_saved;
 }
 
 void Client::SwapItemResync(MoveItem_Struct* move_slots) {
@@ -2727,6 +2758,7 @@ void Client::DisenchantSummonedBags(bool client_update)
 
 			auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
 			database.SaveCursor(CharacterID(), s, e);
+			UpdateAchievementForOwnItem(0);
 		}
 		else {
 			safe_delete(new_inst); // deletes disenchanted bag if not used
@@ -2835,6 +2867,7 @@ void Client::RemoveNoRent(bool client_update)
 
 		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
 		database.SaveCursor(CharacterID(), s, e);
+		UpdateAchievementForOwnItem(0);
 	}
 }
 
@@ -2875,6 +2908,7 @@ void Client::RemoveDuplicateLore()
 				GetCleanName()
 			);
 			database.SaveInventory(character_id, nullptr, slot_id);
+			UpdateAchievementForOwnItem(0);
 			safe_delete(inst);
 		}
 
@@ -2939,6 +2973,7 @@ void Client::RemoveDuplicateLore()
 
 		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
 		database.SaveCursor(CharacterID(), s, e);
+		UpdateAchievementForOwnItem(0);
 	}
 }
 
@@ -3224,7 +3259,11 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		return false;
 	};
 
-	database.TransactionBegin();
+	if (!database.TransactionBeginStrict().Success()) {
+		Message(Chat::Red, "Unable to persist the bandolier change.");
+		return;
+	}
+	BeginAchievementInventoryTransaction();
 
 	struct BandolierReturnResult {
 		bool success = false;
@@ -3936,8 +3975,9 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		}
 	}
 
-	if (!bandolier_persistence_ok) {
-		database.TransactionRollback();
+	if (!bandolier_persistence_ok || database.TransactionStrictFailed()) {
+		database.TransactionRollbackStrict();
+		EndAchievementInventoryTransaction(false);
 		for (auto &bandolier_item : BandolierItems) {
 			safe_delete(bandolier_item);
 		}
@@ -3946,14 +3986,14 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 		return;
 	}
 
-	const auto bandolier_commit_result = database.TransactionCommit();
+	const auto bandolier_commit_result = database.TransactionCommitStrict();
+	EndAchievementInventoryTransaction(bandolier_commit_result.Success());
 	if (!bandolier_commit_result.Success()) {
 		LogError(
 			"Bandolier activation commit failed for char [{}] set [{}], disconnecting client to preserve authoritative inventory state",
 			GetName(),
 			bss->Number
 		);
-		database.TransactionRollback();
 		LinkDead();
 		return;
 	}
@@ -3983,6 +4023,7 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 
 	// finally, recalculate any stat bonuses from the item change
 	CalcBonuses();
+	UpdateAchievementForOwnItem(0);
 }
 
 bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClient) {
@@ -4041,6 +4082,7 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 				if(UpdateClient)
 					SendItemPacket(i, InvItem, ItemPacketTrade);
 
+				UpdateAchievementForOwnItem(ItemID);
 				ItemToReturn->SetCharges(original_return_charges - ChargesToMove);
 
 				if(!ItemToReturn->GetCharges())
@@ -4077,6 +4119,7 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 						if(UpdateClient)
 							SendItemPacket(BaseSlotID + BagSlot, m_inv.GetItem(BaseSlotID + BagSlot), ItemPacketTrade);
 
+						UpdateAchievementForOwnItem(ItemID);
 						ItemToReturn->SetCharges(original_return_charges - ChargesToMove);
 
 						if(!ItemToReturn->GetCharges())
@@ -4115,6 +4158,7 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 				return false;
 			}
 
+			UpdateAchievementForOwnItem(ItemID);
 			if(UpdateClient)
 				SendItemPacket(i, placed_item, ItemPacketTrade);
 
@@ -4152,6 +4196,7 @@ bool Client::MoveItemToInventory(EQ::ItemInstance *ItemToReturn, bool UpdateClie
 						return false;
 					}
 
+					UpdateAchievementForOwnItem(ItemID);
 					if(UpdateClient)
 						SendItemPacket(BaseSlotID + BagSlot, placed_item, ItemPacketTrade);
 
