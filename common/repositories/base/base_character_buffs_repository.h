@@ -24,6 +24,7 @@ public:
 		uint16_t    spell_id;
 		uint8_t     caster_level;
 		std::string caster_name;
+		uint8_t     caster_is_client;
 		int32_t     ticsremaining;
 		uint32_t    counters;
 		uint32_t    numhits;
@@ -52,6 +53,7 @@ public:
 			"spell_id",
 			"caster_level",
 			"caster_name",
+			"caster_is_client",
 			"ticsremaining",
 			"counters",
 			"numhits",
@@ -76,6 +78,7 @@ public:
 			"spell_id",
 			"caster_level",
 			"caster_name",
+			"caster_is_client",
 			"ticsremaining",
 			"counters",
 			"numhits",
@@ -129,24 +132,25 @@ public:
 	{
 		CharacterBuffs e{};
 
-		e.character_id   = 0;
-		e.slot_id        = 0;
-		e.spell_id       = 0;
-		e.caster_level   = 0;
-		e.caster_name    = "";
-		e.ticsremaining  = 0;
-		e.counters       = 0;
-		e.numhits        = 0;
-		e.melee_rune     = 0;
-		e.magic_rune     = 0;
-		e.persistent     = 0;
-		e.dot_rune       = 0;
-		e.caston_x       = 0;
-		e.caston_y       = 0;
-		e.caston_z       = 0;
-		e.ExtraDIChance  = 0;
-		e.instrument_mod = 10;
-		e.suppressed     = 0;
+		e.character_id     = 0;
+		e.slot_id          = 0;
+		e.spell_id         = 0;
+		e.caster_level     = 0;
+		e.caster_name      = "";
+		e.caster_is_client = 0;
+		e.ticsremaining    = 0;
+		e.counters         = 0;
+		e.numhits          = 0;
+		e.melee_rune       = 0;
+		e.magic_rune       = 0;
+		e.persistent       = 0;
+		e.dot_rune         = 0;
+		e.caston_x         = 0;
+		e.caston_y         = 0;
+		e.caston_z         = 0;
+		e.ExtraDIChance    = 0;
+		e.instrument_mod   = 10;
+		e.suppressed       = 0;
 
 		return e;
 	}
@@ -183,24 +187,25 @@ public:
 		if (results.RowCount() == 1) {
 			CharacterBuffs e{};
 
-			e.character_id   = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
-			e.slot_id        = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
-			e.spell_id       = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.caster_level   = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
-			e.caster_name    = row[4] ? row[4] : "";
-			e.ticsremaining  = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
-			e.counters       = row[6] ? static_cast<uint32_t>(strtoul(row[6], nullptr, 10)) : 0;
-			e.numhits        = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
-			e.melee_rune     = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
-			e.magic_rune     = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
-			e.persistent     = row[10] ? static_cast<uint8_t>(strtoul(row[10], nullptr, 10)) : 0;
-			e.dot_rune       = row[11] ? static_cast<int32_t>(atoi(row[11])) : 0;
-			e.caston_x       = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
-			e.caston_y       = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
-			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
-			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
-			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
-			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
+			e.character_id     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.slot_id          = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.spell_id         = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
+			e.caster_level     = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.caster_name      = row[4] ? row[4] : "";
+			e.caster_is_client = row[5] ? static_cast<uint8_t>(strtoul(row[5], nullptr, 10)) : 0;
+			e.ticsremaining    = row[6] ? static_cast<int32_t>(atoi(row[6])) : 0;
+			e.counters         = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
+			e.numhits          = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
+			e.melee_rune       = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
+			e.magic_rune       = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.persistent       = row[11] ? static_cast<uint8_t>(strtoul(row[11], nullptr, 10)) : 0;
+			e.dot_rune         = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
+			e.caston_x         = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
+			e.caston_y         = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
+			e.caston_z         = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
+			e.ExtraDIChance    = row[16] ? static_cast<int32_t>(atoi(row[16])) : 0;
+			e.instrument_mod   = row[17] ? static_cast<int32_t>(atoi(row[17])) : 10;
+			e.suppressed       = row[18] ? static_cast<uint8_t>(strtoul(row[18], nullptr, 10)) : 0;
 
 			return e;
 		}
@@ -239,19 +244,20 @@ public:
 		v.push_back(columns[2] + " = " + std::to_string(e.spell_id));
 		v.push_back(columns[3] + " = " + std::to_string(e.caster_level));
 		v.push_back(columns[4] + " = '" + Strings::Escape(e.caster_name) + "'");
-		v.push_back(columns[5] + " = " + std::to_string(e.ticsremaining));
-		v.push_back(columns[6] + " = " + std::to_string(e.counters));
-		v.push_back(columns[7] + " = " + std::to_string(e.numhits));
-		v.push_back(columns[8] + " = " + std::to_string(e.melee_rune));
-		v.push_back(columns[9] + " = " + std::to_string(e.magic_rune));
-		v.push_back(columns[10] + " = " + std::to_string(e.persistent));
-		v.push_back(columns[11] + " = " + std::to_string(e.dot_rune));
-		v.push_back(columns[12] + " = " + std::to_string(e.caston_x));
-		v.push_back(columns[13] + " = " + std::to_string(e.caston_y));
-		v.push_back(columns[14] + " = " + std::to_string(e.caston_z));
-		v.push_back(columns[15] + " = " + std::to_string(e.ExtraDIChance));
-		v.push_back(columns[16] + " = " + std::to_string(e.instrument_mod));
-		v.push_back(columns[17] + " = " + std::to_string(e.suppressed));
+		v.push_back(columns[5] + " = " + std::to_string(e.caster_is_client));
+		v.push_back(columns[6] + " = " + std::to_string(e.ticsremaining));
+		v.push_back(columns[7] + " = " + std::to_string(e.counters));
+		v.push_back(columns[8] + " = " + std::to_string(e.numhits));
+		v.push_back(columns[9] + " = " + std::to_string(e.melee_rune));
+		v.push_back(columns[10] + " = " + std::to_string(e.magic_rune));
+		v.push_back(columns[11] + " = " + std::to_string(e.persistent));
+		v.push_back(columns[12] + " = " + std::to_string(e.dot_rune));
+		v.push_back(columns[13] + " = " + std::to_string(e.caston_x));
+		v.push_back(columns[14] + " = " + std::to_string(e.caston_y));
+		v.push_back(columns[15] + " = " + std::to_string(e.caston_z));
+		v.push_back(columns[16] + " = " + std::to_string(e.ExtraDIChance));
+		v.push_back(columns[17] + " = " + std::to_string(e.instrument_mod));
+		v.push_back(columns[18] + " = " + std::to_string(e.suppressed));
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -278,6 +284,7 @@ public:
 		v.push_back(std::to_string(e.spell_id));
 		v.push_back(std::to_string(e.caster_level));
 		v.push_back("'" + Strings::Escape(e.caster_name) + "'");
+		v.push_back(std::to_string(e.caster_is_client));
 		v.push_back(std::to_string(e.ticsremaining));
 		v.push_back(std::to_string(e.counters));
 		v.push_back(std::to_string(e.numhits));
@@ -325,6 +332,7 @@ public:
 			v.push_back(std::to_string(e.spell_id));
 			v.push_back(std::to_string(e.caster_level));
 			v.push_back("'" + Strings::Escape(e.caster_name) + "'");
+			v.push_back(std::to_string(e.caster_is_client));
 			v.push_back(std::to_string(e.ticsremaining));
 			v.push_back(std::to_string(e.counters));
 			v.push_back(std::to_string(e.numhits));
@@ -371,24 +379,25 @@ public:
 		for (auto row = results.begin(); row != results.end(); ++row) {
 			CharacterBuffs e{};
 
-			e.character_id   = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
-			e.slot_id        = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
-			e.spell_id       = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.caster_level   = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
-			e.caster_name    = row[4] ? row[4] : "";
-			e.ticsremaining  = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
-			e.counters       = row[6] ? static_cast<uint32_t>(strtoul(row[6], nullptr, 10)) : 0;
-			e.numhits        = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
-			e.melee_rune     = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
-			e.magic_rune     = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
-			e.persistent     = row[10] ? static_cast<uint8_t>(strtoul(row[10], nullptr, 10)) : 0;
-			e.dot_rune       = row[11] ? static_cast<int32_t>(atoi(row[11])) : 0;
-			e.caston_x       = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
-			e.caston_y       = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
-			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
-			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
-			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
-			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
+			e.character_id     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.slot_id          = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.spell_id         = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
+			e.caster_level     = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.caster_name      = row[4] ? row[4] : "";
+			e.caster_is_client = row[5] ? static_cast<uint8_t>(strtoul(row[5], nullptr, 10)) : 0;
+			e.ticsremaining    = row[6] ? static_cast<int32_t>(atoi(row[6])) : 0;
+			e.counters         = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
+			e.numhits          = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
+			e.melee_rune       = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
+			e.magic_rune       = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.persistent       = row[11] ? static_cast<uint8_t>(strtoul(row[11], nullptr, 10)) : 0;
+			e.dot_rune         = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
+			e.caston_x         = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
+			e.caston_y         = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
+			e.caston_z         = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
+			e.ExtraDIChance    = row[16] ? static_cast<int32_t>(atoi(row[16])) : 0;
+			e.instrument_mod   = row[17] ? static_cast<int32_t>(atoi(row[17])) : 10;
+			e.suppressed       = row[18] ? static_cast<uint8_t>(strtoul(row[18], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -413,24 +422,25 @@ public:
 		for (auto row = results.begin(); row != results.end(); ++row) {
 			CharacterBuffs e{};
 
-			e.character_id   = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
-			e.slot_id        = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
-			e.spell_id       = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
-			e.caster_level   = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
-			e.caster_name    = row[4] ? row[4] : "";
-			e.ticsremaining  = row[5] ? static_cast<int32_t>(atoi(row[5])) : 0;
-			e.counters       = row[6] ? static_cast<uint32_t>(strtoul(row[6], nullptr, 10)) : 0;
-			e.numhits        = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
-			e.melee_rune     = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
-			e.magic_rune     = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
-			e.persistent     = row[10] ? static_cast<uint8_t>(strtoul(row[10], nullptr, 10)) : 0;
-			e.dot_rune       = row[11] ? static_cast<int32_t>(atoi(row[11])) : 0;
-			e.caston_x       = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
-			e.caston_y       = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
-			e.caston_z       = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
-			e.ExtraDIChance  = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
-			e.instrument_mod = row[16] ? static_cast<int32_t>(atoi(row[16])) : 10;
-			e.suppressed      = row[17] ? static_cast<uint8_t>(strtoul(row[17], nullptr, 10)) : 0;
+			e.character_id     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.slot_id          = row[1] ? static_cast<uint8_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.spell_id         = row[2] ? static_cast<uint16_t>(strtoul(row[2], nullptr, 10)) : 0;
+			e.caster_level     = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
+			e.caster_name      = row[4] ? row[4] : "";
+			e.caster_is_client = row[5] ? static_cast<uint8_t>(strtoul(row[5], nullptr, 10)) : 0;
+			e.ticsremaining    = row[6] ? static_cast<int32_t>(atoi(row[6])) : 0;
+			e.counters         = row[7] ? static_cast<uint32_t>(strtoul(row[7], nullptr, 10)) : 0;
+			e.numhits          = row[8] ? static_cast<uint32_t>(strtoul(row[8], nullptr, 10)) : 0;
+			e.melee_rune       = row[9] ? static_cast<uint32_t>(strtoul(row[9], nullptr, 10)) : 0;
+			e.magic_rune       = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.persistent       = row[11] ? static_cast<uint8_t>(strtoul(row[11], nullptr, 10)) : 0;
+			e.dot_rune         = row[12] ? static_cast<int32_t>(atoi(row[12])) : 0;
+			e.caston_x         = row[13] ? static_cast<int32_t>(atoi(row[13])) : 0;
+			e.caston_y         = row[14] ? static_cast<int32_t>(atoi(row[14])) : 0;
+			e.caston_z         = row[15] ? static_cast<int32_t>(atoi(row[15])) : 0;
+			e.ExtraDIChance    = row[16] ? static_cast<int32_t>(atoi(row[16])) : 0;
+			e.instrument_mod   = row[17] ? static_cast<int32_t>(atoi(row[17])) : 10;
+			e.suppressed       = row[18] ? static_cast<uint8_t>(strtoul(row[18], nullptr, 10)) : 0;
 
 			all_entries.push_back(e);
 		}
@@ -510,6 +520,7 @@ public:
 		v.push_back(std::to_string(e.spell_id));
 		v.push_back(std::to_string(e.caster_level));
 		v.push_back("'" + Strings::Escape(e.caster_name) + "'");
+		v.push_back(std::to_string(e.caster_is_client));
 		v.push_back(std::to_string(e.ticsremaining));
 		v.push_back(std::to_string(e.counters));
 		v.push_back(std::to_string(e.numhits));
@@ -550,6 +561,7 @@ public:
 			v.push_back(std::to_string(e.spell_id));
 			v.push_back(std::to_string(e.caster_level));
 			v.push_back("'" + Strings::Escape(e.caster_name) + "'");
+			v.push_back(std::to_string(e.caster_is_client));
 			v.push_back(std::to_string(e.ticsremaining));
 			v.push_back(std::to_string(e.counters));
 			v.push_back(std::to_string(e.numhits));

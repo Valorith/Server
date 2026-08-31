@@ -551,9 +551,13 @@ RULE_STRING(Spells, AlwaysStackSpells, "", "Comma-Seperated list of spell IDs to
 RULE_BOOL(Spells, SuppressDispels, false, "Swaps 'cancel magic' SPA logic with SuppressBuff SPA (527).")
 RULE_INT(Spells, SuppressDispelsTime, 6, "Number of tics that dispelled buffs will be suppressed for")
 RULE_INT(Spells, SuppressDebuffSpellID, 21840, "Spell ID to send to client when a spell is supprssed.  21840 = 'Suppression Field'")
+RULE_BOOL(Spells, BuffTicAttributionFallback, false, "Keep DoTs ticking and attribute buff tic messages using the buff's stored caster name when the caster mob is dead or gone from zone")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Combat)
+RULE_BOOL(Combat, GroupRaidCombatLogParity, false, "In-zone group/raid members of any party to a combat event receive its combat packets/messages regardless of proximity")
+RULE_BOOL(Combat, HealBystanderMessages, false, "Send third-person heal/HoT messages to bystanders and group/raid members")
+RULE_BOOL(Combat, DamageShieldSpellAttribution, false, "Send the real spell ID in damage shield OP_Damage packets to bystanders; client versions render nonzero spellid packets differently")
 RULE_REAL(Combat, AERampageMaxDistance, 70, "Max AERampage range (% of max combat distance)")
 RULE_INT(Combat, PetBaseCritChance, 0, "Pet base crit chance")
 RULE_INT(Combat, NPCBashKickLevel, 6, "The level that NPCcan KICK/BASH")
@@ -769,6 +773,9 @@ RULE_INT(Range, StunMessages, 75, "The packet range in which stun messages are s
 RULE_INT(Range, ClientPositionUpdates, 300, "Distance in which the own changed position is communicated to other clients")
 RULE_INT(Range, CriticalDamage, 80, "The packet range in which critical hit messages are sent")
 RULE_INT(Range, MobCloseScanDistance, 600, "Close scan distance")
+RULE_INT(Range, GroupRaidCombatMessages, 0, "Max distance for group/raid combat log parity delivery; 0 = entire zone (members are enumerated directly, no zone scan)")
+RULE_INT(Range, DamageShieldMessages, 200, "The packet range in which damage shield damage packets are sent (values above Range:MobCloseScanDistance are clamped to it)")
+RULE_INT(Range, CriticalSpellMessages, 100, "The packet range in which spell crit blast/heal messages are sent (values above Range:MobCloseScanDistance are clamped to it)")
 RULE_INT(Range, MaxDistanceToClickDoors, 100, "Max distance that a client can click a door from (Client says 'You can't reach that' at roughly 25-50 for most doors)")
 RULE_CATEGORY_END()
 

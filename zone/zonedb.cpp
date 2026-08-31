@@ -2623,6 +2623,7 @@ void ZoneDatabase::SaveBuffs(Client *client)
 		e.spell_id       = suppressed ? buffs[slot_id].suppressedid : buffs[slot_id].spellid;
 		e.caster_level   = buffs[slot_id].casterlevel;
 		e.caster_name    = buffs[slot_id].caster_name;
+		e.caster_is_client = buffs[slot_id].client ? 1 : 0;
 		e.ticsremaining  = suppressed ? buffs[slot_id].suppressedticsremaining : buffs[slot_id].ticsremaining;
 		e.counters       = buffs[slot_id].counters;
 		e.numhits        = buffs[slot_id].hit_number;
@@ -2728,12 +2729,18 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			buffs[e.slot_id].casterid = c->GetID();
 			buffs[e.slot_id].client   = true;
 
-			strncpy(buffs[e.slot_id].caster_name, c->GetName(), 64);
+			strn0cpy(buffs[e.slot_id].caster_name, c->GetName(), sizeof(buffs[e.slot_id].caster_name));
 		} else {
 			buffs[e.slot_id].casterid = 0;
-			buffs[e.slot_id].client   = false;
+			buffs[e.slot_id].client   = e.caster_is_client != 0;
 
-			strncpy(buffs[e.slot_id].caster_name, "", 64);
+			if (RuleB(Spells, BuffTicAttributionFallback)) {
+				// Keep the stored name so buff tic attribution survives the
+				// caster being gone when the fallback is explicitly enabled.
+				strn0cpy(buffs[e.slot_id].caster_name, e.caster_name.c_str(), sizeof(buffs[e.slot_id].caster_name));
+			} else {
+				buffs[e.slot_id].caster_name[0] = '\0';
+			}
 		}
 
 		buffs[e.slot_id].ticsremaining     = e.ticsremaining;

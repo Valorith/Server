@@ -4968,7 +4968,9 @@ bool Bot::Death(Mob *killer_mob, int64 damage, uint16 spell_id, EQ::skills::Skil
 }
 
 void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable, int8 buffslot, bool iBuffTic, eSpecialAttacks special) {
-	if (!from) {
+	// Orphaned buff tics carry no caster mob. Keep the historical null-source
+	// behavior unless the fallback rule explicitly enables those ticks.
+	if (!from && (!iBuffTic || !RuleB(Spells, BuffTicAttributionFallback))) {
 		return;
 	}
 
@@ -4977,25 +4979,17 @@ void Bot::Damage(Mob *from, int64 damage, uint16 spell_id, EQ::skills::SkillType
 	}
 
 	//handle EVENT_ATTACK. Resets after we have not been attacked for 12 seconds
-	if (attacked_timer.Check()) {
-		if (parse->BotHasQuestSub(EVENT_ATTACK)) {
-			LogCombat("Triggering EVENT_ATTACK due to attack by [{}]", from->GetName());
+	if (from) {
+		if (attacked_timer.Check()) {
+			if (parse->BotHasQuestSub(EVENT_ATTACK)) {
+				LogCombat("Triggering EVENT_ATTACK due to attack by [{}]", from->GetName());
 
-			parse->EventBot(EVENT_ATTACK, this, from, "", 0);
+				parse->EventBot(EVENT_ATTACK, this, from, "", 0);
+			}
 		}
-	}
 
-	attacked_timer.Start(CombatEventTimer_expire);
-	// if spell is lifetap add hp to the caster
-	if (IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
-		int64 healed = GetActSpellHealing(spell_id, damage);
-		LogCombatDetail("Applying lifetap heal of [{}] to [{}]", healed, GetCleanName());
-		HealDamage(healed);
-		if (from) {
-			entity_list.FilteredMessageClose(this, true, RuleI(Range, SpellMessages), Chat::Emote, FilterSocials, "%s beams a smile at %s", GetCleanName(), from->GetCleanName());
-		}
+		attacked_timer.Start(CombatEventTimer_expire);
 	}
-
 	CommonDamage(from, damage, spell_id, attack_skill, avoidable, buffslot, iBuffTic, special);
 	if (GetHP() < 0) {
 		if (IsCasting())
@@ -5104,7 +5098,9 @@ bool Bot::TryFinishingBlow(Mob *defender, int64 &damage)
 		if (defender->GetLevel() <= levelreq && (chance >= zone->random.Int(1, 1000))) {
 			LogCombat("Landed a finishing blow: levelreq at [{}] other level [{}]",
 				levelreq, defender->GetLevel());
-			entity_list.MessageCloseString(this, false, 200, Chat::MeleeCrit, FINISHING_BLOW, GetName());
+			entity_list.FilteredMessageCombatString(
+				this, defender, false, RuleI(Range, CriticalDamage),
+				Chat::MeleeCrit, FilterMeleeCrits, FINISHING_BLOW, 0, GetName());
 			damage = fb_damage;
 			return true;
 		} else {

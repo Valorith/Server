@@ -2552,8 +2552,9 @@ int Mob::TryHeadShot(Mob *defender, EQ::skills::SkillType skillInUse)
 				chance = chance * norm / 100;
 			chance += aabonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] + spellbonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] + itembonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE];
 			if (zone->random.Int(1, 1000) <= chance) {
-				entity_list.MessageCloseString(
-					this, false, 200, Chat::MeleeCrit, FATAL_BOW_SHOT,
+				entity_list.FilteredMessageCombatString(
+					this, defender, false, RuleI(Range, CriticalDamage),
+					Chat::MeleeCrit, FilterMeleeCrits, FATAL_BOW_SHOT, 0,
 					GetName());
 				return HeadShot_Dmg;
 			}
@@ -2605,8 +2606,9 @@ int Mob::TryAssassinate(Mob *defender, EQ::skills::SkillType skillInUse)
 
 		if (Assassinate_Dmg && Assassinate_Level && (defender->GetLevel() <= Assassinate_Level)) {
 			if (zone->random.Int(1, 1000) <= chance) {
-				entity_list.MessageCloseString(
-					this, false, 200, Chat::MeleeCrit, ASSASSINATES,
+				entity_list.FilteredMessageCombatString(
+					this, defender, false, RuleI(Range, CriticalDamage),
+					Chat::MeleeCrit, FilterMeleeCrits, ASSASSINATES, 0,
 					GetName());
 				return Assassinate_Dmg;
 			}

@@ -1785,12 +1785,22 @@ void Client::Damage(Mob* other, int64 damage, uint16 spell_id, EQ::skills::Skill
 		spell_id = SPELL_UNKNOWN;
 	}
 
-	// cut all PVP spell damage to 2/3
-	// Blasting ourselfs is considered PvP
-	//Don't do PvP mitigation if the caster is damaging himself
-	//should this be applied to all damage? comments sound like some is for spell DMG
-	//patch notes on PVP reductions only mention archery/throwing ... not normal dmg
-	if (other && other->IsClient() && (other != this) && damage > 0) {
+	// Cut all PvP spell damage to 2/3. Orphaned buff ticks retain their
+	// client-caster provenance in the buff so fallback damage stays subject
+	// to the same mitigation after the caster leaves the zone.
+	const bool orphaned_client_dot =
+		!other &&
+		RuleB(Spells, BuffTicAttributionFallback) &&
+		iBuffTic &&
+		buffslot >= 0 &&
+		buffslot < GetMaxTotalSlots() &&
+		buffs[buffslot].spellid == spell_id &&
+		buffs[buffslot].client &&
+		buffs[buffslot].caster_name[0] &&
+		!Strings::EqualFold(buffs[buffslot].caster_name, GetCleanName());
+	const bool client_pvp_damage =
+		(other && other->IsClient() && other != this) || orphaned_client_dot;
+	if (client_pvp_damage && damage > 0) {
 		int PvPMitigation = 100;
 		if (attack_skill == EQ::skills::SkillArchery || attack_skill == EQ::skills::SkillThrowing)
 			PvPMitigation = 80;
@@ -2437,13 +2447,15 @@ void NPC::Damage(Mob* other, int64 damage, uint16 spell_id, EQ::skills::SkillTyp
 		spell_id = SPELL_UNKNOWN;
 
 	//handle EVENT_ATTACK. Resets after we have not been attacked for 12 seconds
-	if (attacked_timer.Check()) {
-		parse->EventMercNPC(EVENT_ATTACK, this, other);
+	if (other) {
+		if (attacked_timer.Check()) {
+			parse->EventMercNPC(EVENT_ATTACK, this, other);
+		}
+
+		attacked_timer.Start(CombatEventTimer_expire);
 	}
 
-	attacked_timer.Start(CombatEventTimer_expire);
-
-	if (!IsEngaged())
+	if (other && !IsEngaged())
 		zone->AddAggroMob();
 
 	if (GetClass() == Class::LDoNTreasure)
@@ -3381,9 +3393,19 @@ void Mob::DamageShield(Mob* attacker, bool spell_ds) {
 		b->target  = attacker->GetID();
 		b->source  = GetID();
 		b->type    = spellbonuses.DamageShieldType;
-		b->spellid = 0x0;
+		// real id only for true buff damage shields: the spell_ds id is a
+		// synthetic message-selection id, and clients render nonzero-spellid
+		// OP_Damage differently across versions - hence default off
+		b->spellid = (RuleB(Combat, DamageShieldSpellAttribution) && !spell_ds) ? spellid : 0;
 		b->damage  = DS;
-		entity_list.QueueCloseClients(this, &p);
+		// ranges above the close-mob cache bound degrade to full zone scans
+		entity_list.QueueCombatClients(
+			this,
+			attacker,
+			&p,
+			false,
+			std::min(RuleI(Range, DamageShieldMessages), RuleI(Range, MobCloseScanDistance))
+		);
 	}
 	else if (DS > 0 && !spell_ds) {
 		//we are healing the attacker...
@@ -4085,6 +4107,79 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 	}
 
 	bool died = false;
+	bool buff_tic_message_sent = false;
+	auto send_buff_tic_message = [&]() {
+		if (buff_tic_message_sent || !iBuffTic) {
+			return;
+		}
+
+		buff_tic_message_sent = true;
+
+		// So we can see our DoT damage like live shows it.
+		if (!IsValidSpell(spell_id) || damage <= 0 || attacker == this) {
+			return;
+		}
+
+		// When the caster mob is gone, attribute the tick from the name stored
+		// on the buff (Spells:BuffTicAttributionFallback). Skip silently only
+		// if both are gone.
+		const char *caster_name = nullptr;
+		if (attacker) {
+			caster_name = attacker->GetCleanName();
+		} else if (
+			RuleB(Spells, BuffTicAttributionFallback) &&
+			buffslot >= 0 &&
+			buffslot < GetMaxTotalSlots() &&
+			buffs[buffslot].caster_name[0]
+		) {
+			caster_name = buffs[buffslot].caster_name;
+		}
+
+		if (attacker && !attacker->IsCorpse() && attacker->IsClient()) {
+			attacker->FilteredMessageString(
+				attacker,
+				Chat::DotDamage,
+				FilterDOT,
+				YOUR_HIT_DOT,
+				GetCleanName(),
+				itoa(damage),
+				spells[spell_id].name
+			);
+		}
+
+		if (!caster_name) {
+			return;
+		}
+
+		if (IsClient()) {
+			FilteredMessageString(
+				this,
+				Chat::DotDamage,
+				FilterDOT,
+				YOU_TAKE_DOT,
+				itoa(damage),
+				caster_name,
+				spells[spell_id].name
+			);
+		}
+
+		// Older clients do not have the string ID below, but filter it.
+		entity_list.FilteredMessageCombatString(
+			this, // Sender
+			attacker, // Other combat party
+			true, // Skip Sender
+			RuleI(Range, SpellMessages),
+			Chat::DotDamage,
+			FilterDOT,
+			OTHER_HIT_DOT,
+			attacker, // Sent above
+			GetCleanName(),
+			itoa(damage),
+			caster_name,
+			spells[spell_id].name
+		);
+	};
+
 	if (damage > 0) {
 		//if there is some damage being done and theres an attacker involved
 		int previous_hp_ratio = GetHPRatio();
@@ -4283,6 +4378,10 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				if (died) {
 					SetHP(-500);
 				}
+
+				// Death() can return before the normal buff-tick message path.
+				// Send the final tick first, and make the later call idempotent.
+				send_buff_tic_message();
 
 				// killedByType is clarified in Client::Death if we are client.
 				if (Death(attacker, damage, spell_id, skill_used, KilledByTypes::Killed_NPC, iBuffTic)) {
@@ -4580,8 +4679,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 					}
 
 					if (!FromDamageShield) {
-						entity_list.QueueCloseClients(
+						entity_list.QueueCombatClients(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							&p, /* packet */
 							false, /* Skip Sender */
 							((IsValidSpell(spell_id)) ? RuleI(Range, SpellMessages) : RuleI(Range, DamageMessages)),
@@ -4626,8 +4726,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 						}
 					}
 					else {
-						entity_list.FilteredMessageCloseString(
+						entity_list.FilteredMessageCombatString(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							false, /* Sender is attacker, so do not skip */
 							RuleI(Range, SpellMessages),
 							Chat::NonMelee, /* 283 */
@@ -4658,8 +4759,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 					if (attacker->IsClient()) {
 						attacker->CastToClient()->QueuePacket(&p, true, CLIENT_CONNECTED, filter);
 					} else {
-						entity_list.QueueCloseClients(
+						entity_list.QueueCombatClients(
 							attacker, /* Sender */
+							this, /* Other combat party (victim) */
 							&p, /* packet */
 							false, /* Skip Sender */
 							(
@@ -4713,8 +4815,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				(IsDamageSpell(spell_id) && IsDiscipline(spell_id)))
 				) {
 				a->type = DamageTypeSpell;
-				entity_list.QueueCloseClients(
+				entity_list.QueueCombatClients(
 					this, /* Sender */
+					attacker, /* Other combat party */
 					&p, /* packet */
 					false, /* Skip Sender */
 					range, /* distance packet travels at the speed of sound */
@@ -4732,10 +4835,11 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 				// Send normal message to observers
 				// Exclude damage done by client pets as that's handled
 				// elsewhere using proper "my pet damage filter"
-				Mob *owner = attacker->GetOwner();
+				Mob *owner = attacker ? attacker->GetOwner() : nullptr;
 				if (!owner || (owner && !owner->IsClient())) {
-					entity_list.QueueCloseClients(
+					entity_list.QueueCombatClients(
 						this, /* Sender */
+						attacker, /* Other combat party */
 						&p, /* packet */
 						true, /* Skip Sender */
 						range, /* distance packet travels at the speed of sound */
@@ -4748,41 +4852,11 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 		}
 	}
 	else {
-		//else, it is a buff tic...
-		// So we can see our dot dmg like live shows it.
-		if (IsValidSpell(spell_id) && damage > 0 && attacker && attacker != this) {
-			//might filter on (attack_skill>200 && attack_skill<250), but I dont think we need it
-			if (!attacker->IsCorpse() && attacker->IsClient()) {
-				attacker->FilteredMessageString(attacker, Chat::DotDamage,
-					FilterDOT, YOUR_HIT_DOT, GetCleanName(), itoa(damage),
-					spells[spell_id].name);
-			}
-
-			if (IsClient()) {
-				FilteredMessageString(this, Chat::DotDamage, FilterDOT,
-					YOU_TAKE_DOT, itoa(damage), attacker->GetCleanName(),
-					spells[spell_id].name);
-			}
-
-			/* older clients don't have the below String ID, but it will be filtered */
-			entity_list.FilteredMessageCloseString(
-				this, /* Sender */
-				true, /* Skip Sender */
-				RuleI(Range, SpellMessages),
-				Chat::DotDamage, /* Type: 325 */
-				FilterDOT, /* FilterType: 19 */
-				OTHER_HIT_DOT,  /* MessageFormat: %1 has taken %2 damage from %3 by %4. */
-				attacker,		/* sent above */
-				GetCleanName(), /* Message1 */
-				itoa(damage), /* Message2 */
-				attacker->GetCleanName(), /* Message3 */
-				spells[spell_id].name /* Message4 */
-			);
-		}
+		send_buff_tic_message();
 	}
 }
 
-void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
+void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id, const char* caster_name_fallback, bool is_buff_tic)
 {
 #ifdef LUA_EQEMU
 	uint64 lua_ret = 0;
@@ -4793,6 +4867,12 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
 		amount = lua_ret;
 	}
 #endif
+	const bool use_caster_name_fallback =
+		is_buff_tic &&
+		RuleB(Spells, BuffTicAttributionFallback) &&
+		caster_name_fallback &&
+		caster_name_fallback[0];
+
 	int64 maxhp = GetMaxHP();
 	int64 curhp = GetHP();
 	uint64 acthealed = 0;
@@ -4804,7 +4884,7 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
 
 	if (acthealed > RuleI(Spells, HealAmountMessageFilterThreshold)) {
 		if (caster) {
-			if (IsBuffSpell(spell_id)) { // hots
+			if (is_buff_tic) { // HoTs
 				// message to caster
 				if ((caster->IsClient() && caster == this)) {
 					if (caster->CastToClient()->ClientVersionBit() & EQ::versions::maskSoFAndLater) {
@@ -4851,11 +4931,44 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
 					itoa(acthealed));
 				}
 			}
-		} else if (
-			CastToClient()->GetFilter(FilterHealOverTime) != FilterShowSelfOnly ||
-			CastToClient()->GetFilter(FilterHealOverTime) != FilterHide
-		) {
-			Message(Chat::NonMelee, "You have been healed for %d points of damage.", acthealed);
+		} else if (IsClient()) {
+			eqFilterMode heal_filter = CastToClient()->GetFilter(FilterHealOverTime);
+			if (heal_filter != FilterShowSelfOnly && heal_filter != FilterHide) {
+				// the buff's stored caster name (passed by HoT tics) restores
+				// attribution when the caster mob is gone
+				if (use_caster_name_fallback) {
+					MessageString(Chat::NonMelee, YOU_HEALED, caster_name_fallback, itoa(acthealed));
+				} else {
+					Message(Chat::NonMelee, "You have been healed for %d points of damage.", acthealed);
+				}
+			}
+		}
+
+		// third-person broadcast so other players' heals are parseable; no
+		// stock string ID exists, so this composes live-format text. For
+		// orphaned HoT tics the buff's stored caster name attributes the
+		// line and the heal target anchors delivery (like orphaned DoTs)
+		const char *heal_source_name =
+			caster ? caster->GetCleanName() :
+			use_caster_name_fallback ? caster_name_fallback : nullptr;
+
+		if (RuleB(Combat, HealBystanderMessages) && heal_source_name && caster != this && IsValidSpell(spell_id)) {
+			Mob *heal_anchor = caster ? caster : this;
+			if (is_buff_tic) {
+				entity_list.FilteredMessageCombatClose(
+					heal_anchor, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					Chat::NonMelee, FilterHealOverTime, /*skipped_mob*/ this,
+					"%s healed %s over time for %llu hit points by %s.",
+					heal_source_name, GetCleanName(),
+					(unsigned long long) acthealed, spells[spell_id].name);
+			} else {
+				entity_list.FilteredMessageCombatClose(
+					heal_anchor, this, /*skipsender*/ true, RuleI(Range, SpellMessages),
+					Chat::NonMelee, FilterSpellDamage, /*skipped_mob*/ this,
+					"%s healed %s for %llu hit points by %s.",
+					heal_source_name, GetCleanName(),
+					(unsigned long long) acthealed, spells[spell_id].name);
+			}
 		}
 	}
 
@@ -5334,8 +5447,9 @@ void Mob::TryPetCriticalHit(Mob *defender, DamageHitInfo &hit)
 			hit.damage_done += 5;
 			hit.damage_done = (hit.damage_done * critMod) / 100;
 
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false,  /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */
@@ -5412,8 +5526,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 
 				int slay_sex = GetGender() == Gender::Female ? FEMALE_SLAYUNDEAD : MALE_SLAYUNDEAD;
 
-				entity_list.FilteredMessageCloseString(
+				entity_list.FilteredMessageCombatString(
 					this, /* Sender */
+					defender, /* Other combat party */
 					false, /* Skip Sender */
 					RuleI(Range, CriticalDamage),
 					Chat::MeleeCrit, /* Type: 301 */
@@ -5504,8 +5619,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 						}
 						hit.damage_done = hit.damage_done * 200 / 100;
 
-						entity_list.FilteredMessageCloseString(
+						entity_list.FilteredMessageCombatString(
 							this, /* Sender */
+							defender, /* Other combat party */
 							false, /* Skip Sender */
 							RuleI(Range, CriticalDamage),
 							Chat::MeleeCrit, /* Type: 301 */
@@ -5533,8 +5649,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 				hit.damage_done += og_damage * 119 / 100;
 				LogCombat("Crip damage [{}]", hit.damage_done);
 
-				entity_list.FilteredMessageCloseString(
+				entity_list.FilteredMessageCombatString(
 					this, /* Sender */
+					defender, /* Other combat party */
 					false, /* Skip Sender */
 					RuleI(Range, CriticalDamage),
 					Chat::MeleeCrit, /* Type: 301 */
@@ -5563,8 +5680,9 @@ void Mob::TryCriticalHit(Mob *defender, DamageHitInfo &hit, ExtraAttackOptions *
 			}
 
 			/* Normal Critical hit message */
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false, /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */
@@ -5623,8 +5741,9 @@ bool Mob::TryFinishingBlow(Mob *defender, int64 &damage)
 			proc_chance >= zone->random.Int(1, 1000)
 		) {
 			/* Finishing Blow Critical Message */
-			entity_list.FilteredMessageCloseString(
+			entity_list.FilteredMessageCombatString(
 				this, /* Sender */
+				defender, /* Other combat party */
 				false, /* Skip Sender */
 				RuleI(Range, CriticalDamage),
 				Chat::MeleeCrit, /* Type: 301 */

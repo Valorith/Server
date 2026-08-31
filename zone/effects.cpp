@@ -28,6 +28,8 @@
 #include "zone/worldserver.h"
 #include "zone/zonedb.h"
 
+#include <algorithm>
+
 float Mob::GetActSpellRange(uint16 spell_id, float range)
 {
 	float extrange = 100;
@@ -147,8 +149,10 @@ int64 Mob::GetActSpellDamage(uint16 spell_id, int64 value, Mob* target) {
 				}
 			}
 
-			entity_list.FilteredMessageCloseString(
-				this, true, 100, Chat::SpellCrit, FilterSpellCrits,
+			entity_list.FilteredMessageCombatString(
+				this, target, true,
+				std::min(RuleI(Range, CriticalSpellMessages), RuleI(Range, MobCloseScanDistance)),
+				Chat::SpellCrit, FilterSpellCrits,
 				OTHER_CRIT_BLAST, nullptr, GetName(), itoa(-value));
 
 			if (IsClient()) {
@@ -502,9 +506,11 @@ int64 Mob::GetActSpellHealing(uint16 spell_id, int64 value, Mob* target, bool fr
 		}
 
 		if (critical_modifier > 1) {
-			entity_list.MessageCloseString(
-				this, true, 100, Chat::SpellCrit,
-				OTHER_CRIT_HEAL, GetName(), itoa(value));
+			entity_list.FilteredMessageCombatString(
+				this, target, true,
+				std::min(RuleI(Range, CriticalSpellMessages), RuleI(Range, MobCloseScanDistance)),
+				Chat::SpellCrit, FilterSpellCrits,
+				OTHER_CRIT_HEAL, nullptr, GetName(), itoa(value));
 
 			if (IsClient()) {
 				MessageString(Chat::SpellCrit, YOU_CRIT_HEAL, itoa(value));

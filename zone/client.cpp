@@ -1786,7 +1786,7 @@ void Client::Message(uint32 type, const char* message, ...) {
 		return;
 
 	va_list argptr;
-	auto buffer = new char[4096];
+	char buffer[4096];
 	va_start(argptr, message);
 	vsnprintf(buffer, 4096, message, argptr);
 	va_end(argptr);
@@ -1806,8 +1806,6 @@ void Client::Message(uint32 type, const char* message, ...) {
 	auto app = new EQApplicationPacket(OP_SpecialMesg, buf);
 
 	FastQueuePacket(&app);
-
-	safe_delete_array(buffer);
 }
 
 void Client::FilteredMessage(Mob *sender, uint32 type, eqFilterType filter, const char* message, ...) {
@@ -1815,7 +1813,7 @@ void Client::FilteredMessage(Mob *sender, uint32 type, eqFilterType filter, cons
 		return;
 
 	va_list argptr;
-	auto buffer = new char[4096];
+	char buffer[4096];
 	va_start(argptr, message);
 	vsnprintf(buffer, 4096, message, argptr);
 	va_end(argptr);
@@ -1835,8 +1833,6 @@ void Client::FilteredMessage(Mob *sender, uint32 type, eqFilterType filter, cons
 	auto app = new EQApplicationPacket(OP_SpecialMesg, buf);
 
 	FastQueuePacket(&app);
-
-	safe_delete_array(buffer);
 }
 
 void Client::SetMaxHP() {

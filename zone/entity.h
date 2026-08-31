@@ -28,6 +28,7 @@
 #include "zone/position.h"
 #include "zone/zonedump.h"
 
+#include <functional>
 #include <queue>
 #include <unordered_map>
 
@@ -427,6 +428,50 @@ public:
 	void	RemoveFromAutoXTargets(Mob* mob);
 	void	ReplaceWithTarget(Mob* pOldMob, Mob*pNewTarget);
 	void	QueueCloseClients(Mob* sender, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
+
+	// Combat log group/raid parity (Combat:GroupRaidCombatLogParity): resolves
+	// the parties to a combat event (sender/other, or their owners for pets)
+	// and invokes fn for each in-zone observer: group/raid members, or for an
+	// ungrouped client party (e.g. a solo pet owner away from its pet's fight)
+	// or ungrouped bot, that client or bot owner - beyond proximity_range;
+	// anyone within range already received (or filtered) the proximity copy.
+	// Combat-only; non-combat proximity messaging must keep using the
+	// existing Close functions.
+	Mob*	ResolveCombatLogAnchor(Mob* mob);
+	// proximity_inclusive mirrors the paired proximity send's range test so
+	// members exactly at range are neither dropped nor doubled:
+	// QueueCloseClients delivers strictly inside range (pass false),
+	// the Filtered*Close* string sends deliver at <= range (pass true).
+	// proximity_covers_all_in_range is true when the paired proximity send
+	// scans every client (FilteredMessageCloseString) and false when it only
+	// reaches the sender's close-mob cache (QueueCloseClients and the
+	// FilteredMessageCombatClose proximity pass). proximity_filter_allows_client
+	// mirrors the paired proximity send's client filter; if normal proximity
+	// reached but filtered out a grouped observer, parity should still deliver.
+	// proximity_covers_client can further refine whether the paired proximity
+	// send was actually visible for packet types such as OP_Damage, where the
+	// source and target may differ from sender.
+	void	ForEachCombatLogObserver(Mob* sender, Mob* other, float proximity_range, bool proximity_inclusive, bool proximity_covers_all_in_range, bool ignore_sender, Mob* skipped_mob, const std::function<bool(Client*)>& proximity_covers_client, const std::function<bool(Client*)>& proximity_filter_allows_client, eqFilterType observer_filter, const std::function<void(Client*)>& fn);
+	void	QueueCombatClients(Mob* sender, Mob* other, const EQApplicationPacket* app, bool ignore_sender=false, float distance=200, Mob* skipped_mob = 0, bool is_ack_required = true, eqFilterType filter=FilterNone);
+	void	FilteredMessageCombatString(
+		Mob* sender,
+		Mob* other,
+		bool skipsender,
+		float dist,
+		uint32 type,
+		eqFilterType filter,
+		uint32 string_id,
+		Mob* skip = 0,
+		const char* message1 = 0,
+		const char* message2 = 0,
+		const char* message3 = 0,
+		const char* message4 = 0,
+		const char* message5 = 0,
+		const char* message6 = 0,
+		const char* message7 = 0,
+		const char* message8 = 0,
+		const char* message9 = 0);
+	void	FilteredMessageCombatClose(Mob* sender, Mob* other, bool skipsender, float dist, uint32 type, eqFilterType filter, Mob* skipped_mob, const char* message, ...);
 	void	QueueClients(Mob* sender, const EQApplicationPacket* app, bool ignore_sender=false, bool ackreq = true);
 	void	QueueClientsStatus(Mob* sender, const EQApplicationPacket* app, bool ignore_sender = false, uint8 minstatus = AccountStatus::Player, uint8 maxstatus = AccountStatus::Player);
 	void	QueueClientsGuild(const EQApplicationPacket* app, uint32 guildeqid = 0);

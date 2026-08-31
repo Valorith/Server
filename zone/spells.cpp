@@ -4024,8 +4024,9 @@ bool Mob::SpellOnTarget(
 	}
 
 	// send to people in the area, ignoring caster and target
-	entity_list.QueueCloseClients(
+	entity_list.QueueCombatClients(
 		spelltar, /* Sender */
+		this, /* Other combat party (caster) */
 		action_packet, /* Packet */
 		true, /* Ignore Sender */
 		RuleI(Range, SpellMessages),
@@ -4709,8 +4710,9 @@ bool Mob::SpellOnTarget(
 		!IsAENukeSpell(spell_id) &&
 		!IsDamageSpell(spell_id)
 	) {
-		entity_list.QueueCloseClients(
+		entity_list.QueueCombatClients(
 			spelltar, /* Sender */
+			this, /* Other combat party (caster) */
 			&p, /* Packet */
 			false, /* Ignore Sender */
 			RuleI(Range, SpellMessages),
