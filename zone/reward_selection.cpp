@@ -375,10 +375,12 @@ bool ClientRewardSelection::SameSession(
 		left.reward_set.reward_set_id == right.reward_set.reward_set_id;
 }
 
-bool ClientRewardSelection::AssignWireOptionIds(ChannelState &state)
+bool ClientRewardSelection::AssignWireOptionIds(
+	std::vector<RewardSelectionSession> &sessions
+)
 {
 	uint64_t next_id = 1;
-	for (auto &session : state.sessions) {
+	for (auto &session : sessions) {
 		for (auto &option : session.reward_set.options) {
 			if (next_id > std::numeric_limits<uint32_t>::max()) {
 				return false;
@@ -444,32 +446,34 @@ bool ClientRewardSelection::Open(
 		return false;
 	}
 
+	auto next_sessions = state.sessions;
 	if (channel == RewardSelectionChannel::Preview) {
 		if (sessions.size() != 1) {
 			return false;
 		}
-		state.sessions = sessions;
+		next_sessions = sessions;
 	}
 	else {
 		for (const auto &session : sessions) {
 			const auto found = std::find_if(
-				state.sessions.begin(),
-				state.sessions.end(),
+				next_sessions.begin(),
+				next_sessions.end(),
 				[&session](const RewardSelectionSession &existing) {
 					return SameSession(existing, session);
 				}
 			);
-			if (found == state.sessions.end()) {
-				state.sessions.push_back(session);
+			if (found == next_sessions.end()) {
+				next_sessions.push_back(session);
 			}
 			else {
 				*found = session;
 			}
 		}
 	}
-	if (!AssignWireOptionIds(state)) {
+	if (!AssignWireOptionIds(next_sessions)) {
 		return false;
 	}
+	state.sessions = std::move(next_sessions);
 
 	++state.session_generation;
 	if (!state.session_generation) {
@@ -1119,7 +1123,11 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 		else {
 			client.AddEXP(policy.experience_source, amount);
 		}
-		return client.Save(2)
+		return database.SaveCharacterData(
+			&client,
+			&client.GetPP(),
+			&client.GetEPP()
+		)
 			? RewardSelectionDeliveryResult::Delivered
 			: RewardSelectionDeliveryResult::Ambiguous;
 	case RewardSelectionRewardType::AlternateAdvancement: {
@@ -1141,7 +1149,11 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 			return RewardSelectionDeliveryResult::RetryableFailure;
 		}
 		client.AddAAPoints(static_cast<uint32_t>(amount));
-		return client.Save(2)
+		return database.SaveCharacterData(
+			&client,
+			&client.GetPP(),
+			&client.GetEPP()
+		)
 			? RewardSelectionDeliveryResult::Delivered
 			: RewardSelectionDeliveryResult::Ambiguous;
 	}

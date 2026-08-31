@@ -2503,8 +2503,13 @@ void TaskManager::SyncClientSharedTaskRemoveLocalIfNotExists(Client *c, ClientTa
 				));
 			}
 
-			c->MessageString(Chat::Yellow, TaskStr::NO_LONGER_MEMBER_TITLE,
-							 m_task_data[removed_task_id].title.c_str());
+			if (removed_task) {
+				c->MessageString(
+					Chat::Yellow,
+					TaskStr::NO_LONGER_MEMBER_TITLE,
+					removed_task->title.c_str()
+				);
+			}
 
 			// remove as active task if doesn't exist
 			cts->m_active_shared_task = {};

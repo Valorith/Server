@@ -284,7 +284,9 @@ private:
 		const RewardSelectionSession &left,
 		const RewardSelectionSession &right
 	);
-	static bool AssignWireOptionIds(ChannelState &state);
+	static bool AssignWireOptionIds(
+		std::vector<RewardSelectionSession> &sessions
+	);
 	ChannelState &State(RewardSelectionChannel channel);
 	const ChannelState &State(RewardSelectionChannel channel) const;
 	bool SendSessions(RewardSelectionChannel channel);

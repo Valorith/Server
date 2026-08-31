@@ -99,8 +99,7 @@ std::optional<uint64_t> ReserveTaskRewardInstance(
 std::optional<uint64_t> EnsureTaskRewardInstance(
 	uint32_t character_id,
 	uint32_t task_id,
-	uint32_t accepted_time,
-	bool reuse_mismatched_time = false
+	uint32_t accepted_time
 )
 {
 	auto existing = database.QueryDatabase(fmt::format(
@@ -118,24 +117,11 @@ std::optional<uint64_t> EnsureTaskRewardInstance(
 		const auto occurrence_id = ParseTaskRewardUInt64(row[0]);
 		const auto persisted_accepted_time = ParseTaskRewardUInt32(row[1]);
 		if (occurrence_id && persisted_accepted_time != accepted_time) {
-			if (!reuse_mismatched_time) {
-				return ReserveTaskRewardInstance(
-					character_id,
-					task_id,
-					accepted_time
-				);
-			}
-			// Shared-task world coordination can normalize the acceptance time
-			// after the reservation is created. Keep the occurrence identity
-			// stable and update only its diagnostic timestamp.
-			database.QueryDatabase(fmt::format(
-				"UPDATE character_task_reward_instances "
-				"SET accepted_time = {} WHERE occurrence_id = {} "
-				"AND character_id = {}",
-				accepted_time,
-				occurrence_id,
-				character_id
-			));
+			return ReserveTaskRewardInstance(
+				character_id,
+				task_id,
+				accepted_time
+			);
 		}
 		return occurrence_id
 			? std::optional<uint64_t>(occurrence_id)
@@ -1841,10 +1827,19 @@ void ClientTaskState::RestorePendingRewardSelection(Client *client)
 		RewardSelectionChannel::Claimable,
 		RewardSelectionSource::Task,
 		0,
-		sessions.empty()
+		true
 	);
-	if (!sessions.empty()) {
-		selection.Open(sessions);
+	if (!sessions.empty() && !selection.Open(sessions)) {
+		for (const auto &session : sessions) {
+			if (!selection.Open(session)) {
+				LogError(
+					"Pending task reward [{}] for character [{}] could not be "
+					"opened",
+					session.pending_reward_id,
+					client->CharacterID()
+				);
+			}
+		}
 	}
 }
 
@@ -3070,34 +3065,6 @@ void ClientTaskState::AcceptNewTask(
 		return;
 	}
 
-	if (
-		task->reward_method == METHODSELECT &&
-		task->type == TaskType::Shared &&
-		!client->m_requesting_shared_task &&
-		m_active_shared_task.task_id == TASKSLOTEMPTY
-	) {
-		const auto reward_accepted_time = static_cast<uint32_t>(
-			std::max(static_cast<int>(accept_time), 0)
-		);
-		if (!ReserveTaskRewardInstance(
-			client->CharacterID(),
-			task_id,
-			reward_accepted_time
-		)) {
-			LogError(
-				"Failed to reserve selectable reward identity before shared "
-				"task [{}] coordination for character [{}]",
-				task_id,
-				client->CharacterID()
-			);
-			client->Message(
-				Chat::Red,
-				"This task's selectable reward could not be prepared. Please try again."
-			);
-			return;
-		}
-	}
-
 	// shared task
 	// intercept and pass to world first before processing normally
 	if (!client->m_requesting_shared_task && task->type == TaskType::Shared) {
@@ -3259,20 +3226,11 @@ void ClientTaskState::AcceptNewTask(
 		const auto reward_accepted_time = static_cast<uint32_t>(
 			std::max(static_cast<int>(accept_time), 0)
 		);
-		const auto occurrence_id =
-			task->type == TaskType::Shared &&
-				client->m_requesting_shared_task
-				? EnsureTaskRewardInstance(
-					client->CharacterID(),
-					task_id,
-					reward_accepted_time,
-					true
-				)
-				: ReserveTaskRewardInstance(
-					client->CharacterID(),
-					task_id,
-					reward_accepted_time
-				);
+		const auto occurrence_id = ReserveTaskRewardInstance(
+			client->CharacterID(),
+			task_id,
+			reward_accepted_time
+		);
 		if (!occurrence_id) {
 			LogError(
 				"Failed to reserve a selectable reward identity for task [{}], "
