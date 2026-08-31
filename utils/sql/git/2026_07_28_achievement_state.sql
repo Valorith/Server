@@ -179,7 +179,16 @@ SET @achievement_mutation_schema_sql = IF(
 				'mutation_id'
 	),
 	'SELECT 1',
-	'ALTER TABLE `character_achievement_pending_mutations` ADD PRIMARY KEY (`mutation_id`)'
+	IF(
+		EXISTS (
+			SELECT 1 FROM information_schema.statistics
+			WHERE table_schema = DATABASE()
+				AND table_name = 'character_achievement_pending_mutations'
+				AND index_name = 'PRIMARY'
+		),
+		'ALTER TABLE `character_achievement_pending_mutations` DROP PRIMARY KEY, ADD PRIMARY KEY (`mutation_id`)',
+		'ALTER TABLE `character_achievement_pending_mutations` ADD PRIMARY KEY (`mutation_id`)'
+	)
 );
 PREPARE achievement_mutation_schema_stmt FROM @achievement_mutation_schema_sql;
 EXECUTE achievement_mutation_schema_stmt;

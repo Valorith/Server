@@ -26,6 +26,8 @@
 namespace
 {
 
+constexpr uint32_t kAchievementRewardRetryIntervalMs = 1000;
+
 uint32_t ParseUInt32(const char *value)
 {
 	return value ? static_cast<uint32_t>(std::strtoul(value, nullptr, 10)) : 0;
@@ -1341,7 +1343,7 @@ void ClientAchievementState::PreservePendingNotificationsFrom(
 	ClientAchievementState &previous
 )
 {
-	if (!m_loaded || !SupportsPackets()) {
+	if (!m_loaded) {
 		return;
 	}
 
@@ -1384,6 +1386,13 @@ void ClientAchievementState::PreservePendingNotificationsFrom(
 		if (!remaining) {
 			m_notification_timer.Trigger();
 		}
+	}
+	if (
+		!m_pending_notifications.empty() &&
+		!m_notification_timer.Enabled() &&
+		(!SupportsPackets() || m_initial_sent)
+	) {
+		ArmCompletionNotificationTimer(true);
 	}
 }
 
@@ -2183,14 +2192,16 @@ bool ClientAchievementState::Reset(uint32_t achievement_id, bool reset_rewards)
 void ClientAchievementState::QueueCompletionNotification(uint32_t achievement_id)
 {
 	if (
-		!SupportsPackets() ||
 		!m_pending_notification_ids.insert(achievement_id).second
 	) {
 		return;
 	}
 
 	m_pending_notifications.push_back({achievement_id, m_client.GuildID()});
-	if (m_initial_sent && !m_notification_timer.Enabled()) {
+	if (
+		(!SupportsPackets() || m_initial_sent) &&
+		!m_notification_timer.Enabled()
+	) {
 		ArmCompletionNotificationTimer(true);
 	}
 }
@@ -2210,8 +2221,7 @@ void ClientAchievementState::ProcessPendingNotifications()
 {
 	if (
 		!m_loaded ||
-		!m_initial_sent ||
-		!SupportsPackets() ||
+		(SupportsPackets() && !m_initial_sent) ||
 		!m_client.Connected()
 	) {
 		return;
@@ -2256,6 +2266,13 @@ void ClientAchievementState::ProcessPendingRewards()
 	if (!RuleB(Achievements, GrantRewards)) {
 		m_pending_rewards.clear();
 		m_pending_reward_ids.clear();
+		m_reward_retry_timer.Disable();
+		return;
+	}
+	if (
+		m_reward_retry_timer.Enabled() &&
+		!m_reward_retry_timer.Check()
+	) {
 		return;
 	}
 
@@ -2266,27 +2283,28 @@ void ClientAchievementState::ProcessPendingRewards()
 		1,
 		64
 	));
-	for (size_t processed = 0; processed < per_tick_budget && !m_pending_rewards.empty(); ++processed) {
+	const auto queue_budget = std::min(per_tick_budget, m_pending_rewards.size());
+	bool retry_pending = false;
+	for (size_t processed = 0; processed < queue_budget; ++processed) {
 		const auto achievement_id = m_pending_rewards.front();
 		const auto &rewards = AchievementManager::Instance().Rewards(achievement_id);
-		const auto item_count = static_cast<size_t>(std::count_if(
-			rewards.begin(),
-			rewards.end(),
-			[](const AchievementReward &reward) {
-				return reward.reward_type == EQ::Achievements::RewardType::Item;
-			}
-		));
-		const auto cursor_size = static_cast<size_t>(m_client.GetInv().CursorSize());
-		if (
-			item_count > static_cast<size_t>(EQ::invbag::CURSOR_BAG_COUNT) ||
-			cursor_size > static_cast<size_t>(EQ::invbag::CURSOR_BAG_COUNT) - item_count
-		) {
-			return;
-		}
-
 		m_pending_rewards.pop_front();
 		m_pending_reward_ids.erase(achievement_id);
-		GrantRewardBatch(achievement_id, rewards);
+		if (
+			GrantRewardBatch(achievement_id, rewards) ==
+			RewardGrantResult::RetryableFailure
+		) {
+			// Requeue at the back so a blocked item grant cannot starve later
+			// achievements. queue_budget prevents same-tick retry loops.
+			QueueRewards(achievement_id);
+			retry_pending = true;
+		}
+	}
+	if (retry_pending) {
+		m_reward_retry_timer.Start(kAchievementRewardRetryIntervalMs);
+	}
+	else {
+		m_reward_retry_timer.Disable();
 	}
 }
 
@@ -2298,14 +2316,14 @@ ClientAchievementState::RewardGrantResult ClientAchievementState::GrantRewardBat
 	auto batch_result = RewardGrantResult::Delivered;
 	for (const auto &reward : rewards) {
 		const auto result = GrantTrackedReward(achievement_id, reward);
-		if (result == RewardGrantResult::Ambiguous) {
-			batch_result = RewardGrantResult::Ambiguous;
+		if (result == RewardGrantResult::RetryableFailure) {
+			batch_result = RewardGrantResult::RetryableFailure;
 		}
 		else if (
-			result == RewardGrantResult::RetryableFailure &&
+			result == RewardGrantResult::Ambiguous &&
 			batch_result == RewardGrantResult::Delivered
 		) {
-			batch_result = RewardGrantResult::RetryableFailure;
+			batch_result = RewardGrantResult::Ambiguous;
 		}
 	}
 	return batch_result;
@@ -2523,7 +2541,12 @@ void ClientAchievementState::SendCompletionNotification(
 			client->QueuePacket(packet);
 		}
 	}
-	m_client.FastQueuePacket(&packet);
+	if (SupportsPackets()) {
+		m_client.FastQueuePacket(&packet);
+	}
+	else {
+		safe_delete(packet);
+	}
 
 	if (
 		RuleB(Achievements, GuildMemberNotifications) &&

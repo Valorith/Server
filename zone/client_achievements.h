@@ -116,4 +116,5 @@ private:
 	Timer m_notification_timer;
 	std::deque<uint32_t> m_pending_rewards;
 	std::unordered_set<uint32_t> m_pending_reward_ids;
+	Timer m_reward_retry_timer;
 };

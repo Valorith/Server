@@ -976,12 +976,19 @@ bool Client::SaveAA()
 	const bool aa_saved =
 		v.empty() ||
 		CharacterAlternateAbilitiesRepository::ReplaceMany(database, v);
-	if (aa_saved) {
+	const bool expended_aa_saved =
+		aa_saved &&
+		database.QueryDatabase(fmt::format(
+			"UPDATE character_data SET e_expended_aa_spent = {} WHERE id = {}",
+			m_epp.expended_aa,
+			CharacterID()
+		)).Success();
+	if (expended_aa_saved) {
 		m_pp.aapoints_spent = aa_points_spent + m_epp.expended_aa;
 		UpdateAchievementForAA(GetAchievementAAPointsSpent());
 	}
 
-	return aa_saved;
+	return expended_aa_saved;
 }
 
 void Client::RemoveExpendedAA(int aa_id)
