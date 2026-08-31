@@ -28,7 +28,8 @@ Selectable task rewards are strictly opt-in and RoF2-only:
 
 - `tasks.reward_method = 3` (`METHODSELECT`) opts a task into the new path.
 - The task must also have one valid, enabled reward set. Invalid or incomplete
-  content is rejected and is not advertised to the client.
+  content, including a reward that references a missing item, is rejected and
+  is not advertised to the client.
 - Shared tasks remain on their existing reward methods. World may assign them
   to offline or older-client members whose Select Reward capability is
   unknown, so `METHODSELECT` shared-task sets fail closed until member
@@ -266,6 +267,11 @@ from `character_tasks`. The token distinguishes separate completions of a
 repeatable task even when they were accepted during the same second.
 `accepted_time` is copied into both rows only as diagnostic metadata and is not
 used as the reward identity.
+
+Creating that pending selection is also the at-most-once gate for the task's
+legacy cash, experience, faction, and reward-point fields. If task removal
+fails after completion and the server recovers the same pending selection,
+those ancillary fields are not replayed.
 
 Completion then opens a copied snapshot on the claimable lane. Client requests
 are handled as follows:

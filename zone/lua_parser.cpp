@@ -191,6 +191,8 @@ const char *LuaEvents[_LargestEventID] = {
 	"event_pet_command",
 	"event_charm_start",
 	"event_charm_end",
+	"event_spell_effect",
+	"event_spell_buff_tic",
 	"event_reward_select"
 };
 

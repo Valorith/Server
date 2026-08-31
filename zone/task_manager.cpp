@@ -379,6 +379,18 @@ bool TaskManager::LoadTaskRewardSets()
 			);
 			continue;
 		}
+		if (
+			reward_type == RewardSelectionRewardType::Item &&
+			!database.GetItem(static_cast<uint32_t>(raw_data_id))
+		) {
+			staged->second.invalid = true;
+			LogError(
+				"Enabled task reward [{}] references missing item [{}]",
+				reward_id,
+				raw_data_id
+			);
+			continue;
+		}
 
 		StagedTaskReward reward;
 		reward.task_id = task_id;

@@ -1230,6 +1230,7 @@ bool ClientTaskState::RewardTask(
 	}
 
 	std::optional<RewardSelectionSession> task_reward_session;
+	bool grant_ancillary_rewards = true;
 	if (ti->reward_method == METHODSELECT) {
 		const auto task_id = static_cast<uint32_t>(client_task.task_id);
 		const auto reward_set = TaskManager::Instance()
@@ -1282,8 +1283,9 @@ bool ClientTaskState::RewardTask(
 			return false;
 		}
 
+		const bool pending_selection_created = pending.RowsAffected() != 0;
 		PersistedTaskRewardSelection persisted;
-		if (pending.RowsAffected() != 0) {
+		if (pending_selection_created) {
 			const auto pending_reward_id = pending.LastInsertedID();
 			if (
 				!pending_reward_id ||
@@ -1341,6 +1343,13 @@ bool ClientTaskState::RewardTask(
 			return false;
 		}
 
+		// The durable selection insert is also the at-most-once gate for the
+		// task's legacy cash, experience, faction, and reward-point fields. A
+		// completed task can remain active when its later removal fails; replaying
+		// those side effects while recovering the same pending selection would
+		// duplicate them.
+		grant_ancillary_rewards = pending_selection_created;
+
 		const bool can_present =
 			(persisted.status == TaskRewardSelectionStatus::Pending &&
 				!persisted.selected_option_id) ||
@@ -1368,7 +1377,7 @@ bool ClientTaskState::RewardTask(
 	client_task.was_rewarded = true;
 	client_task.updated = true;
 
-	if (!ti->completion_emote.empty()) {
+	if (grant_ancillary_rewards && !ti->completion_emote.empty()) {
 		c->Message(Chat::Yellow, ti->completion_emote.c_str());
 	}
 
@@ -1407,7 +1416,11 @@ bool ClientTaskState::RewardTask(
 	}
 
 	// just use normal NPC faction ID stuff
-	if (ti->faction_reward && ti->faction_amount == 0) {
+	if (
+		grant_ancillary_rewards &&
+		ti->faction_reward &&
+		ti->faction_amount == 0
+	) {
 		zone->LoadNPCFaction(ti->faction_reward);
 		c->SetFactionLevel(
 			c->CharacterID(),
@@ -1416,7 +1429,11 @@ bool ClientTaskState::RewardTask(
 			c->GetBaseRace(),
 			c->GetDeity()
 		);
-	} else if (ti->faction_reward != 0 && ti->faction_amount != 0) {
+	} else if (
+		grant_ancillary_rewards &&
+		ti->faction_reward != 0 &&
+		ti->faction_amount != 0
+	) {
 		// faction_reward is a faction ID
 		zone->LoadFactionAssociation(ti->faction_reward);
 		c->RewardFaction(
@@ -1425,7 +1442,7 @@ bool ClientTaskState::RewardTask(
 		);
 	}
 
-	if (ti->cash_reward) {
+	if (grant_ancillary_rewards && ti->cash_reward) {
 		int platinum, gold, silver, copper;
 
 		copper = ti->cash_reward;
@@ -1440,20 +1457,22 @@ bool ClientTaskState::RewardTask(
 		c->CashReward(copper, silver, gold, platinum);
 	}
 
-	auto experience_reward = ti->experience_reward;
-	if (experience_reward > 0) {
-		c->AddEXP(ExpSource::Task, experience_reward);
-	} else if (experience_reward < 0) {
-		uint32 pos_reward = experience_reward * -1;
-		// Minimal Level Based Exp reward Setting is 101 (1% exp at level 1)
-		if (pos_reward > 100 && pos_reward < 25700) {
-			uint8 max_level   = pos_reward / 100;
-			uint8 exp_percent = pos_reward - (max_level * 100);
-			c->AddLevelBasedExp(ExpSource::Task, exp_percent, max_level, RuleB(TaskSystem, ExpRewardsIgnoreLevelBasedEXPMods));
+	if (grant_ancillary_rewards) {
+		auto experience_reward = ti->experience_reward;
+		if (experience_reward > 0) {
+			c->AddEXP(ExpSource::Task, experience_reward);
+		} else if (experience_reward < 0) {
+			uint32 pos_reward = experience_reward * -1;
+			// Minimal Level Based Exp reward Setting is 101 (1% exp at level 1)
+			if (pos_reward > 100 && pos_reward < 25700) {
+				uint8 max_level   = pos_reward / 100;
+				uint8 exp_percent = pos_reward - (max_level * 100);
+				c->AddLevelBasedExp(ExpSource::Task, exp_percent, max_level, RuleB(TaskSystem, ExpRewardsIgnoreLevelBasedEXPMods));
+			}
 		}
 	}
 
-	if (ti->reward_points > 0) {
+	if (grant_ancillary_rewards && ti->reward_points > 0) {
 		if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(RADIANT_CRYSTAL))) {
 			c->AddRadiantCrystals(ti->reward_points);
 		} else if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(EBON_CRYSTAL))) {

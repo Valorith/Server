@@ -213,11 +213,9 @@ const char* QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_PET_COMMAND",
 	"EVENT_CHARM_START",
 	"EVENT_CHARM_END",
-	"EVENT_REWARD_SELECT",
-
-	// Add new events before these or Lua crashes
 	"EVENT_SPELL_EFFECT_BOT",
-	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT"
+	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT",
+	"EVENT_REWARD_SELECT"
 };
 
 PerlembParser* PerlembParser::instance_ = nullptr;
