@@ -263,6 +263,7 @@ SELECT
 	1,
 	@example_title_reward_description,
 	1
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @example_title_set IS NOT NULL
@@ -372,6 +373,7 @@ SELECT
 	1,
 	0,
 	1
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_title_reward_id IS NOT NULL
@@ -400,6 +402,7 @@ SELECT
 	0,
 	0,
 	1
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_chest_reward_id IS NOT NULL
@@ -428,6 +431,7 @@ SELECT
 	0,
 	0,
 	1
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_alternate_reward_id IS NOT NULL
@@ -444,6 +448,7 @@ SELECT
 	@omenslayer_reward_set_id,
 	4000000000,
 	@omenslayer_title_reward_id
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_title_reward_id IS NOT NULL
@@ -457,6 +462,7 @@ SELECT
 	@omenslayer_reward_set_id,
 	4000000001,
 	@omenslayer_chest_reward_id
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_chest_reward_id IS NOT NULL
@@ -470,6 +476,7 @@ SELECT
 	@omenslayer_reward_set_id,
 	4000000002,
 	@omenslayer_alternate_reward_id
+FROM DUAL
 WHERE
 	@omenslayer_id IS NOT NULL
 	AND @omenslayer_alternate_reward_id IS NOT NULL
