@@ -103,6 +103,16 @@ void handle_npc_popup(
 	std::vector<std::any> *extra_pointers
 );
 
+void handle_npc_reward_select(
+	QuestInterface *parse,
+	lua_State* L,
+	NPC* npc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
 void handle_npc_waypoint(
 	QuestInterface *parse,
 	lua_State* L,
@@ -376,6 +386,15 @@ void handle_player_signal(
 );
 
 void handle_player_popup_response(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_player_reward_select(
 	QuestInterface *parse,
 	lua_State* L,
 	Client* client,

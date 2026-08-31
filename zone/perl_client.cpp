@@ -8,6 +8,7 @@
 #include "zone/expedition_config.h"
 #include "zone/expedition_db.h"
 #include "zone/embperl.h"
+#include "zone/reward_selection.h"
 #include "zone/titles.h"
 
 #include <initializer_list>
@@ -2753,6 +2754,215 @@ int Perl_Client_GetSpellDamage(Client* self)
 	return self->GetSpellDmg();
 }
 
+bool Perl_Client_CreateRewardSelection(
+	Client* self,
+	uint32 selection_id,
+	const char* title
+)
+{
+	return self->GetRewardSelection().BeginScriptOffer(selection_id, title);
+}
+
+bool Perl_Client_AddRewardSelectionOption(
+	Client* self,
+	uint32 option_id,
+	const char* label,
+	bool common_to_all
+)
+{
+	return self->GetRewardSelection().AddScriptOption(
+		option_id,
+		label,
+		common_to_all
+	);
+}
+
+bool Perl_Client_AddRewardSelectionOption(
+	Client* self,
+	uint32 option_id,
+	const char* label
+)
+{
+	return Perl_Client_AddRewardSelectionOption(
+		self,
+		option_id,
+		label,
+		false
+	);
+}
+
+bool Perl_Client_AddRewardSelectionReward(
+	Client* self,
+	uint32 option_id,
+	uint32 reward_type,
+	uint32 data_id,
+	uint64 amount,
+	const char* description
+)
+{
+	if (
+		reward_type >
+		static_cast<uint32>(RewardSelectionRewardType::Title)
+	) {
+		return false;
+	}
+
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		static_cast<RewardSelectionRewardType>(reward_type),
+		data_id,
+		amount,
+		description
+	);
+}
+
+bool Perl_Client_AddRewardSelectionReward(
+	Client* self,
+	uint32 option_id,
+	uint32 reward_type,
+	uint32 data_id,
+	uint64 amount
+)
+{
+	return Perl_Client_AddRewardSelectionReward(
+		self,
+		option_id,
+		reward_type,
+		data_id,
+		amount,
+		""
+	);
+}
+
+bool Perl_Client_AddRewardSelectionItem(
+	Client* self,
+	uint32 option_id,
+	uint32 item_id,
+	uint32 quantity
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Item,
+		item_id,
+		quantity
+	);
+}
+
+bool Perl_Client_AddRewardSelectionItem(
+	Client* self,
+	uint32 option_id,
+	uint32 item_id
+)
+{
+	return Perl_Client_AddRewardSelectionItem(self, option_id, item_id, 1);
+}
+
+bool Perl_Client_AddRewardSelectionExperience(
+	Client* self,
+	uint32 option_id,
+	uint64 amount,
+	bool normal_only
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Experience,
+		static_cast<uint32>(
+			normal_only
+				? RewardSelectionExperienceMode::NormalOnly
+				: RewardSelectionExperienceMode::Default
+		),
+		amount
+	);
+}
+
+bool Perl_Client_AddRewardSelectionExperience(
+	Client* self,
+	uint32 option_id,
+	uint64 amount
+)
+{
+	return Perl_Client_AddRewardSelectionExperience(
+		self,
+		option_id,
+		amount,
+		false
+	);
+}
+
+bool Perl_Client_AddRewardSelectionAA(
+	Client* self,
+	uint32 option_id,
+	uint64 points
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::AlternateAdvancement,
+		0,
+		points
+	);
+}
+
+bool Perl_Client_AddRewardSelectionMoney(
+	Client* self,
+	uint32 option_id,
+	uint64 copper
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Copper,
+		0,
+		copper
+	);
+}
+
+bool Perl_Client_AddRewardSelectionAlternateCurrency(
+	Client* self,
+	uint32 option_id,
+	uint32 currency_id,
+	uint64 amount
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::AlternateCurrency,
+		currency_id,
+		amount
+	);
+}
+
+bool Perl_Client_AddRewardSelectionTitle(
+	Client* self,
+	uint32 option_id,
+	uint32 title_id
+)
+{
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Title,
+		title_id,
+		1
+	);
+}
+
+bool Perl_Client_OpenRewardSelection(Client* self)
+{
+	return self->GetRewardSelection().OpenScriptOffer();
+}
+
+void Perl_Client_ClearRewardSelection(Client* self)
+{
+	self->GetRewardSelection().ClearScriptOffer();
+}
+
+bool Perl_Client_HasRewardSelection(Client* self)
+{
+	return self->GetRewardSelection().HasScriptOffer();
+}
+
 void Perl_Client_TaskSelector(Client* self, perl::array task_ids)
 {
 	std::vector<int> tasks;
@@ -3682,6 +3892,18 @@ void perl_register_client()
 	package.add("AddPlatinum", (void(*)(Client*, uint32, bool))&Perl_Client_AddPlatinum);
 	package.add("AddPVPPoints", &Perl_Client_AddPVPPoints);
 	package.add("AddRadiantCrystals", &Perl_Client_AddRadiantCrystals);
+	package.add("AddRewardSelectionAA", &Perl_Client_AddRewardSelectionAA);
+	package.add("AddRewardSelectionAlternateCurrency", &Perl_Client_AddRewardSelectionAlternateCurrency);
+	package.add("AddRewardSelectionExperience", (bool(*)(Client*, uint32, uint64))&Perl_Client_AddRewardSelectionExperience);
+	package.add("AddRewardSelectionExperience", (bool(*)(Client*, uint32, uint64, bool))&Perl_Client_AddRewardSelectionExperience);
+	package.add("AddRewardSelectionItem", (bool(*)(Client*, uint32, uint32))&Perl_Client_AddRewardSelectionItem);
+	package.add("AddRewardSelectionItem", (bool(*)(Client*, uint32, uint32, uint32))&Perl_Client_AddRewardSelectionItem);
+	package.add("AddRewardSelectionMoney", &Perl_Client_AddRewardSelectionMoney);
+	package.add("AddRewardSelectionOption", (bool(*)(Client*, uint32, const char*))&Perl_Client_AddRewardSelectionOption);
+	package.add("AddRewardSelectionOption", (bool(*)(Client*, uint32, const char*, bool))&Perl_Client_AddRewardSelectionOption);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, uint32, uint32, uint64))&Perl_Client_AddRewardSelectionReward);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, uint32, uint32, uint64, const char*))&Perl_Client_AddRewardSelectionReward);
+	package.add("AddRewardSelectionTitle", &Perl_Client_AddRewardSelectionTitle);
 	package.add("AddSkill", &Perl_Client_AddSkill);
 	package.add("Admin", &Perl_Client_Admin);
 	package.add("ApplySpell", (void(*)(Client*, int))&Perl_Client_ApplySpell);
@@ -3731,6 +3953,7 @@ void perl_register_client()
 	package.add("ClearCompassMark", &Perl_Client_ClearCompassMark);
 	package.add("ClearAccountFlag", &Perl_Client_ClearAccountFlag);
 	package.add("ClearPEQZoneFlag", &Perl_Client_ClearPEQZoneFlag);
+	package.add("ClearRewardSelection", &Perl_Client_ClearRewardSelection);
 	package.add("ClearXTargets", &Perl_Client_ClearXTargets);
 	package.add("ClearZoneFlag", &Perl_Client_ClearZoneFlag);
 	package.add("CompleteTask", &Perl_Client_CompleteTask);
@@ -3753,6 +3976,7 @@ void perl_register_client()
 	package.add("CheckExpedition", (perl::reference(*)(Client*, std::string))&Perl_Client_CheckExpedition);
 	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, uint32_t))&Perl_Client_GetExpeditionTemplate);
 	package.add("GetExpeditionTemplate", (perl::reference(*)(Client*, std::string))&Perl_Client_GetExpeditionTemplate);
+	package.add("CreateRewardSelection", &Perl_Client_CreateRewardSelection);
 	package.add("CreateTaskDynamicZone", &Perl_Client_CreateTaskDynamicZone);
 	package.add("CanCreateExpedition", &Perl_Client_CanCreateExpedition);
 	package.add("DecreaseByID", &Perl_Client_DecreaseByID);
@@ -3962,6 +4186,7 @@ void perl_register_client()
 	package.add("HasItemOnCorpse", &Perl_Client_HasItemOnCorpse);
 	package.add("HasPEQZoneFlag", &Perl_Client_HasPEQZoneFlag);
 	package.add("HasRecipeLearned", &Perl_Client_HasRecipeLearned);
+	package.add("HasRewardSelection", &Perl_Client_HasRewardSelection);
 	package.add("HasSkill", &Perl_Client_HasSkill);
 	package.add("HasSpellScribed", &Perl_Client_HasSpellScribed);
 	package.add("HasZoneFlag", &Perl_Client_HasZoneFlag);
@@ -4045,6 +4270,7 @@ void perl_register_client()
 	package.add("NukeItem", (uint32_t(*)(Client*, uint32))&Perl_Client_NukeItem);
 	package.add("NukeItem", (uint32_t(*)(Client*, uint32, uint8))&Perl_Client_NukeItem);
 	package.add("OpenLFGuildWindow", &Perl_Client_OpenLFGuildWindow);
+	package.add("OpenRewardSelection", &Perl_Client_OpenRewardSelection);
 	package.add("PlayMP3", &Perl_Client_PlayMP3);
 	package.add("Popup2", (void(*)(Client*, const char*, const char*))&Perl_Client_Popup2);
 	package.add("Popup2", (void(*)(Client*, const char*, const char*, uint32))&Perl_Client_Popup2);

@@ -13,6 +13,8 @@ public:
 	RewardSelectionTest()
 	{
 		TEST_ADD(RewardSelectionTest::DisplayLayout);
+		TEST_ADD(RewardSelectionTest::AdditionalRewardTypesLayout);
+		TEST_ADD(RewardSelectionTest::ValidationAndFailedClaimLayout);
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 	}
 
@@ -200,6 +202,149 @@ private:
 		TEST_ASSERT(reader.Read<uint32_t>() == 700);
 		TEST_ASSERT(reader.Read<uint32_t>() == 702);
 		TEST_ASSERT(reader.Read<uint8_t>() == 1);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
+		TEST_ASSERT(reader.position == reader.size);
+	}
+
+	void AdditionalRewardTypesLayout()
+	{
+		using namespace EQ::RewardSelection;
+
+		DisplaySet reward_set;
+		reward_set.pending_reward_id = 91;
+		reward_set.reward_set_id = 92;
+		reward_set.title = "Scripted rewards";
+
+		DisplaySubset choice;
+		choice.subset_id = 93;
+		choice.option_label = "Mixed option";
+
+		DisplayEntry text;
+		text.wire_type = WireType::Text;
+		text.fields = {1, 2};
+		text.description = "Title";
+		choice.entries.push_back(text);
+
+		DisplayEntry experience;
+		experience.wire_type = WireType::Experience;
+		experience.fields = {3, 4};
+		experience.description = "Experience";
+		choice.entries.push_back(experience);
+
+		DisplayEntry ability;
+		ability.wire_type = WireType::AlternateAdvancementAbility;
+		ability.fields = {5, 6};
+		ability.description = "Ability";
+		ability.values = {7, 8, 0, 0};
+		choice.entries.push_back(ability);
+
+		DisplayEntry points;
+		points.wire_type = WireType::GenericPoints;
+		points.fields = {9, 10};
+		points.description = "Currency";
+		points.values = {11, 12, 13, 14};
+		choice.entries.push_back(points);
+
+		reward_set.subsets.push_back(choice);
+
+		auto packet = SerializeDisplay(&reward_set);
+		Reader reader{packet.buffer(), packet.size()};
+		TEST_ASSERT(reader.Read<uint32_t>() == ActionList);
+		TEST_ASSERT(reader.Read<uint8_t>() == 1);
+		TEST_ASSERT(reader.Read<uint32_t>() == 91);
+		TEST_ASSERT(reader.Read<uint32_t>() == 92);
+		TEST_ASSERT(reader.ReadString() == "Scripted rewards");
+		TEST_ASSERT(reader.Read<uint32_t>() == 0x3f800000);
+		TEST_ASSERT(reader.Read<uint32_t>() == 92);
+		TEST_ASSERT(reader.Read<int32_t>() == 1);
+		TEST_ASSERT(reader.Read<uint32_t>() == 93);
+		TEST_ASSERT(reader.Read<uint32_t>() == 4);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
+		TEST_ASSERT(reader.ReadString() == "Mixed option");
+
+		TEST_ASSERT(
+			reader.Read<uint32_t>() == static_cast<uint32_t>(WireType::Text)
+		);
+		TEST_ASSERT(reader.Read<uint32_t>() == 1);
+		TEST_ASSERT(reader.Read<uint32_t>() == 2);
+		TEST_ASSERT(reader.ReadString() == "Title");
+
+		TEST_ASSERT(
+			reader.Read<uint32_t>() ==
+			static_cast<uint32_t>(WireType::Experience)
+		);
+		TEST_ASSERT(reader.Read<uint32_t>() == 3);
+		TEST_ASSERT(reader.Read<uint32_t>() == 4);
+		TEST_ASSERT(reader.ReadString() == "Experience");
+
+		TEST_ASSERT(
+			reader.Read<uint32_t>() ==
+			static_cast<uint32_t>(WireType::AlternateAdvancementAbility)
+		);
+		TEST_ASSERT(reader.Read<uint32_t>() == 5);
+		TEST_ASSERT(reader.Read<uint32_t>() == 6);
+		TEST_ASSERT(reader.ReadString() == "Ability");
+		TEST_ASSERT(reader.Read<uint32_t>() == 7);
+		TEST_ASSERT(reader.Read<uint32_t>() == 8);
+
+		TEST_ASSERT(
+			reader.Read<uint32_t>() ==
+			static_cast<uint32_t>(WireType::GenericPoints)
+		);
+		TEST_ASSERT(reader.Read<uint32_t>() == 9);
+		TEST_ASSERT(reader.Read<uint32_t>() == 10);
+		TEST_ASSERT(reader.ReadString() == "Currency");
+		TEST_ASSERT(reader.Read<uint32_t>() == 11);
+		TEST_ASSERT(reader.Read<uint32_t>() == 12);
+		TEST_ASSERT(reader.Read<uint32_t>() == 13);
+		TEST_ASSERT(reader.Read<uint32_t>() == 14);
+		TEST_ASSERT(reader.position == reader.size);
+	}
+
+	void ValidationAndFailedClaimLayout()
+	{
+		using namespace EQ::RewardSelection;
+
+		DisplaySet reward_set;
+		reward_set.pending_reward_id = 1;
+		reward_set.reward_set_id = 2;
+		reward_set.title = "Validation";
+
+		DisplaySubset choice;
+		choice.subset_id = 3;
+		choice.option_label = "Choice";
+		reward_set.subsets.push_back(choice);
+
+		auto invalid = reward_set;
+		invalid.pending_reward_id = 0;
+		TEST_THROWS(SerializeDisplay(&invalid), std::invalid_argument);
+
+		invalid = reward_set;
+		invalid.reward_set_id = 0;
+		TEST_THROWS(SerializeDisplay(&invalid), std::invalid_argument);
+
+		invalid = reward_set;
+		invalid.subsets.front().subset_id = 0;
+		TEST_THROWS(SerializeDisplay(&invalid), std::invalid_argument);
+
+		invalid = reward_set;
+		invalid.subsets.push_back(choice);
+		TEST_THROWS(SerializeDisplay(&invalid), std::invalid_argument);
+		TEST_THROWS(
+			SerializeDisplays({reward_set, invalid}),
+			std::invalid_argument
+		);
+
+		auto failed = SerializeClaimReply(41, 42, 43, false);
+		Reader reader{failed.buffer(), failed.size()};
+		TEST_ASSERT(reader.Read<uint32_t>() == ActionClaim);
+		TEST_ASSERT(reader.Read<uint32_t>() == 41);
+		TEST_ASSERT(reader.Read<uint32_t>() == 42);
+		TEST_ASSERT(reader.Read<uint32_t>() == 43);
+		TEST_ASSERT(reader.Read<uint8_t>() == 0);
 		TEST_ASSERT(reader.Read<uint8_t>() == 0);
 		TEST_ASSERT(reader.Read<uint8_t>() == 0);
 		TEST_ASSERT(reader.Read<uint8_t>() == 0);

@@ -6928,7 +6928,8 @@ luabind::scope lua_register_events() {
 			luabind::value("read", static_cast<int>(EVENT_READ_ITEM)),
 			luabind::value("pet_command", static_cast<int>(EVENT_PET_COMMAND)),
 			luabind::value("charm_start", static_cast<int>(EVENT_CHARM_START)),
-			luabind::value("charm_end", static_cast<int>(EVENT_CHARM_END))
+			luabind::value("charm_end", static_cast<int>(EVENT_CHARM_END)),
+			luabind::value("reward_select", static_cast<int>(EVENT_REWARD_SELECT))
 		)];
 }
 

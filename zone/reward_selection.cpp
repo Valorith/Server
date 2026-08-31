@@ -4,6 +4,7 @@
 #include "../common/reward_selection.h"
 #include "../common/rulesys.h"
 #include "client.h"
+#include "questmgr.h"
 #include "zone.h"
 #include "zonedb.h"
 
@@ -145,11 +146,184 @@ EmuOpcode RewardSelectionOpcode(RewardSelectionChannel channel)
 		: OP_RewardSelection;
 }
 
+uint64_t ScriptOriginKey()
+{
+	const auto owner = quest_manager.GetOwner();
+	if (!owner || !owner->IsNPC()) {
+		return 0;
+	}
+
+	return
+		(static_cast<uint64_t>(owner->GetNPCTypeID()) << 32) |
+		owner->GetID();
+}
+
 } // namespace
 
 ClientRewardSelection::ClientRewardSelection(Client &client)
 	: m_client(client)
 {
+}
+
+bool ClientRewardSelection::BeginScriptOffer(
+	uint32_t selection_id,
+	const std::string &title
+)
+{
+	if (
+		!SupportsRewardSelection(m_client) ||
+		!selection_id ||
+		m_claimable_channel.claim_in_flight
+	) {
+		return false;
+	}
+
+	ClearScriptOffer();
+
+	RewardSelectionSession session;
+	session.source.source = RewardSelectionSource::General;
+	session.source.source_id = selection_id;
+	session.source.source_instance_id = ScriptOriginKey();
+	session.channel = RewardSelectionChannel::Claimable;
+	session.pending_reward_id = selection_id;
+	session.reward_set.reward_set_id = selection_id;
+	session.reward_set.title = title;
+	m_script_draft = std::move(session);
+	m_script_next_entry_id = 1;
+	return true;
+}
+
+bool ClientRewardSelection::AddScriptOption(
+	uint32_t option_id,
+	const std::string &label,
+	bool common_to_all
+)
+{
+	if (!m_script_draft || !option_id) {
+		return false;
+	}
+
+	const auto duplicate = std::any_of(
+		m_script_draft->reward_set.options.begin(),
+		m_script_draft->reward_set.options.end(),
+		[option_id](const RewardSelectionOption &option) {
+			return option.option_id == option_id;
+		}
+	);
+	if (duplicate) {
+		return false;
+	}
+
+	RewardSelectionOption option;
+	option.option_id = option_id;
+	option.sequence = static_cast<uint32_t>(
+		m_script_draft->reward_set.options.size()
+	);
+	option.label = label;
+	option.common_to_all = common_to_all;
+	m_script_draft->reward_set.options.emplace_back(std::move(option));
+	return true;
+}
+
+bool ClientRewardSelection::AddScriptReward(
+	uint32_t option_id,
+	RewardSelectionRewardType type,
+	uint32_t data_id,
+	uint64_t amount,
+	const std::string &description
+)
+{
+	if (
+		!m_script_draft ||
+		!option_id ||
+		!amount ||
+		m_script_next_entry_id > std::numeric_limits<uint32_t>::max() ||
+		static_cast<uint8_t>(type) >
+			static_cast<uint8_t>(RewardSelectionRewardType::Title) ||
+		((type == RewardSelectionRewardType::Item ||
+			type == RewardSelectionRewardType::AlternateCurrency ||
+			type == RewardSelectionRewardType::Title) &&
+			!data_id) ||
+		(type == RewardSelectionRewardType::Experience &&
+			data_id > static_cast<uint32_t>(
+				RewardSelectionExperienceMode::NormalOnly
+			))
+	) {
+		return false;
+	}
+
+	const auto option = std::find_if(
+		m_script_draft->reward_set.options.begin(),
+		m_script_draft->reward_set.options.end(),
+		[option_id](const RewardSelectionOption &candidate) {
+			return candidate.option_id == option_id;
+		}
+	);
+	if (option == m_script_draft->reward_set.options.end()) {
+		return false;
+	}
+
+	RewardSelectionReward reward;
+	reward.entry_id = m_script_next_entry_id++;
+	reward.type = type;
+	reward.data_id = data_id;
+	reward.amount = amount;
+	reward.description = description;
+	option->rewards.emplace_back(std::move(reward));
+	return true;
+}
+
+bool ClientRewardSelection::OpenScriptOffer()
+{
+	if (!m_script_draft || m_claimable_channel.claim_in_flight) {
+		return false;
+	}
+
+	const auto session = *m_script_draft;
+	ClearSource(
+		RewardSelectionChannel::Claimable,
+		RewardSelectionSource::General,
+		0,
+		false
+	);
+	if (!Open(session)) {
+		return false;
+	}
+
+	m_script_draft.reset();
+	m_script_next_entry_id = 1;
+	return true;
+}
+
+void ClientRewardSelection::ClearScriptOffer(bool notify_client)
+{
+	m_script_draft.reset();
+	m_script_next_entry_id = 1;
+	if (m_claimable_channel.claim_in_flight) {
+		return;
+	}
+
+	ClearSource(
+		RewardSelectionChannel::Claimable,
+		RewardSelectionSource::General,
+		0,
+		notify_client
+	);
+}
+
+bool ClientRewardSelection::HasScriptOffer() const
+{
+	if (m_script_draft) {
+		return true;
+	}
+
+	return std::any_of(
+		m_claimable_channel.sessions.begin(),
+		m_claimable_channel.sessions.end(),
+		[](const RewardSelectionSession &session) {
+			return session.source.source == RewardSelectionSource::General;
+		}
+	);
 }
 
 bool ClientRewardSelection::ValidateSession(
@@ -420,6 +594,8 @@ void ClientRewardSelection::ClearSource(
 
 void ClientRewardSelection::ClearAll(bool notify_client)
 {
+	m_script_draft.reset();
+	m_script_next_entry_id = 1;
 	Clear(RewardSelectionChannel::Claimable, notify_client);
 	Clear(RewardSelectionChannel::Preview, notify_client);
 }

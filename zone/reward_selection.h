@@ -75,7 +75,8 @@ struct RewardSelectionSet {
 struct RewardSelectionSourceKey {
 	RewardSelectionSource source = RewardSelectionSource::Unknown;
 	uint64_t              source_id = 0;
-	// Distinguishes repeatable occurrences; achievements normally use zero.
+	// Distinguishes repeatable occurrences; scripted General offers encode
+	// their originating NPC identity here.
 	uint64_t              source_instance_id = 0;
 };
 
@@ -150,6 +151,27 @@ public:
 		bool notify_client = true
 	);
 	void ClearAll(bool notify_client = true);
+
+	// Quest-script offers are transient, RoF2-only claimable sessions. Scripts
+	// describe the display here and grant the selected reward from
+	// EVENT_REWARD_SELECT before acknowledging the claim.
+	bool BeginScriptOffer(uint32_t selection_id, const std::string &title);
+	bool AddScriptOption(
+		uint32_t option_id,
+		const std::string &label,
+		bool common_to_all = false
+	);
+	bool AddScriptReward(
+		uint32_t option_id,
+		RewardSelectionRewardType type,
+		uint32_t data_id,
+		uint64_t amount,
+		const std::string &description = {}
+	);
+	bool OpenScriptOffer();
+	void ClearScriptOffer(bool notify_client = true);
+	bool HasScriptOffer() const;
+
 	bool HasActiveSession(RewardSelectionChannel channel) const;
 	const RewardSelectionSession *ActiveSession(
 		RewardSelectionChannel channel
@@ -229,4 +251,6 @@ private:
 	Client       &m_client;
 	ChannelState  m_claimable_channel;
 	ChannelState  m_preview_channel;
+	std::optional<RewardSelectionSession> m_script_draft;
+	uint64_t m_script_next_entry_id = 1;
 };

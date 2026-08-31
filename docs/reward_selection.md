@@ -47,6 +47,136 @@ selectable set may also contain coin, experience, AA, currency, or title
 entries; leave the corresponding legacy field empty when the same grant is in
 the set so content does not award it twice.
 
+## Scripted offers
+
+Perl and Lua quests can build a transient, manual offer on the claimable lane.
+Every builder method returns false when its input or the client is invalid.
+The feature is RoF2-only, so scripts should check the return values and provide
+another interaction for older clients when needed.
+
+| Client method | Purpose |
+| --- | --- |
+| **CreateRewardSelection(selection_id, title)** | Starts a new draft and clears any previous scripted offer. |
+| **AddRewardSelectionOption(option_id, label[, common_to_all])** | Adds a unique option. At least one option must not be common. |
+| **AddRewardSelectionItem(option_id, item_id[, quantity])** | Displays an item reward. Quantity defaults to 1. |
+| **AddRewardSelectionExperience(option_id, amount[, normal_only])** | Displays experience; normal_only defaults to false. |
+| **AddRewardSelectionAA(option_id, points)** | Displays AA points. |
+| **AddRewardSelectionMoney(option_id, copper)** | Displays coin expressed as total copper. |
+| **AddRewardSelectionAlternateCurrency(option_id, currency_id, amount)** | Displays alternate currency. |
+| **AddRewardSelectionTitle(option_id, title_set_id)** | Displays a title-set unlock. |
+| **AddRewardSelectionReward(option_id, type, data_id, amount[, description])** | Adds a raw type 0 through 5, using the task-content type table below. |
+| **OpenRewardSelection()** | Validates and sends the completed draft. |
+| **ClearRewardSelection()** | Removes the draft and any open scripted offer. |
+| **HasRewardSelection()** | Reports whether a draft or open scripted offer exists. |
+
+Selection IDs, option IDs, and type-specific data IDs must be nonzero unsigned
+32-bit values. Option IDs need only be unique within the offer. Every option
+must contain at least one display reward. OpenRewardSelection leaves an invalid
+draft intact so a script can correct or clear it.
+
+These methods describe what the client displays; they do not grant anything.
+When the player chooses a non-common option, the server calls
+EVENT_REWARD_SELECT in Perl or event_reward_select in Lua. An NPC quest that
+created the offer receives the event while its originating entity and NPC type
+still match. If there is no originating NPC handler, the player quest is the
+fallback. The event receives:
+
+| Language/context | Selection ID | Chosen option ID | Client |
+| --- | --- | --- | --- |
+| Perl NPC or player | **$reward_selection_id** | **$reward_option_id** | **$client** |
+| Lua NPC | **e.selection_id** | **e.option_id** | **e.other** |
+| Lua player | **e.selection_id** | **e.option_id** | **e.self** |
+
+The handler must grant the reward and return a nonzero value only after it
+succeeds. Returning 0, omitting the handler, or raising a script error rejects
+the claim and reopens the offer. A common option is displayed with every
+choice, but the event reports only the chosen non-common option ID; the handler
+is responsible for granting both portions. Normal local, global, and encounter
+event routing still applies, so define only one granting handler for an offer.
+
+Scripted offers intentionally have no database ledger. Zoning, disconnecting,
+or restarting the zone discards them. Keep handlers short and idempotent:
+multi-step grants can be partially applied if a script fails between steps,
+and returning 0 permits the player to try again.
+
+### Perl example
+
+~~~perl
+sub EVENT_SAY {
+	return unless $text =~ /reward/i;
+
+	unless (
+		$client->CreateRewardSelection(9001, "Choose a Reward") &&
+		$client->AddRewardSelectionOption(1, "A polished sword") &&
+		$client->AddRewardSelectionItem(1, 1001, 1) &&
+		$client->AddRewardSelectionOption(2, "Experience") &&
+		$client->AddRewardSelectionExperience(2, 5000)
+	) {
+		$client->ClearRewardSelection();
+		return;
+	}
+
+	$client->OpenRewardSelection();
+}
+
+sub EVENT_REWARD_SELECT {
+	return 0 unless $reward_selection_id == 9001;
+
+	if ($reward_option_id == 1) {
+		$client->SummonItem(1001, 1);
+	}
+	elsif ($reward_option_id == 2) {
+		$client->AddEXP(5000);
+	}
+	else {
+		return 0;
+	}
+
+	return 1;
+}
+~~~
+
+### Lua example
+
+~~~lua
+function event_say(e)
+	if not e.message:lower():find("reward", 1, true) then
+		return
+	end
+
+	local client = e.other
+	local valid =
+		client:CreateRewardSelection(9001, "Choose a Reward") and
+		client:AddRewardSelectionOption(1, "A polished sword") and
+		client:AddRewardSelectionItem(1, 1001, 1) and
+		client:AddRewardSelectionOption(2, "Experience") and
+		client:AddRewardSelectionExperience(2, 5000)
+
+	if not valid then
+		client:ClearRewardSelection()
+		return
+	end
+
+	client:OpenRewardSelection()
+end
+
+function event_reward_select(e)
+	if e.selection_id ~= 9001 then
+		return 0
+	end
+
+	if e.option_id == 1 then
+		e.other:SummonItem(1001, 1)
+	elseif e.option_id == 2 then
+		e.other:AddEXP(5000)
+	else
+		return 0
+	end
+
+	return 1
+end
+~~~
+
 ## Task content
 
 The content database owns four tables:

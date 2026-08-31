@@ -65,6 +65,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <set>
 
@@ -2022,8 +2023,73 @@ void Client::HandleRewardSelectionPacket(
 		return;
 	}
 
+	if (!result.claim) {
+		return;
+	}
+
 	if (
-		!result.claim ||
+		result.claim->session.source.source ==
+		RewardSelectionSource::General
+	) {
+		const auto &claim = *result.claim;
+		const auto export_data = fmt::format(
+			"{} {}",
+			claim.session.source.source_id,
+			claim.selected_option_id
+		);
+		const auto origin_key = claim.session.source.source_instance_id;
+		const auto origin_entity_id = static_cast<uint16_t>(
+			origin_key & std::numeric_limits<uint16_t>::max()
+		);
+		const auto origin_npc_type_id = static_cast<uint32_t>(
+			origin_key >> 32
+		);
+
+		bool handler_found = false;
+		int handler_result = 0;
+		if (parse && origin_entity_id && origin_npc_type_id) {
+			auto origin = entity_list.GetMob(origin_entity_id);
+			if (
+				origin &&
+				origin->IsNPC() &&
+				origin->GetNPCTypeID() == origin_npc_type_id &&
+				parse->HasQuestSub(origin_npc_type_id, EVENT_REWARD_SELECT)
+			) {
+				handler_found = true;
+				handler_result = parse->EventBotMercNPC(
+					EVENT_REWARD_SELECT,
+					origin,
+					this,
+					[&export_data]() { return export_data; }
+				);
+			}
+		}
+		if (
+			parse &&
+			!handler_found &&
+			parse->PlayerHasQuestSub(EVENT_REWARD_SELECT)
+		) {
+			handler_found = true;
+			handler_result = parse->EventPlayer(
+				EVENT_REWARD_SELECT,
+				this,
+				export_data,
+				0
+			);
+		}
+
+		const auto delivery_result =
+			handler_found && handler_result
+				? RewardSelectionDeliveryResult::Delivered
+				: RewardSelectionDeliveryResult::RetryableFailure;
+		selection.CompleteClaim(claim, delivery_result);
+		if (delivery_result == RewardSelectionDeliveryResult::RetryableFailure) {
+			selection.Open(claim.session);
+		}
+		return;
+	}
+
+	if (
 		result.claim->session.source.source != RewardSelectionSource::Task ||
 		!task_state
 	) {

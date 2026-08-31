@@ -16,6 +16,7 @@
 #include "zone/lua_npc.h"
 #include "zone/lua_packet.h"
 #include "zone/lua_raid.h"
+#include "zone/reward_selection.h"
 #include "zone/titles.h"
 
 #include "lua.hpp"
@@ -2849,6 +2850,170 @@ int Lua_Client::GetSpellDamage() {
 	Lua_Safe_Call_Int();
 	return self->GetSpellDmg();
 }
+
+bool Lua_Client::CreateRewardSelection(uint32 selection_id, std::string title) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().BeginScriptOffer(selection_id, title);
+}
+
+bool Lua_Client::AddRewardSelectionOption(uint32 option_id, std::string label) {
+	return AddRewardSelectionOption(option_id, label, false);
+}
+
+bool Lua_Client::AddRewardSelectionOption(
+	uint32 option_id,
+	std::string label,
+	bool common_to_all
+) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptOption(
+		option_id,
+		label,
+		common_to_all
+	);
+}
+
+bool Lua_Client::AddRewardSelectionReward(
+	uint32 option_id,
+	uint32 reward_type,
+	uint32 data_id,
+	uint64 amount
+) {
+	return AddRewardSelectionReward(
+		option_id,
+		reward_type,
+		data_id,
+		amount,
+		""
+	);
+}
+
+bool Lua_Client::AddRewardSelectionReward(
+	uint32 option_id,
+	uint32 reward_type,
+	uint32 data_id,
+	uint64 amount,
+	std::string description
+) {
+	Lua_Safe_Call_Bool();
+	if (
+		reward_type >
+		static_cast<uint32>(RewardSelectionRewardType::Title)
+	) {
+		return false;
+	}
+
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		static_cast<RewardSelectionRewardType>(reward_type),
+		data_id,
+		amount,
+		description
+	);
+}
+
+bool Lua_Client::AddRewardSelectionItem(uint32 option_id, uint32 item_id) {
+	return AddRewardSelectionItem(option_id, item_id, 1);
+}
+
+bool Lua_Client::AddRewardSelectionItem(
+	uint32 option_id,
+	uint32 item_id,
+	uint32 quantity
+) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Item,
+		item_id,
+		quantity
+	);
+}
+
+bool Lua_Client::AddRewardSelectionExperience(
+	uint32 option_id,
+	uint64 amount
+) {
+	return AddRewardSelectionExperience(option_id, amount, false);
+}
+
+bool Lua_Client::AddRewardSelectionExperience(
+	uint32 option_id,
+	uint64 amount,
+	bool normal_only
+) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Experience,
+		static_cast<uint32>(
+			normal_only
+				? RewardSelectionExperienceMode::NormalOnly
+				: RewardSelectionExperienceMode::Default
+		),
+		amount
+	);
+}
+
+bool Lua_Client::AddRewardSelectionAA(uint32 option_id, uint64 points) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::AlternateAdvancement,
+		0,
+		points
+	);
+}
+
+bool Lua_Client::AddRewardSelectionMoney(uint32 option_id, uint64 copper) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Copper,
+		0,
+		copper
+	);
+}
+
+bool Lua_Client::AddRewardSelectionAlternateCurrency(
+	uint32 option_id,
+	uint32 currency_id,
+	uint64 amount
+) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::AlternateCurrency,
+		currency_id,
+		amount
+	);
+}
+
+bool Lua_Client::AddRewardSelectionTitle(uint32 option_id, uint32 title_id) {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().AddScriptReward(
+		option_id,
+		RewardSelectionRewardType::Title,
+		title_id,
+		1
+	);
+}
+
+bool Lua_Client::OpenRewardSelection() {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().OpenScriptOffer();
+}
+
+void Lua_Client::ClearRewardSelection() {
+	Lua_Safe_Call_Void();
+	self->GetRewardSelection().ClearScriptOffer();
+}
+
+bool Lua_Client::HasRewardSelection() {
+	Lua_Safe_Call_Bool();
+	return self->GetRewardSelection().HasScriptOffer();
+}
+
 int Lua_Client::GetIntoxication() {
 	Lua_Safe_Call_Int();
 	return self->GetIntoxication();
@@ -3947,6 +4112,18 @@ luabind::scope lua_register_client() {
 	.def("AddPlatinum", (void(Lua_Client::*)(uint32,bool))&Lua_Client::AddPlatinum)
 	.def("AddPVPPoints", (void(Lua_Client::*)(uint32))&Lua_Client::AddPVPPoints)
 	.def("AddRadiantCrystals", (void(Lua_Client::*)(uint32))&Lua_Client::AddRadiantCrystals)
+	.def("AddRewardSelectionAA", (bool(Lua_Client::*)(uint32,uint64))&Lua_Client::AddRewardSelectionAA)
+	.def("AddRewardSelectionAlternateCurrency", (bool(Lua_Client::*)(uint32,uint32,uint64))&Lua_Client::AddRewardSelectionAlternateCurrency)
+	.def("AddRewardSelectionExperience", (bool(Lua_Client::*)(uint32,uint64))&Lua_Client::AddRewardSelectionExperience)
+	.def("AddRewardSelectionExperience", (bool(Lua_Client::*)(uint32,uint64,bool))&Lua_Client::AddRewardSelectionExperience)
+	.def("AddRewardSelectionItem", (bool(Lua_Client::*)(uint32,uint32))&Lua_Client::AddRewardSelectionItem)
+	.def("AddRewardSelectionItem", (bool(Lua_Client::*)(uint32,uint32,uint32))&Lua_Client::AddRewardSelectionItem)
+	.def("AddRewardSelectionMoney", (bool(Lua_Client::*)(uint32,uint64))&Lua_Client::AddRewardSelectionMoney)
+	.def("AddRewardSelectionOption", (bool(Lua_Client::*)(uint32,std::string))&Lua_Client::AddRewardSelectionOption)
+	.def("AddRewardSelectionOption", (bool(Lua_Client::*)(uint32,std::string,bool))&Lua_Client::AddRewardSelectionOption)
+	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,uint32,uint32,uint64))&Lua_Client::AddRewardSelectionReward)
+	.def("AddRewardSelectionReward", (bool(Lua_Client::*)(uint32,uint32,uint32,uint64,std::string))&Lua_Client::AddRewardSelectionReward)
+	.def("AddRewardSelectionTitle", (bool(Lua_Client::*)(uint32,uint32))&Lua_Client::AddRewardSelectionTitle)
 	.def("AddSkill", (void(Lua_Client::*)(int,int))&Lua_Client::AddSkill)
 	.def("Admin", (int16(Lua_Client::*)(void))&Lua_Client::Admin)
 	.def("ApplySpell", (void(Lua_Client::*)(int))&Lua_Client::ApplySpell)
@@ -3996,6 +4173,7 @@ luabind::scope lua_register_client() {
 	.def("ClearCompassMark",(void(Lua_Client::*)(void))&Lua_Client::ClearCompassMark)
 	.def("ClearAccountFlag", (void(Lua_Client::*)(const std::string&))&Lua_Client::ClearAccountFlag)
 	.def("ClearPEQZoneFlag", (void(Lua_Client::*)(uint32))&Lua_Client::ClearPEQZoneFlag)
+	.def("ClearRewardSelection", (void(Lua_Client::*)(void))&Lua_Client::ClearRewardSelection)
 	.def("ClearXTargets", (void(Lua_Client::*)(void))&Lua_Client::ClearXTargets)
 	.def("ClearZoneFlag", (void(Lua_Client::*)(uint32))&Lua_Client::ClearZoneFlag)
 	.def("CompleteTask", (bool(Lua_Client::*)(int))&Lua_Client::CompleteTask)
@@ -4018,6 +4196,7 @@ luabind::scope lua_register_client() {
 	.def("CheckExpedition", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::CheckExpedition)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, uint32_t))&Lua_Client::GetExpeditionTemplate)
 	.def("GetExpeditionTemplate", (luabind::object(Lua_Client::*)(lua_State*, std::string))&Lua_Client::GetExpeditionTemplate)
+	.def("CreateRewardSelection", (bool(Lua_Client::*)(uint32,std::string))&Lua_Client::CreateRewardSelection)
 	.def("CreateTaskDynamicZone", &Lua_Client::CreateTaskDynamicZone)
 	.def("CanCreateExpedition", &Lua_Client::CanCreateExpedition)
 	.def("DecreaseByID", (bool(Lua_Client::*)(uint32,int))&Lua_Client::DecreaseByID)
@@ -4230,6 +4409,7 @@ luabind::scope lua_register_client() {
 	.def("HasItemOnCorpse", (bool(Lua_Client::*)(uint32))&Lua_Client::HasItemOnCorpse)
 	.def("HasPEQZoneFlag", (bool(Lua_Client::*)(uint32))&Lua_Client::HasPEQZoneFlag)
 	.def("HasRecipeLearned", (bool(Lua_Client::*)(uint32))&Lua_Client::HasRecipeLearned)
+	.def("HasRewardSelection", (bool(Lua_Client::*)(void))&Lua_Client::HasRewardSelection)
 	.def("HasSkill", (bool(Lua_Client::*)(int))&Lua_Client::HasSkill)
 	.def("HasSpellScribed", (bool(Lua_Client::*)(int))&Lua_Client::HasSpellScribed)
 	.def("HasZoneFlag", (bool(Lua_Client::*)(uint32))&Lua_Client::HasZoneFlag)
@@ -4313,6 +4493,7 @@ luabind::scope lua_register_client() {
 	.def("NukeItem", (void(Lua_Client::*)(uint32))&Lua_Client::NukeItem)
 	.def("NukeItem", (void(Lua_Client::*)(uint32,int))&Lua_Client::NukeItem)
 	.def("OpenLFGuildWindow", (void(Lua_Client::*)(void))&Lua_Client::OpenLFGuildWindow)
+	.def("OpenRewardSelection", (bool(Lua_Client::*)(void))&Lua_Client::OpenRewardSelection)
 	.def("PlayMP3", (void(Lua_Client::*)(std::string))&Lua_Client::PlayMP3)
 	.def("Popup", (void(Lua_Client::*)(const char*,const char*))&Lua_Client::Popup)
 	.def("Popup", (void(Lua_Client::*)(const char*,const char*,uint32))&Lua_Client::Popup)
