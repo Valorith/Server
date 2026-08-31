@@ -114,6 +114,7 @@ void MapOpcodes()
 	// connected opcode handler assignments:
 	ConnectedOpcodes[OP_0x0193] = &Client::Handle_0x0193;
 	ConnectedOpcodes[OP_AAAction] = &Client::Handle_OP_AAAction;
+	ConnectedOpcodes[OP_AchievementReward] = &Client::Handle_OP_AchievementReward;
 	ConnectedOpcodes[OP_AcceptNewTask] = &Client::Handle_OP_AcceptNewTask;
 	ConnectedOpcodes[OP_AdventureInfoRequest] = &Client::Handle_OP_AdventureInfoRequest;
 	ConnectedOpcodes[OP_AdventureLeaderboardRequest] = &Client::Handle_OP_AdventureLeaderboardRequest;
@@ -358,6 +359,7 @@ void MapOpcodes()
 	ConnectedOpcodes[OP_RemoveBlockedBuffs] = &Client::Handle_OP_RemoveBlockedBuffs;
 	ConnectedOpcodes[OP_RemoveTrap] = &Client::Handle_OP_RemoveTrap;
 	ConnectedOpcodes[OP_Report] = &Client::Handle_OP_Report;
+	ConnectedOpcodes[OP_RewardSelection] = &Client::Handle_OP_RewardSelection;
 	ConnectedOpcodes[OP_RequestDuel] = &Client::Handle_OP_RequestDuel;
 	ConnectedOpcodes[OP_RequestTitles] = &Client::Handle_OP_RequestTitles;
 	ConnectedOpcodes[OP_RespawnWindow] = &Client::Handle_OP_RespawnWindow;
@@ -1967,6 +1969,79 @@ void Client::Handle_OP_AAAction(const EQApplicationPacket *app)
 	}
 	else {
 		LogAA("Unknown AA action : [{}] [{}] [{}] [{}]", action->action, action->ability, action->target_id, action->exp_value);
+	}
+}
+
+void Client::Handle_OP_AchievementReward(const EQApplicationPacket *app)
+{
+	HandleRewardSelectionPacket(app, RewardSelectionChannel::Claimable);
+}
+
+void Client::Handle_OP_RewardSelection(const EQApplicationPacket *app)
+{
+	HandleRewardSelectionPacket(app, RewardSelectionChannel::Preview);
+}
+
+void Client::HandleRewardSelectionPacket(
+	const EQApplicationPacket *app,
+	RewardSelectionChannel channel
+)
+{
+	if (!app) {
+		return;
+	}
+
+	auto &selection = GetRewardSelection();
+	auto result = selection.HandlePacket(*app, channel);
+	switch (result.type) {
+	case RewardSelectionPacketResultType::ViewRequested:
+		if (
+			result.requested_source == RewardSelectionSource::Task &&
+			task_state
+		) {
+			task_state->SendRewardSelection(this, result.requested_id);
+		}
+		return;
+	case RewardSelectionPacketResultType::PendingRequested:
+		if (const auto active = selection.ActiveSession(
+			RewardSelectionChannel::Claimable
+		)) {
+			const auto session = *active;
+			selection.Open(session);
+		}
+		if (task_state) {
+			task_state->RestorePendingRewardSelection(this);
+		}
+		if (!selection.HasActiveSession(RewardSelectionChannel::Claimable)) {
+			selection.Clear(RewardSelectionChannel::Claimable);
+		}
+		return;
+	case RewardSelectionPacketResultType::ClaimRequested:
+		break;
+	default:
+		return;
+	}
+
+	if (
+		!result.claim ||
+		result.claim->session.source.source != RewardSelectionSource::Task ||
+		!task_state
+	) {
+		return;
+	}
+
+	const auto delivery_result = task_state->ClaimRewardSelection(
+		this,
+		*result.claim
+	);
+	selection.CompleteClaim(*result.claim, delivery_result);
+	if (delivery_result == RewardSelectionDeliveryResult::Ambiguous) {
+		return;
+	}
+
+	task_state->RestorePendingRewardSelection(this);
+	if (!selection.HasActiveSession(RewardSelectionChannel::Claimable)) {
+		selection.Clear(RewardSelectionChannel::Claimable);
 	}
 }
 

@@ -183,7 +183,31 @@ bool Client::CheckLoreConflict(const EQ::ItemData* item)
 	return (m_inv.HasItemByLoreGroup(item->LoreGroup, ~invWhereSharedBank) != INVALID_INDEX);
 }
 
-bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, uint32 aug6, bool attuned, uint16 to_slot, uint32 ornament_icon, uint32 ornament_idfile, uint32 ornament_hero_model) {
+bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, uint32 aug6, bool attuned, uint16 to_slot, uint32 ornament_icon, uint32 ornament_idfile, uint32 ornament_hero_model)
+{
+	return SummonItem(
+		item_id,
+		charges,
+		aug1,
+		aug2,
+		aug3,
+		aug4,
+		aug5,
+		aug6,
+		attuned,
+		to_slot,
+		ornament_icon,
+		ornament_idfile,
+		ornament_hero_model,
+		nullptr
+	);
+}
+
+bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, uint32 aug6, bool attuned, uint16 to_slot, uint32 ornament_icon, uint32 ornament_idfile, uint32 ornament_hero_model, bool *persistence_succeeded) {
+	if (persistence_succeeded) {
+		*persistence_succeeded = false;
+	}
+
 	const EQ::ItemData* item = database.GetItem(item_id);
 
 	// make sure the item exists
@@ -650,10 +674,14 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 	}
 
 	// put item into inventory
+	bool item_persisted = false;
 	if (to_slot == EQ::invslot::slotCursor) {
-		PushItemOnCursor(*inst, true);
+		item_persisted = PushItemOnCursor(*inst, true);
 	} else {
-		PutItemInInventory(to_slot, *inst, true);
+		item_persisted = PutItemInInventory(to_slot, *inst, true);
+	}
+	if (persistence_succeeded) {
+		*persistence_succeeded = item_persisted;
 	}
 
 	m_external_handin_items_returned.emplace_back(inst->GetItem()->ID);

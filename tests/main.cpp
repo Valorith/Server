@@ -29,6 +29,7 @@
 #include "tests/hextoi_32_64_test.h"
 #include "tests/ipc_mutex_test.h"
 #include "tests/memory_mapped_file_test.h"
+#include "tests/reward_selection_test.h"
 #include "tests/skills_util_test.h"
 #include "tests/string_util_test.h"
 #include "tests/task_class_restriction_test.h"
@@ -55,6 +56,7 @@ int main()
 	try {
 		std::unique_ptr<Test::Output> output(new Test::TextOutput(Test::TextOutput::Verbose));
 		Test::Suite                   tests;
+		tests.add(new RewardSelectionTest());
 		tests.add(new MemoryMappedFileTest());
 		tests.add(new IPCMutexTest());
 		tests.add(new FixedMemoryHashTest());
