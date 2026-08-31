@@ -2078,14 +2078,10 @@ void Client::HandleRewardSelectionPacket(
 			);
 		}
 
-		const auto delivery_result =
+		selection.CompleteScriptClaim(
+			claim,
 			handler_found && handler_result
-				? RewardSelectionDeliveryResult::Delivered
-				: RewardSelectionDeliveryResult::RetryableFailure;
-		selection.CompleteClaim(claim, delivery_result);
-		if (delivery_result == RewardSelectionDeliveryResult::RetryableFailure) {
-			selection.Open(claim.session);
-		}
+		);
 		return;
 	}
 

@@ -19,6 +19,7 @@ public:
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
 		TEST_ADD(RewardSelectionTest::ScriptRewardTypeParsing);
+		TEST_ADD(RewardSelectionTest::TransientBatchFailureClassification);
 	}
 
 private:
@@ -521,5 +522,33 @@ private:
 		TEST_ASSERT(!MakeScriptRewardSelectionReward("experience", 1, 1));
 		TEST_ASSERT(!MakeScriptRewardSelectionReward("alternate_currency", 1));
 		TEST_ASSERT(!MakeScriptRewardSelectionReward("title", 1, 1));
+	}
+
+	void TransientBatchFailureClassification()
+	{
+		TEST_ASSERT(
+			ResolveTransientRewardBatchFailure(
+				false,
+				RewardSelectionDeliveryResult::RetryableFailure
+			) == RewardSelectionDeliveryResult::RetryableFailure
+		);
+		TEST_ASSERT(
+			ResolveTransientRewardBatchFailure(
+				true,
+				RewardSelectionDeliveryResult::RetryableFailure
+			) == RewardSelectionDeliveryResult::Ambiguous
+		);
+		TEST_ASSERT(
+			ResolveTransientRewardBatchFailure(
+				false,
+				RewardSelectionDeliveryResult::Ambiguous
+			) == RewardSelectionDeliveryResult::Ambiguous
+		);
+		TEST_ASSERT(
+			ResolveTransientRewardBatchFailure(
+				true,
+				RewardSelectionDeliveryResult::Ambiguous
+			) == RewardSelectionDeliveryResult::Ambiguous
+		);
 	}
 };

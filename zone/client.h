@@ -1752,6 +1752,7 @@ public:
 	void SendRewards();
 	bool TryReward(uint32 claim_id);
 	ClientRewardSelection &GetRewardSelection();
+	void ClearRewardSelectionFromNPC(uint32 npc_type_id, uint16 entity_id);
 	QGlobalCache *GetQGlobals() { return qGlobals; }
 	QGlobalCache *CreateQGlobals() { qGlobals = new QGlobalCache(); return qGlobals; }
 	void GuildBankAck();

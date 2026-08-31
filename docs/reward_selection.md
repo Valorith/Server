@@ -98,17 +98,17 @@ clear it.
 The builder rejects values outside the selector and task-delivery envelopes:
 item quantities are limited to 32,767; experience to 4,294,967,295; AA and
 alternate currency to 2,147,483,647; total coin to 2,147,483,647,999 copper;
-and title-set IDs to 2,147,483,647. A scripted offer does not reserve inventory,
-check balances, or verify content IDs. The event handler owns those
-character-specific checks and must return success only after its grant
-succeeds.
+and title-set IDs to 2,147,483,647. Building an offer does not reserve
+inventory, check balances, or verify content IDs. Those delivery checks run
+after the script authorizes the selection.
 
-These methods describe what the client displays; they do not grant anything.
-When the player chooses a non-common option, the server calls
-EVENT_REWARD_SELECT in Perl or event_reward_select in Lua. An NPC quest that
-created the offer receives the event while its originating entity and NPC type
-still match. If there is no originating NPC handler, the player quest is the
-fallback. The event receives:
+The entries added by these methods are both the display definition and the
+exact grant definition. When the player chooses a non-common option, the server
+calls EVENT_REWARD_SELECT in Perl or event_reward_select in Lua. An NPC quest
+that created the offer receives the event while that exact NPC lifetime remains
+in the zone. Removing the NPC clears its outstanding offers before the entity
+ID can be reused. If the live originating NPC has no handler, the player quest
+is the fallback. The event receives:
 
 | Language/context | Selection ID | Chosen option ID | Client |
 | --- | --- | --- | --- |
@@ -116,18 +116,26 @@ fallback. The event receives:
 | Lua NPC | **e.selection_id** | **e.option_id** | **e.other** |
 | Lua player | **e.selection_id** | **e.option_id** | **e.self** |
 
-The handler must grant the reward and return a nonzero value only after it
-succeeds. Returning 0, omitting the handler, or raising a script error rejects
-the claim and reopens the offer. Claim retries are limited to one attempt every
-500 milliseconds per client. A common option is displayed with every choice,
-but the event reports only the chosen non-common option ID; the handler is
-responsible for granting both portions. Normal local, global, and encounter
-event routing still applies, so define only one granting handler for an offer.
+The handler validates quest-specific entitlement and returns a nonzero value to
+authorize delivery. It must not manually grant the declared rewards. The shared
+server grant engine then validates and persists every common entry plus the
+chosen option before acknowledging the claim. Returning 0, omitting the
+handler, or raising a script error rejects the claim and reopens the offer.
+Calling ClearRewardSelection during the callback cancels the offer and
+suppresses that automatic reopen. Claim retries are limited to one attempt
+every 500 milliseconds per client. A common option is displayed with every
+choice, but the event reports only the chosen non-common option ID; the server
+automatically delivers both portions after authorization. Normal local, global,
+and encounter event routing still applies, so define only one authorizing
+handler for an offer.
 
 Scripted offers intentionally have no database ledger. Zoning, disconnecting,
-or restarting the zone discards them. Keep handlers short and idempotent:
-multi-step grants can be partially applied if a script fails between steps,
-and returning 0 permits the player to try again.
+or restarting the zone discards them. The grant engine stops at the first
+delivery failure. A retryable failure before any entry commits reopens the
+offer; a persistence-ambiguous entry, or a failure after an earlier entry
+commits, closes the offer without automatic retry so the successful prefix
+cannot be duplicated. Keep authorizing handlers short and idempotent because
+their own side effects are outside this no-ledger delivery boundary.
 
 ### Perl example
 
@@ -151,18 +159,8 @@ sub EVENT_SAY {
 
 sub EVENT_REWARD_SELECT {
 	return 0 unless $reward_selection_id == 9001;
-
-	if ($reward_option_id == 1) {
-		$client->SummonItem(1001, 1);
-	}
-	elsif ($reward_option_id == 2) {
-		$client->AddEXP(5000);
-	}
-	else {
-		return 0;
-	}
-
-	return 1;
+	return 1 if $reward_option_id == 1 || $reward_option_id == 2;
+	return 0;
 }
 ~~~
 
@@ -195,15 +193,11 @@ function event_reward_select(e)
 		return 0
 	end
 
-	if e.option_id == 1 then
-		e.other:SummonItem(1001, 1)
-	elseif e.option_id == 2 then
-		e.other:AddEXP(5000)
-	else
-		return 0
+	if e.option_id == 1 or e.option_id == 2 then
+		return 1
 	end
 
-	return 1
+	return 0
 end
 ~~~
 
@@ -220,7 +214,8 @@ The content database owns four tables:
 Reward, set, and option IDs sent over the wire must fit in an unsigned 32-bit
 integer. Every enabled reward must be mapped exactly once, every enabled option
 must contain at least one enabled reward, and a set must contain at least one
-non-common option.
+non-common option. Item IDs, alternate-currency IDs, and title-set IDs must
+resolve against the loaded server definitions or the set fails closed.
 
 Supported reward types are:
 
@@ -294,6 +289,14 @@ Creating that pending selection is also the at-most-once gate for the task's
 legacy cash, experience, faction, and reward-point fields. If task removal
 fails after completion and the server recovers the same pending selection,
 those ancillary fields are not replayed.
+
+Those legacy ancillary paths do not have a per-entry delivery ledger. A crash
+after the pending-selection gate commits but before every ancillary side effect
+finishes can therefore require operator correction. Automatically replaying
+the fields would exchange that loss window for a duplicate-grant window, so
+the selector keeps the established at-most-once boundary. Fully crash-safe
+recovery for those fields requires a separate durable grant ledger and is not
+part of this feature.
 
 Completion then opens a copied snapshot on the claimable lane. Client requests
 are handled as follows:

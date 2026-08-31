@@ -239,6 +239,20 @@ enum class RewardSelectionDeliveryResult : uint8_t {
 	Ambiguous
 };
 
+inline RewardSelectionDeliveryResult ResolveTransientRewardBatchFailure(
+	bool delivered_any,
+	RewardSelectionDeliveryResult failure
+)
+{
+	if (failure == RewardSelectionDeliveryResult::Delivered) {
+		return RewardSelectionDeliveryResult::Delivered;
+	}
+
+	return delivered_any || failure == RewardSelectionDeliveryResult::Ambiguous
+		? RewardSelectionDeliveryResult::Ambiguous
+		: RewardSelectionDeliveryResult::RetryableFailure;
+}
+
 struct RewardSelectionDeliveryPolicy {
 	ExpSource experience_source = ExpSource::Quest;
 	bool      require_experience_enabled = true;
@@ -299,8 +313,8 @@ public:
 	void ClearAll(bool notify_client = true);
 
 	// Quest-script offers are transient, RoF2-only claimable sessions. Scripts
-	// describe the display here and grant the selected reward from
-	// EVENT_REWARD_SELECT before acknowledging the claim.
+	// define the exact display/grant here, then EVENT_REWARD_SELECT authorizes
+	// the shared server grant before the claim is acknowledged.
 	bool BeginScriptOffer(uint32_t selection_id, const std::string &title);
 	bool AddScriptOption(
 		uint32_t option_id,
@@ -323,7 +337,12 @@ public:
 	);
 	bool OpenScriptOffer();
 	void ClearScriptOffer(bool notify_client = true);
+	void ClearScriptOfferForOrigin(uint32_t npc_type_id, uint16_t entity_id);
 	bool HasScriptOffer() const;
+	RewardSelectionDeliveryResult CompleteScriptClaim(
+		const ResolvedRewardSelectionClaim &claim,
+		bool authorized
+	);
 
 	bool HasActiveSession(RewardSelectionChannel channel) const;
 	const RewardSelectionSession *ActiveSession(
@@ -409,4 +428,5 @@ private:
 	ChannelState  m_preview_channel;
 	std::optional<RewardSelectionSession> m_script_draft;
 	uint64_t m_script_next_entry_id = 1;
+	bool m_script_clear_requested_during_claim = false;
 };

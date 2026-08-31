@@ -5,6 +5,7 @@
 #include "../common/rulesys.h"
 #include "client.h"
 #include "questmgr.h"
+#include "titles.h"
 #include "zone.h"
 #include "zonedb.h"
 
@@ -314,8 +315,10 @@ void ClientRewardSelection::ClearScriptOffer(bool notify_client)
 	m_script_draft.reset();
 	m_script_next_entry_id = 1;
 	if (m_claimable_channel.claim_in_flight) {
+		m_script_clear_requested_during_claim = true;
 		return;
 	}
+	m_script_clear_requested_during_claim = false;
 
 	ClearSource(
 		RewardSelectionChannel::Claimable,
@@ -323,6 +326,36 @@ void ClientRewardSelection::ClearScriptOffer(bool notify_client)
 		0,
 		notify_client
 	);
+}
+
+void ClientRewardSelection::ClearScriptOfferForOrigin(
+	uint32_t npc_type_id,
+	uint16_t entity_id
+)
+{
+	if (!npc_type_id || !entity_id) {
+		return;
+	}
+
+	const auto origin_key =
+		(static_cast<uint64_t>(npc_type_id) << 32) | entity_id;
+	const auto matches_origin = [origin_key](
+		const RewardSelectionSession &session
+	) {
+		return
+			session.source.source == RewardSelectionSource::General &&
+			session.source.source_instance_id == origin_key;
+	};
+	const bool draft_matches =
+		m_script_draft && matches_origin(*m_script_draft);
+	const bool open_matches = std::any_of(
+		m_claimable_channel.sessions.begin(),
+		m_claimable_channel.sessions.end(),
+		matches_origin
+	);
+	if (draft_matches || open_matches) {
+		ClearScriptOffer();
+	}
 }
 
 bool ClientRewardSelection::HasScriptOffer() const
@@ -338,6 +371,32 @@ bool ClientRewardSelection::HasScriptOffer() const
 			return session.source.source == RewardSelectionSource::General;
 		}
 	);
+}
+
+RewardSelectionDeliveryResult ClientRewardSelection::CompleteScriptClaim(
+	const ResolvedRewardSelectionClaim &claim,
+	bool authorized
+)
+{
+	if (claim.session.source.source != RewardSelectionSource::General) {
+		return RewardSelectionDeliveryResult::RetryableFailure;
+	}
+
+	const bool cancel_before_delivery =
+		m_script_clear_requested_during_claim;
+	const auto result = authorized && !cancel_before_delivery
+		? GrantBatch(m_client, claim.rewards)
+		: RewardSelectionDeliveryResult::RetryableFailure;
+	CompleteClaim(claim, result);
+
+	if (m_script_clear_requested_during_claim) {
+		ClearScriptOffer();
+	}
+	else if (result == RewardSelectionDeliveryResult::RetryableFailure) {
+		Open(claim.session);
+	}
+
+	return result;
 }
 
 bool ClientRewardSelection::ValidateSession(
@@ -1052,20 +1111,20 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
-	auto batch_result = RewardSelectionDeliveryResult::Delivered;
+	bool delivered_any = false;
 	for (const auto &reward : rewards) {
 		const auto result = GrantReward(client, reward, policy);
-		if (result == RewardSelectionDeliveryResult::Ambiguous) {
-			batch_result = RewardSelectionDeliveryResult::Ambiguous;
+		if (result == RewardSelectionDeliveryResult::Delivered) {
+			delivered_any = true;
+			continue;
 		}
-		else if (
-			result == RewardSelectionDeliveryResult::RetryableFailure &&
-			batch_result == RewardSelectionDeliveryResult::Delivered
-		) {
-			batch_result = RewardSelectionDeliveryResult::RetryableFailure;
-		}
+
+		// Scripted batches have no per-entry ledger. Stop at the first failure;
+		// if an earlier entry committed, quarantine the result as ambiguous so a
+		// retry cannot duplicate the successful prefix.
+		return ResolveTransientRewardBatchFailure(delivered_any, result);
 	}
-	return batch_result;
+	return RewardSelectionDeliveryResult::Delivered;
 }
 
 RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
@@ -1250,7 +1309,14 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 		if (
 			!reward.data_id ||
 			reward.data_id >
-				static_cast<uint32_t>(std::numeric_limits<int>::max())
+				static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+			!std::any_of(
+				title_manager.GetTitles().begin(),
+				title_manager.GetTitles().end(),
+				[&reward](const auto &title) {
+					return title.title_set == static_cast<int>(reward.data_id);
+				}
+			)
 		) {
 			return RewardSelectionDeliveryResult::RetryableFailure;
 		}

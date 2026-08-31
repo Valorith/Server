@@ -14,8 +14,10 @@
 #include "zone/client.h"
 #include "zone/dynamic_zone.h"
 #include "zone/string_ids.h"
+#include "zone/titles.h"
 #include "zone/worldserver.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <map>
@@ -104,6 +106,29 @@ bool TaskManager::LoadTaskRewardSets()
 
 	std::unordered_map<uint32_t, StagedTaskRewardSet> staged_sets;
 	std::unordered_map<uint32_t, uint32_t> reward_set_ids_by_task;
+	std::unordered_set<uint32_t> alternate_currency_ids;
+
+	auto alternate_currency_results = content_db.QueryDatabase(
+		"SELECT id FROM alternate_currency WHERE id > 0"
+	);
+	if (!alternate_currency_results.Success()) {
+		LogError(
+			"Failed to load alternate-currency definitions for selectable "
+			"task reward validation"
+		);
+		return false;
+	}
+	for (auto row : alternate_currency_results) {
+		const auto raw_currency_id = ParseTaskRewardUInt64(row[0]);
+		if (
+			raw_currency_id &&
+			raw_currency_id <= std::numeric_limits<uint32_t>::max()
+		) {
+			alternate_currency_ids.insert(
+				static_cast<uint32_t>(raw_currency_id)
+			);
+		}
+	}
 
 	auto reward_set_results = content_db.QueryDatabase(
 		"SELECT reward_set_id, task_id, title "
@@ -386,6 +411,39 @@ bool TaskManager::LoadTaskRewardSets()
 			staged->second.invalid = true;
 			LogError(
 				"Enabled task reward [{}] references missing item [{}]",
+				reward_id,
+				raw_data_id
+			);
+			continue;
+		}
+		if (
+			reward_type == RewardSelectionRewardType::AlternateCurrency &&
+			!alternate_currency_ids.contains(
+				static_cast<uint32_t>(raw_data_id)
+			)
+		) {
+			staged->second.invalid = true;
+			LogError(
+				"Enabled task reward [{}] references missing alternate "
+				"currency [{}]",
+				reward_id,
+				raw_data_id
+			);
+			continue;
+		}
+		if (
+			reward_type == RewardSelectionRewardType::Title &&
+			!std::any_of(
+				title_manager.GetTitles().begin(),
+				title_manager.GetTitles().end(),
+				[raw_data_id](const auto &title) {
+					return title.title_set == static_cast<int>(raw_data_id);
+				}
+			)
+		) {
+			staged->second.invalid = true;
+			LogError(
+				"Enabled task reward [{}] references missing title set [{}]",
 				reward_id,
 				raw_data_id
 			);

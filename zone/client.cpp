@@ -6232,6 +6232,13 @@ ClientRewardSelection &Client::GetRewardSelection()
 	return *m_reward_selection;
 }
 
+void Client::ClearRewardSelectionFromNPC(uint32 npc_type_id, uint16 entity_id)
+{
+	if (m_reward_selection) {
+		m_reward_selection->ClearScriptOfferForOrigin(npc_type_id, entity_id);
+	}
+}
+
 bool Client::TryReward(uint32 claim_id)
 {
 	// Make sure we have an open spot
