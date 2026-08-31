@@ -95,11 +95,13 @@ offer. Every option must contain at least one display reward.
 OpenRewardSelection leaves an invalid draft intact so a script can correct or
 clear it.
 
-Definitions that cannot reach the delivery APIs are rejected before display:
+The builder rejects values outside the selector and task-delivery envelopes:
 item quantities are limited to 32,767; experience to 4,294,967,295; AA and
 alternate currency to 2,147,483,647; total coin to 2,147,483,647,999 copper;
-and title-set IDs to 2,147,483,647. Current character balances and cursor
-capacity are checked again at claim time.
+and title-set IDs to 2,147,483,647. A scripted offer does not reserve inventory,
+check balances, or verify content IDs. The event handler owns those
+character-specific checks and must return success only after its grant
+succeeds.
 
 These methods describe what the client displays; they do not grant anything.
 When the player chooses a non-common option, the server calls
