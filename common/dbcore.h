@@ -5,6 +5,7 @@
 #include "common/types.h"
 
 #include "mysql.h"
+#include <memory>
 #include <mutex>
 
 #define CR_SERVER_GONE_ERROR    2006
@@ -43,8 +44,9 @@ public:
 
 	void SetMySQL(const DBcore &o)
 	{
-		mysql      = o.mysql;
-		mysqlOwner = false;
+		mysql                       = o.mysql;
+		mysqlOwner                  = false;
+		m_strict_transaction_state = o.m_strict_transaction_state;
 	}
 	void SetMutex(Mutex *mutex);
 
@@ -67,14 +69,19 @@ protected:
 	);
 
 private:
+	struct StrictTransactionState {
+		bool active = false;
+		bool failed = false;
+	};
+
 	bool Open(uint32 *errnum = nullptr, char *errbuf = nullptr);
 
 	MYSQL*  mysql = nullptr;
 	bool    mysqlOwner = true;
 	Mutex   *m_mutex = nullptr;
 	eStatus pStatus = Closed;
-	bool    m_strict_transaction_active = false;
-	bool    m_strict_transaction_failed = false;
+	std::shared_ptr<StrictTransactionState> m_strict_transaction_state =
+		std::make_shared<StrictTransactionState>();
 
 	std::mutex m_query_lock{};
 

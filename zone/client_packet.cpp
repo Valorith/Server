@@ -11392,7 +11392,6 @@ void Client::Handle_OP_MoveMultipleItems(const EQApplicationPacket *app)
 						break;
 					}
 				} else {
-					LinkDead();
 					operation_valid = false;
 					break;
 				}

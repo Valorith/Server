@@ -1115,13 +1115,6 @@ bool Client::PutItemInInventory(int16 slot_id, const EQ::ItemInstance& inst, boo
 
 	CalcBonuses();
 
-	if (slot_id == EQ::invslot::slotCursor) {
-		auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
-		const auto item_persisted = database.SaveCursor(CharacterID(), s, e);
-		UpdateAchievementForOwnItem(inst.GetItem()->ID);
-		return item_persisted;
-	}
-
 	const auto item_persisted = database.SaveInventory(CharacterID(), &inst, slot_id);
 	UpdateAchievementForOwnItem(inst.GetItem()->ID);
 	return item_persisted;

@@ -534,6 +534,23 @@ INSERT IGNORE INTO `_achievement_native_repair_components` (`achievement_id`, `c
 (500980700, 2, 59807003),
 (500980700, 2, 59807005);
 
+-- Preflight: this result must be empty. A missing component would make the
+-- achievement runtime reject the entire criteria snapshot after this repair.
+SELECT
+	audited.achievement_id,
+	audited.component_type,
+	audited.component_id
+FROM _achievement_native_repair_components AS audited
+LEFT JOIN achievement_components AS component
+	ON component.achievement_id = audited.achievement_id
+	AND component.component_type = audited.component_type
+	AND component.component_id = audited.component_id
+WHERE component.component_id IS NULL
+ORDER BY
+	audited.achievement_id,
+	audited.component_type,
+	audited.component_id;
+
 -- Converge these audited components: disable obsolete event/target alternatives
 -- before re-enabling the current authoritative identities below.
 UPDATE `achievement_criteria` AS criteria

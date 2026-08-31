@@ -1,6 +1,7 @@
 #include "achievement_mutations.h"
 
 #include "../common/eq_packet.h"
+#include "../common/eqemu_logsys.h"
 #include "../common/rulesys.h"
 #include "../common/servertalk.h"
 #include "achievement_manager.h"
@@ -15,7 +16,15 @@ namespace {
 
 bool Send(const Request &request)
 {
-	if (!IsValidRequest(request) || !worldserver.Connected()) {
+	if (!IsValidRequest(request)) {
+		return false;
+	}
+	if (!worldserver.Connected()) {
+		LogError(
+			"Unable to queue achievement mutation for target type [{}], ID [{}]: world is disconnected",
+			static_cast<uint32_t>(request.target_type),
+			request.target_id
+		);
 		return false;
 	}
 

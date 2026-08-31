@@ -77,14 +77,14 @@ MySQLRequestResult DBcore::QueryDatabase(const char *query, uint32 querylen, boo
 
 	LockMutex lock(m_mutex);
 
-	if (m_strict_transaction_active && m_strict_transaction_failed) {
+	if (m_strict_transaction_state->active && m_strict_transaction_state->failed) {
 		return {};
 	}
 
 	// Reconnect if we are not connected before hand.
 	if (pStatus != Connected) {
-		if (m_strict_transaction_active) {
-			m_strict_transaction_failed = true;
+		if (m_strict_transaction_state->active) {
+			m_strict_transaction_state->failed = true;
 			return {};
 		}
 		Open();
@@ -93,8 +93,8 @@ MySQLRequestResult DBcore::QueryDatabase(const char *query, uint32 querylen, boo
 	// request query. != 0 indicates some kind of error.
 	if (mysql_real_query(mysql, query, querylen) != 0) {
 		unsigned int errorNumber = mysql_errno(mysql);
-		if (m_strict_transaction_active) {
-			m_strict_transaction_failed = true;
+		if (m_strict_transaction_state->active) {
+			m_strict_transaction_state->failed = true;
 			retryOnFailureOnce = false;
 		}
 
@@ -181,8 +181,8 @@ MySQLRequestResult DBcore::QueryDatabase(const char *query, uint32 querylen, boo
 MySQLRequestResult DBcore::TransactionBegin()
 {
 	LockMutex lock(m_mutex);
-	if (m_strict_transaction_active) {
-		m_strict_transaction_failed = true;
+	if (m_strict_transaction_state->active) {
+		m_strict_transaction_state->failed = true;
 		return {};
 	}
 	return QueryDatabase("START TRANSACTION");
@@ -191,8 +191,8 @@ MySQLRequestResult DBcore::TransactionBegin()
 MySQLRequestResult DBcore::TransactionCommit()
 {
 	LockMutex lock(m_mutex);
-	if (m_strict_transaction_active) {
-		m_strict_transaction_failed = true;
+	if (m_strict_transaction_state->active) {
+		m_strict_transaction_state->failed = true;
 		return {};
 	}
 	return QueryDatabase("COMMIT");
@@ -200,12 +200,17 @@ MySQLRequestResult DBcore::TransactionCommit()
 
 void DBcore::TransactionRollback()
 {
-	LockMutex lock(m_mutex);
-	if (m_strict_transaction_active) {
-		TransactionRollbackStrict();
-		return;
+	{
+		LockMutex lock(m_mutex);
+		if (!m_strict_transaction_state->active) {
+			QueryDatabase("ROLLBACK");
+			return;
+		}
 	}
-	QueryDatabase("ROLLBACK");
+
+	// Drop the compatibility wrapper's recursive lock before the strict
+	// rollback releases its own call lock and retained ownership lock.
+	TransactionRollbackStrict();
 }
 
 MySQLRequestResult DBcore::TransactionBeginStrict()
@@ -214,15 +219,15 @@ MySQLRequestResult DBcore::TransactionBeginStrict()
 	// so the owning thread can continue using QueryDatabase while every other
 	// DBcore sharing this connection remains blocked outside the transaction.
 	m_mutex->lock();
-	if (m_strict_transaction_active) {
+	if (m_strict_transaction_state->active) {
 		m_mutex->unlock();
 		return {};
 	}
 
 	auto result = QueryDatabase("START TRANSACTION", 17, false);
 	if (result.Success()) {
-		m_strict_transaction_active = true;
-		m_strict_transaction_failed = false;
+		m_strict_transaction_state->active = true;
+		m_strict_transaction_state->failed = false;
 	}
 	else {
 		m_mutex->unlock();
@@ -233,15 +238,15 @@ MySQLRequestResult DBcore::TransactionBeginStrict()
 MySQLRequestResult DBcore::TransactionCommitStrict()
 {
 	m_mutex->lock();
-	if (!m_strict_transaction_active) {
+	if (!m_strict_transaction_state->active) {
 		m_mutex->unlock();
 		return {};
 	}
-	if (m_strict_transaction_failed) {
-		m_strict_transaction_failed = false;
+	if (m_strict_transaction_state->failed) {
+		m_strict_transaction_state->failed = false;
 		QueryDatabase("ROLLBACK", 8, false);
-		m_strict_transaction_active = false;
-		m_strict_transaction_failed = false;
+		m_strict_transaction_state->active = false;
+		m_strict_transaction_state->failed = false;
 		// Release this method's recursive lock and the transaction ownership
 		// lock retained by TransactionBeginStrict.
 		m_mutex->unlock();
@@ -250,8 +255,15 @@ MySQLRequestResult DBcore::TransactionCommitStrict()
 	}
 
 	auto result = QueryDatabase("COMMIT", 6, false);
-	m_strict_transaction_active = false;
-	m_strict_transaction_failed = false;
+	if (!result.Success()) {
+		// COMMIT failures can leave the server transaction open. Clear the
+		// failure latch long enough to make a best-effort rollback while this
+		// connection remains exclusively owned.
+		m_strict_transaction_state->failed = false;
+		QueryDatabase("ROLLBACK", 8, false);
+	}
+	m_strict_transaction_state->active = false;
+	m_strict_transaction_state->failed = false;
 	m_mutex->unlock();
 	m_mutex->unlock();
 	return result;
@@ -260,17 +272,17 @@ MySQLRequestResult DBcore::TransactionCommitStrict()
 void DBcore::TransactionRollbackStrict()
 {
 	m_mutex->lock();
-	if (!m_strict_transaction_active) {
+	if (!m_strict_transaction_state->active) {
 		m_mutex->unlock();
 		return;
 	}
 
 	// A failed strict statement suppresses all later statements. Temporarily
 	// clear that latch so a still-live session can receive ROLLBACK.
-	m_strict_transaction_failed = false;
+	m_strict_transaction_state->failed = false;
 	QueryDatabase("ROLLBACK", 8, false);
-	m_strict_transaction_active = false;
-	m_strict_transaction_failed = false;
+	m_strict_transaction_state->active = false;
+	m_strict_transaction_state->failed = false;
 	m_mutex->unlock();
 	m_mutex->unlock();
 }
@@ -278,15 +290,15 @@ void DBcore::TransactionRollbackStrict()
 void DBcore::TransactionFailStrict()
 {
 	LockMutex lock(m_mutex);
-	if (m_strict_transaction_active) {
-		m_strict_transaction_failed = true;
+	if (m_strict_transaction_state->active) {
+		m_strict_transaction_state->failed = true;
 	}
 }
 
 bool DBcore::TransactionStrictFailed() const
 {
 	LockMutex lock(m_mutex);
-	return m_strict_transaction_active && m_strict_transaction_failed;
+	return m_strict_transaction_state->active && m_strict_transaction_state->failed;
 }
 
 uint32 DBcore::DoEscapeString(char *tobuf, const char *frombuf, uint32 fromlen)

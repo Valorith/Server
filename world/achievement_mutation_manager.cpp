@@ -304,6 +304,10 @@ bool AchievementMutationManager::Persist(
 	const std::vector<uint32_t> &character_ids
 ) const
 {
+	if (character_ids.empty()) {
+		return true;
+	}
+
 	std::string values;
 	for (const auto character_id : character_ids) {
 		if (!values.empty()) {

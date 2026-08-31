@@ -3,6 +3,8 @@
 #include "../../common/say_link.h"
 #include "../../common/strings.h"
 
+#include <algorithm>
+
 namespace
 {
 

@@ -411,6 +411,9 @@ bool SharedDatabase::DeleteInventorySlot(uint32 char_id, int16 slot_id)
 bool SharedDatabase::DeleteSharedBankSlot(uint32 char_id, int16 slot_id)
 {
 	const uint32 account_id = GetAccountIDByChar(char_id);
+	if (!account_id) {
+		return false;
+	}
 
 	if (!EQ::InventoryProfile::SupportsContainers(slot_id)) {
 		return QueryDatabase(fmt::format(

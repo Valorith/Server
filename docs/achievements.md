@@ -1073,7 +1073,7 @@ concept. That is an importer choice, not evidence about the RoF2 wire layout.
 ToB field 7 is retained as `world_display_flag` for provenance but is never
 serialized to RoF2. The narrowly documented structural mappings above do not
 infer rewards or packet layouts. No ToB packet layout or reward behavior is
-used by the runtime implementation;
+used by the runtime implementation.
 
 ## Operational controls
 

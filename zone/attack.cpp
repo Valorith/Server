@@ -2988,8 +2988,13 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 		const auto& v = give_exp_client->GetRaidOrGroupOrSelf(true);
 		const auto base_zone_id = zone ? zone->GetZoneID() : 0;
 		for (const auto& m : v) {
-			m->CastToClient()->RecordKilledNPCEvent(this);
-			m->CastToClient()->UpdateAchievementForKill(
+			if (!m || !m->IsClient()) {
+				continue;
+			}
+
+			auto client = m->CastToClient();
+			client->RecordKilledNPCEvent(this);
+			client->UpdateAchievementForKill(
 				GetNPCTypeID(),
 				GetBaseRace(),
 				achievement_npc_name_identity,
@@ -2997,7 +3002,7 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 			);
 
 			if (parse->HasQuestSub(GetNPCTypeID(), EVENT_KILLED_MERIT)) {
-				parse->EventNPC(EVENT_KILLED_MERIT, this, m, "killed", 0);
+				parse->EventNPC(EVENT_KILLED_MERIT, this, client, "killed", 0);
 			}
 		}
 	}
