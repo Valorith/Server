@@ -142,7 +142,7 @@ std::optional<RewardSelectionSet> ParseTaskRewardSnapshot(
 	reward_set.reward_set_id = reward_set_id;
 	reward_set.title = title->get<std::string>();
 	std::unordered_set<uint32_t> option_ids;
-	std::unordered_set<uint32_t> reward_ids;
+	std::unordered_set<uint64_t> reward_ids;
 	size_t reward_count = 0;
 	bool has_selectable_option = false;
 	bool has_common_option = false;
@@ -202,7 +202,7 @@ std::optional<RewardSelectionSet> ParseTaskRewardSnapshot(
 			uint32_t raw_type = 0;
 			const auto description = serialized_reward.find("description");
 			if (
-				!read_uint32(serialized_reward, "entry_id", reward.entry_id) ||
+				!read_uint64(serialized_reward, "entry_id", reward.entry_id) ||
 				!reward.entry_id ||
 				!reward_ids.insert(reward.entry_id).second ||
 				!read_uint32(serialized_reward, "type", raw_type) ||
