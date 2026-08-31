@@ -59,21 +59,41 @@ another interaction for older clients when needed.
 | --- | --- |
 | **CreateRewardSelection(selection_id, title)** | Starts a new draft and clears any previous scripted offer. |
 | **AddRewardSelectionOption(option_id, label[, common_to_all])** | Adds a unique option. At least one option must not be common. |
-| **AddRewardSelectionItem(option_id, item_id[, quantity])** | Displays an item reward. Quantity defaults to 1. |
-| **AddRewardSelectionExperience(option_id, amount[, normal_only])** | Displays experience; normal_only defaults to false. |
-| **AddRewardSelectionAA(option_id, points)** | Displays AA points. |
-| **AddRewardSelectionMoney(option_id, copper)** | Displays coin expressed as total copper. |
-| **AddRewardSelectionAlternateCurrency(option_id, currency_id, amount)** | Displays alternate currency. |
-| **AddRewardSelectionTitle(option_id, title_set_id)** | Displays a title-set unlock. |
-| **AddRewardSelectionReward(option_id, type, data_id, amount[, description])** | Adds a raw type 0 through 5, using the task-content type table below. |
+| **AddRewardSelectionReward(option_id, reward_type, value[, secondary_amount][, description])** | Adds one display reward using the named types below. A description may be supplied directly as the fourth argument when no secondary amount is needed. |
 | **OpenRewardSelection()** | Validates and sends the completed draft. |
 | **ClearRewardSelection()** | Removes the draft and any open scripted offer. |
 | **HasRewardSelection()** | Reports whether a draft or open scripted offer exists. |
 
-Selection IDs, option IDs, and type-specific data IDs must be nonzero unsigned
-32-bit values. Option IDs need only be unique within the offer. Every option
-must contain at least one display reward. OpenRewardSelection leaves an invalid
-draft intact so a script can correct or clear it.
+`AddRewardSelectionReward` has one name and four overloads in both languages:
+
+- `(option_id, reward_type, value)`
+- `(option_id, reward_type, value, description)`
+- `(option_id, reward_type, value, secondary_amount)`
+- `(option_id, reward_type, value, secondary_amount, description)`
+
+The canonical reward types are:
+
+| `reward_type` | `value` | `secondary_amount` |
+| --- | --- | --- |
+| **item** | Item ID | Optional quantity; defaults to 1 |
+| **experience** | Experience amount using normal AA allocation | Omit |
+| **experience_no_aa** | Fixed normal experience amount that preserves AA experience | Omit |
+| **aa** | AA points | Omit |
+| **money** | Total copper | Omit |
+| **alternate_currency** | Currency ID | Required currency amount |
+| **title** | Title-set ID | Omit |
+
+Reward type names are case-insensitive. Spaces, hyphens, and underscores are
+treated equivalently, so `alternate_currency`, `Alternate Currency`, and
+`alternate-currency` all select the same type. Unknown names, unexpected
+secondary amounts, zero values, and out-of-range values return false without
+changing the draft.
+
+Selection IDs, option IDs, item IDs, currency IDs, and title-set IDs must be
+nonzero unsigned 32-bit values. Option IDs need only be unique within the
+offer. Every option must contain at least one display reward.
+OpenRewardSelection leaves an invalid draft intact so a script can correct or
+clear it.
 
 Definitions that cannot reach the delivery APIs are rejected before display:
 item quantities are limited to 32,767; experience to 4,294,967,295; AA and
@@ -116,9 +136,9 @@ sub EVENT_SAY {
 	unless (
 		$client->CreateRewardSelection(9001, "Choose a Reward") &&
 		$client->AddRewardSelectionOption(1, "A polished sword") &&
-		$client->AddRewardSelectionItem(1, 1001, 1) &&
+		$client->AddRewardSelectionReward(1, "item", 1001, 1) &&
 		$client->AddRewardSelectionOption(2, "Experience") &&
-		$client->AddRewardSelectionExperience(2, 5000)
+		$client->AddRewardSelectionReward(2, "experience", 5000)
 	) {
 		$client->ClearRewardSelection();
 		return;
@@ -156,9 +176,9 @@ function event_say(e)
 	local valid =
 		client:CreateRewardSelection(9001, "Choose a Reward") and
 		client:AddRewardSelectionOption(1, "A polished sword") and
-		client:AddRewardSelectionItem(1, 1001, 1) and
+		client:AddRewardSelectionReward(1, "item", 1001, 1) and
 		client:AddRewardSelectionOption(2, "Experience") and
-		client:AddRewardSelectionExperience(2, 5000)
+		client:AddRewardSelectionReward(2, "experience", 5000)
 
 	if not valid then
 		client:ClearRewardSelection()

@@ -18,6 +18,7 @@ public:
 		TEST_ADD(RewardSelectionTest::ValidationAndFailedClaimLayout);
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
+		TEST_ADD(RewardSelectionTest::ScriptRewardTypeParsing);
 	}
 
 private:
@@ -456,5 +457,69 @@ private:
 				1
 			)
 		);
+	}
+
+	void ScriptRewardTypeParsing()
+	{
+		auto item = MakeScriptRewardSelectionReward("ITEM", 1001);
+		TEST_ASSERT(item);
+		TEST_ASSERT(item->type == RewardSelectionRewardType::Item);
+		TEST_ASSERT(item->data_id == 1001);
+		TEST_ASSERT(item->amount == 1);
+
+		item = MakeScriptRewardSelectionReward("item", 1001, 7, "Sword");
+		TEST_ASSERT(item);
+		TEST_ASSERT(item->amount == 7);
+		TEST_ASSERT(item->description == "Sword");
+
+		auto experience = MakeScriptRewardSelectionReward(
+			"experience_no-aa",
+			5000
+		);
+		TEST_ASSERT(experience);
+		TEST_ASSERT(experience->type == RewardSelectionRewardType::Experience);
+		TEST_ASSERT(
+			experience->data_id == static_cast<uint32_t>(
+				RewardSelectionExperienceMode::NormalOnly
+			)
+		);
+		TEST_ASSERT(experience->amount == 5000);
+
+		auto aa = MakeScriptRewardSelectionReward("AA", 3);
+		TEST_ASSERT(aa);
+		TEST_ASSERT(
+			aa->type == RewardSelectionRewardType::AlternateAdvancement
+		);
+		TEST_ASSERT(aa->amount == 3);
+
+		auto money = MakeScriptRewardSelectionReward("money", 1234);
+		TEST_ASSERT(money);
+		TEST_ASSERT(money->type == RewardSelectionRewardType::Copper);
+		TEST_ASSERT(money->amount == 1234);
+
+		auto currency = MakeScriptRewardSelectionReward(
+			"Alternate Currency",
+			19,
+			25
+		);
+		TEST_ASSERT(currency);
+		TEST_ASSERT(
+			currency->type == RewardSelectionRewardType::AlternateCurrency
+		);
+		TEST_ASSERT(currency->data_id == 19);
+		TEST_ASSERT(currency->amount == 25);
+
+		auto title = MakeScriptRewardSelectionReward("title", 71);
+		TEST_ASSERT(title);
+		TEST_ASSERT(title->type == RewardSelectionRewardType::Title);
+		TEST_ASSERT(title->data_id == 71);
+		TEST_ASSERT(title->amount == 1);
+
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("unknown", 1));
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("item!", 1));
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("item", 0));
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("experience", 1, 1));
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("alternate_currency", 1));
+		TEST_ASSERT(!MakeScriptRewardSelectionReward("title", 1, 1));
 	}
 };

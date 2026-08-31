@@ -584,16 +584,30 @@ public:
 	bool CreateRewardSelection(uint32 selection_id, std::string title);
 	bool AddRewardSelectionOption(uint32 option_id, std::string label);
 	bool AddRewardSelectionOption(uint32 option_id, std::string label, bool common_to_all);
-	bool AddRewardSelectionReward(uint32 option_id, uint32 reward_type, uint32 data_id, uint64 amount);
-	bool AddRewardSelectionReward(uint32 option_id, uint32 reward_type, uint32 data_id, uint64 amount, std::string description);
-	bool AddRewardSelectionItem(uint32 option_id, uint32 item_id);
-	bool AddRewardSelectionItem(uint32 option_id, uint32 item_id, uint32 quantity);
-	bool AddRewardSelectionExperience(uint32 option_id, uint64 amount);
-	bool AddRewardSelectionExperience(uint32 option_id, uint64 amount, bool normal_only);
-	bool AddRewardSelectionAA(uint32 option_id, uint64 points);
-	bool AddRewardSelectionMoney(uint32 option_id, uint64 copper);
-	bool AddRewardSelectionAlternateCurrency(uint32 option_id, uint32 currency_id, uint64 amount);
-	bool AddRewardSelectionTitle(uint32 option_id, uint32 title_id);
+	bool AddRewardSelectionReward(
+		uint32 option_id,
+		std::string reward_type,
+		uint64 value
+	);
+	bool AddRewardSelectionReward(
+		uint32 option_id,
+		std::string reward_type,
+		uint64 value,
+		std::string description
+	);
+	bool AddRewardSelectionReward(
+		uint32 option_id,
+		std::string reward_type,
+		uint64 value,
+		uint64 secondary_amount
+	);
+	bool AddRewardSelectionReward(
+		uint32 option_id,
+		std::string reward_type,
+		uint64 value,
+		uint64 secondary_amount,
+		std::string description
+	);
 	bool OpenRewardSelection();
 	void ClearRewardSelection();
 	bool HasRewardSelection();

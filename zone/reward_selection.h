@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class Client;
@@ -107,6 +108,97 @@ struct RewardSelectionReward {
 	uint64_t                  amount = 0;
 	std::string               description;
 };
+
+inline std::optional<RewardSelectionReward> MakeScriptRewardSelectionReward(
+	std::string_view reward_type,
+	uint64_t value,
+	uint64_t secondary_amount = 0,
+	const std::string &description = {}
+)
+{
+	std::string normalized_type;
+	normalized_type.reserve(reward_type.size());
+	for (const auto character : reward_type) {
+		if (character >= 'A' && character <= 'Z') {
+			normalized_type.push_back(
+				static_cast<char>(character - 'A' + 'a')
+			);
+		}
+		else if (character >= 'a' && character <= 'z') {
+			normalized_type.push_back(character);
+		}
+		else if (character != '_' && character != '-' && character != ' ') {
+			return std::nullopt;
+		}
+	}
+
+	RewardSelectionReward reward;
+	reward.description = description;
+
+	if (normalized_type == "item") {
+		if (value > std::numeric_limits<uint32_t>::max()) {
+			return std::nullopt;
+		}
+		reward.type = RewardSelectionRewardType::Item;
+		reward.data_id = static_cast<uint32_t>(value);
+		reward.amount = secondary_amount ? secondary_amount : 1;
+	}
+	else if (
+		normalized_type == "experience" ||
+		normalized_type == "experiencenoaa"
+	) {
+		if (secondary_amount) {
+			return std::nullopt;
+		}
+		reward.type = RewardSelectionRewardType::Experience;
+		reward.data_id = static_cast<uint32_t>(
+			normalized_type == "experiencenoaa"
+				? RewardSelectionExperienceMode::NormalOnly
+				: RewardSelectionExperienceMode::Default
+		);
+		reward.amount = value;
+	}
+	else if (normalized_type == "aa" || normalized_type == "money") {
+		if (secondary_amount) {
+			return std::nullopt;
+		}
+		reward.type = normalized_type == "aa"
+			? RewardSelectionRewardType::AlternateAdvancement
+			: RewardSelectionRewardType::Copper;
+		reward.amount = value;
+	}
+	else if (normalized_type == "alternatecurrency") {
+		if (
+			!secondary_amount ||
+			value > std::numeric_limits<uint32_t>::max()
+		) {
+			return std::nullopt;
+		}
+		reward.type = RewardSelectionRewardType::AlternateCurrency;
+		reward.data_id = static_cast<uint32_t>(value);
+		reward.amount = secondary_amount;
+	}
+	else if (normalized_type == "title") {
+		if (
+			secondary_amount ||
+			value > std::numeric_limits<uint32_t>::max()
+		) {
+			return std::nullopt;
+		}
+		reward.type = RewardSelectionRewardType::Title;
+		reward.data_id = static_cast<uint32_t>(value);
+		reward.amount = 1;
+	}
+	else {
+		return std::nullopt;
+	}
+
+	return IsValidRewardSelectionRewardDefinition(
+		reward.type,
+		reward.data_id,
+		reward.amount
+	) ? std::make_optional(std::move(reward)) : std::nullopt;
+}
 
 struct RewardSelectionOption {
 	uint32_t                           option_id = 0;
@@ -220,6 +312,13 @@ public:
 		RewardSelectionRewardType type,
 		uint32_t data_id,
 		uint64_t amount,
+		const std::string &description = {}
+	);
+	bool AddScriptReward(
+		uint32_t option_id,
+		std::string_view reward_type,
+		uint64_t value,
+		uint64_t secondary_amount = 0,
 		const std::string &description = {}
 	);
 	bool OpenScriptOffer();

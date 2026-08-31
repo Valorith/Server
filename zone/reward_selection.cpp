@@ -264,6 +264,29 @@ bool ClientRewardSelection::AddScriptReward(
 	return true;
 }
 
+bool ClientRewardSelection::AddScriptReward(
+	uint32_t option_id,
+	std::string_view reward_type,
+	uint64_t value,
+	uint64_t secondary_amount,
+	const std::string &description
+)
+{
+	const auto reward = MakeScriptRewardSelectionReward(
+		reward_type,
+		value,
+		secondary_amount,
+		description
+	);
+	return reward && AddScriptReward(
+		option_id,
+		reward->type,
+		reward->data_id,
+		reward->amount,
+		reward->description
+	);
+}
+
 bool ClientRewardSelection::OpenScriptOffer()
 {
 	if (!m_script_draft || m_claimable_channel.claim_in_flight) {

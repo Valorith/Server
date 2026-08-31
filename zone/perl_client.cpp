@@ -2794,157 +2794,66 @@ bool Perl_Client_AddRewardSelectionOption(
 bool Perl_Client_AddRewardSelectionReward(
 	Client* self,
 	uint32 option_id,
-	uint32 reward_type,
-	uint32 data_id,
-	uint64 amount,
-	const char* description
+	const char* reward_type,
+	uint64 value
 )
 {
-	if (
-		reward_type >
-		static_cast<uint32>(RewardSelectionRewardType::Title)
-	) {
-		return false;
-	}
-
 	return self->GetRewardSelection().AddScriptReward(
 		option_id,
-		static_cast<RewardSelectionRewardType>(reward_type),
-		data_id,
-		amount,
-		description
+		reward_type ? reward_type : "",
+		value,
+		0
 	);
 }
 
 bool Perl_Client_AddRewardSelectionReward(
 	Client* self,
 	uint32 option_id,
-	uint32 reward_type,
-	uint32 data_id,
-	uint64 amount
-)
-{
-	return Perl_Client_AddRewardSelectionReward(
-		self,
-		option_id,
-		reward_type,
-		data_id,
-		amount,
-		""
-	);
-}
-
-bool Perl_Client_AddRewardSelectionItem(
-	Client* self,
-	uint32 option_id,
-	uint32 item_id,
-	uint32 quantity
+	const char* reward_type,
+	uint64 value,
+	const char* description
 )
 {
 	return self->GetRewardSelection().AddScriptReward(
 		option_id,
-		RewardSelectionRewardType::Item,
-		item_id,
-		quantity
-	);
-}
-
-bool Perl_Client_AddRewardSelectionItem(
-	Client* self,
-	uint32 option_id,
-	uint32 item_id
-)
-{
-	return Perl_Client_AddRewardSelectionItem(self, option_id, item_id, 1);
-}
-
-bool Perl_Client_AddRewardSelectionExperience(
-	Client* self,
-	uint32 option_id,
-	uint64 amount,
-	bool normal_only
-)
-{
-	return self->GetRewardSelection().AddScriptReward(
-		option_id,
-		RewardSelectionRewardType::Experience,
-		static_cast<uint32>(
-			normal_only
-				? RewardSelectionExperienceMode::NormalOnly
-				: RewardSelectionExperienceMode::Default
-		),
-		amount
-	);
-}
-
-bool Perl_Client_AddRewardSelectionExperience(
-	Client* self,
-	uint32 option_id,
-	uint64 amount
-)
-{
-	return Perl_Client_AddRewardSelectionExperience(
-		self,
-		option_id,
-		amount,
-		false
-	);
-}
-
-bool Perl_Client_AddRewardSelectionAA(
-	Client* self,
-	uint32 option_id,
-	uint64 points
-)
-{
-	return self->GetRewardSelection().AddScriptReward(
-		option_id,
-		RewardSelectionRewardType::AlternateAdvancement,
+		reward_type ? reward_type : "",
+		value,
 		0,
-		points
+		description ? description : ""
 	);
 }
 
-bool Perl_Client_AddRewardSelectionMoney(
+bool Perl_Client_AddRewardSelectionReward(
 	Client* self,
 	uint32 option_id,
-	uint64 copper
+	const char* reward_type,
+	uint64 value,
+	uint64 secondary_amount
 )
 {
 	return self->GetRewardSelection().AddScriptReward(
 		option_id,
-		RewardSelectionRewardType::Copper,
-		0,
-		copper
+		reward_type ? reward_type : "",
+		value,
+		secondary_amount
 	);
 }
 
-bool Perl_Client_AddRewardSelectionAlternateCurrency(
+bool Perl_Client_AddRewardSelectionReward(
 	Client* self,
 	uint32 option_id,
-	uint32 currency_id,
-	uint64 amount
+	const char* reward_type,
+	uint64 value,
+	uint64 secondary_amount,
+	const char* description
 )
 {
 	return self->GetRewardSelection().AddScriptReward(
 		option_id,
-		RewardSelectionRewardType::AlternateCurrency,
-		currency_id,
-		amount
-	);
-}
-
-bool Perl_Client_AddRewardSelectionTitle(
-	Client* self,
-	uint32 option_id,
-	uint32 title_id
-)
-{
-	return self->GetRewardSelection().AddScriptReward(
-		option_id,
-		RewardSelectionRewardType::Title,
-		title_id,
-		1
+		reward_type ? reward_type : "",
+		value,
+		secondary_amount,
+		description ? description : ""
 	);
 }
 
@@ -3892,18 +3801,12 @@ void perl_register_client()
 	package.add("AddPlatinum", (void(*)(Client*, uint32, bool))&Perl_Client_AddPlatinum);
 	package.add("AddPVPPoints", &Perl_Client_AddPVPPoints);
 	package.add("AddRadiantCrystals", &Perl_Client_AddRadiantCrystals);
-	package.add("AddRewardSelectionAA", &Perl_Client_AddRewardSelectionAA);
-	package.add("AddRewardSelectionAlternateCurrency", &Perl_Client_AddRewardSelectionAlternateCurrency);
-	package.add("AddRewardSelectionExperience", (bool(*)(Client*, uint32, uint64))&Perl_Client_AddRewardSelectionExperience);
-	package.add("AddRewardSelectionExperience", (bool(*)(Client*, uint32, uint64, bool))&Perl_Client_AddRewardSelectionExperience);
-	package.add("AddRewardSelectionItem", (bool(*)(Client*, uint32, uint32))&Perl_Client_AddRewardSelectionItem);
-	package.add("AddRewardSelectionItem", (bool(*)(Client*, uint32, uint32, uint32))&Perl_Client_AddRewardSelectionItem);
-	package.add("AddRewardSelectionMoney", &Perl_Client_AddRewardSelectionMoney);
 	package.add("AddRewardSelectionOption", (bool(*)(Client*, uint32, const char*))&Perl_Client_AddRewardSelectionOption);
 	package.add("AddRewardSelectionOption", (bool(*)(Client*, uint32, const char*, bool))&Perl_Client_AddRewardSelectionOption);
-	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, uint32, uint32, uint64))&Perl_Client_AddRewardSelectionReward);
-	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, uint32, uint32, uint64, const char*))&Perl_Client_AddRewardSelectionReward);
-	package.add("AddRewardSelectionTitle", &Perl_Client_AddRewardSelectionTitle);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, const char*, uint64))&Perl_Client_AddRewardSelectionReward);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, const char*, uint64, const char*))&Perl_Client_AddRewardSelectionReward);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, const char*, uint64, uint64))&Perl_Client_AddRewardSelectionReward);
+	package.add("AddRewardSelectionReward", (bool(*)(Client*, uint32, const char*, uint64, uint64, const char*))&Perl_Client_AddRewardSelectionReward);
 	package.add("AddSkill", &Perl_Client_AddSkill);
 	package.add("Admin", &Perl_Client_Admin);
 	package.add("ApplySpell", (void(*)(Client*, int))&Perl_Client_ApplySpell);
