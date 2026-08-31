@@ -2550,8 +2550,7 @@ void PerlembParser::ExportEventVariables(
 
 		case EVENT_REWARD_SELECT: {
 			Seperator sep(data);
-			ExportVar(package_name.c_str(), "reward_selection_id", sep.arg[0]);
-			ExportVar(package_name.c_str(), "reward_option_id", sep.arg[1]);
+			ExportVar(package_name.c_str(), "reward_option_index", sep.arg[0]);
 			break;
 		}
 

@@ -19,6 +19,7 @@ public:
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
+		TEST_ADD(RewardSelectionTest::StructuredScriptRewardGrouping);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
 		TEST_ADD(RewardSelectionTest::TransientBatchFailureClassification);
 	}
@@ -531,6 +532,53 @@ private:
 		TEST_ASSERT(title->type == RewardSelectionRewardType::Title);
 		TEST_ASSERT(title->data_id == 71);
 		TEST_ASSERT(title->amount == 1);
+	}
+
+	void StructuredScriptRewardGrouping()
+	{
+		ScriptRewardSelectionOffer offer;
+		offer.options.resize(2);
+		offer.options[0].option_id = 100;
+		offer.options[1].option_id = 200;
+		offer.options[0].rewards.push_back({
+			.entry_id = 1,
+			.type = RewardSelectionRewardType::Item,
+			.data_id = 1001,
+			.amount = 1
+		});
+		offer.options[1].rewards.push_back({
+			.entry_id = 2,
+			.type = RewardSelectionRewardType::Experience,
+			.data_id = static_cast<uint32_t>(
+				RewardSelectionExperienceMode::Default
+			),
+			.amount = 5000
+		});
+		offer.common_rewards.push_back({
+			.entry_id = 3,
+			.type = RewardSelectionRewardType::Copper,
+			.amount = 1000
+		});
+
+		uint32_t common_option_id = 0;
+		std::string error;
+		TEST_ASSERT(AssignScriptRewardSelectionOptionIds(
+			offer,
+			common_option_id,
+			&error
+		));
+		TEST_ASSERT(error.empty());
+		TEST_ASSERT(offer.options[0].option_id == 1);
+		TEST_ASSERT(offer.options[1].option_id == 2);
+		TEST_ASSERT(common_option_id == 3);
+
+		ScriptRewardSelectionOffer empty;
+		TEST_ASSERT(!AssignScriptRewardSelectionOptionIds(
+			empty,
+			common_option_id,
+			&error
+		));
+		TEST_ASSERT(error == "options must contain at least one choice");
 	}
 
 	void StructuredScriptRewardValidation()

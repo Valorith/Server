@@ -2994,7 +2994,6 @@ static bool LuaRewardSelectionParseReward(luabind::object table,
 	}
 	auto allowed = LuaRewardSelectionRewardKeys();
 	if (allow_option_keys) {
-		allowed.insert("option_id");
 		allowed.insert("label");
 		allowed.insert("rewards");
 	}
@@ -3079,24 +3078,8 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 		return false;
 	}
 	static const std::unordered_set<std::string> top_keys = {
-	    "selection_id", "title", "options", "common_rewards"};
+	    "title", "options", "common_rewards"};
 	LuaRewardSelectionValidateKeys(config, top_keys, "config", error);
-
-	uint64_t selection_id = 0;
-	if (error.empty()) {
-		if (luabind::type(config["selection_id"]) == LUA_TNIL) {
-			error = "config.selection_id is required";
-		} else if (LuaRewardSelectionReadUInt(config["selection_id"],
-		               selection_id,
-		               "config.selection_id",
-		               error)) {
-			if (selection_id > std::numeric_limits<uint32_t>::max()) {
-				error = "config.selection_id exceeds the supported range";
-			} else {
-				offer.selection_id = static_cast<uint32_t>(selection_id);
-			}
-		}
-	}
 
 	if (error.empty()) {
 		LuaRewardSelectionReadOptionalString(
@@ -3122,7 +3105,6 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 			break;
 		}
 		auto allowed = LuaRewardSelectionRewardKeys();
-		allowed.insert("option_id");
 		allowed.insert("label");
 		allowed.insert("rewards");
 		if (!LuaRewardSelectionValidateKeys(
@@ -3131,20 +3113,6 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 		}
 
 		RewardSelectionOption option;
-		uint64_t option_id = index;
-		if (luabind::type(option_table["option_id"]) != LUA_TNIL &&
-		    !LuaRewardSelectionReadUInt(option_table["option_id"],
-		        option_id,
-		        path + ".option_id",
-		        error)) {
-			break;
-		}
-		if (!option_id || option_id > std::numeric_limits<uint32_t>::max()) {
-			error = fmt::format(
-			    "{}.option_id is outside the supported range", path);
-			break;
-		}
-		option.option_id = static_cast<uint32_t>(option_id);
 		if (!LuaRewardSelectionReadOptionalString(
 		        option_table, "label", option.label, path, error)) {
 			break;

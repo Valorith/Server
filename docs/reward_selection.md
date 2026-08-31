@@ -73,24 +73,33 @@ in-flight selection.
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
-| `selection_id` | Yes | Unsigned 32-bit integer, greater than zero | Script-defined identity returned to the selection event. |
 | `title` | No | String | Window title. Defaults to **Choose a Reward**. |
-| `options` | Yes | Ordered, dense array | One or more player-selectable choices. |
+| `options` | Yes | Ordered, dense array | One or more player-selectable reward groups. Each group becomes one choice and receives a server-managed 1-based index. |
 | `common_rewards` | No | Ordered, dense array of reward tables | Rewards displayed as **Also Includes** and granted with every choice. |
 
 Unknown fields are rejected. Arrays must start at index 1 and contain no
 holes. Perl array references naturally preserve their declared order; Lua
 tables used as arrays may not contain string keys or sparse numeric indices.
+The complete config passed to one `OfferRewardSelection` call is the grouping
+boundary: it creates one selector with one title, any number of selectable
+reward groups, and optional rewards common to every group. The server allocates
+all protocol selection and option IDs; scripts never supply or persist them.
+A later successful call atomically replaces the client's previous scripted
+selector group.
 
 Each option supports either a concise flat reward or an explicit reward
 bundle:
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
-| `option_id` | No | Unsigned 32-bit integer, greater than zero | Event identity for this choice. Defaults to its 1-based array position. IDs must be unique within the offer. |
 | `label` | No | String | Choice label. When omitted, the server infers it from the reward definitions. |
 | One reward definition | Yes for a flat option | Reward fields from the table below | The shortest form for a one-reward choice, such as `{ item_id => 1001 }`. |
 | `rewards` | Yes for a bundle | Non-empty ordered array of reward tables | Grants every listed reward when this choice is authorized. Do not mix `rewards` with flat reward fields. |
+
+The first entry in `options` is option index 1, the second is index 2, and so
+on. A reward group may contain a single flat reward or several rewards in its
+`rewards` array. The callback receives that group position as
+`option_index`.
 
 ### Reward definitions
 
@@ -139,11 +148,11 @@ The entries in `OfferRewardSelection` are both the display definition and the
 exact grant definition. Selecting a non-common option dispatches the existing
 reward-selection event:
 
-| Language and context | Event | Selection ID | Chosen option ID | Client |
-| --- | --- | --- | --- | --- |
-| Perl NPC or player | `EVENT_REWARD_SELECT` | `$reward_selection_id` | `$reward_option_id` | `$client` |
-| Lua NPC | `event_reward_select(e)` | `e.selection_id` | `e.option_id` | `e.other` |
-| Lua player | `event_reward_select(e)` | `e.selection_id` | `e.option_id` | `e.self` |
+| Language and context | Event | Chosen reward-group index | Client |
+| --- | --- | --- | --- |
+| Perl NPC or player | `EVENT_REWARD_SELECT` | `$reward_option_index` | `$client` |
+| Lua NPC | `event_reward_select(e)` | `e.option_index` | `e.other` |
+| Lua player | `event_reward_select(e)` | `e.option_index` | `e.self` |
 
 The handler validates quest-specific entitlement and returns a nonzero value
 to authorize delivery. It must not manually grant the declared rewards. The
@@ -153,9 +162,9 @@ authorizes the claim, then acknowledges the client.
 Returning `0`, omitting the handler, or raising a script error rejects the
 claim and reopens the offer. Calling `ClearRewardSelection` during the callback
 cancels the offer and suppresses that reopen. The event reports only the chosen
-non-common `option_id`; common rewards are automatic. Normal local, global, and
-encounter event routing still applies, so only one handler should authorize a
-given offer.
+non-common reward group's 1-based `option_index`; common rewards are
+automatic. Normal local, global, and encounter event routing still applies, so
+only one handler should authorize a given offer.
 
 An NPC-created offer remains associated with that exact NPC lifetime. Removing
 the NPC clears its outstanding offers before the entity ID can be reused. If
@@ -177,7 +186,6 @@ sub EVENT_SAY {
 	return unless $text =~ /reward/i;
 
 	$client->OfferRewardSelection({
-		selection_id => 9001,
 		options => [
 			{ item_id => 1001 },
 			{ experience => 5000 },
@@ -186,8 +194,7 @@ sub EVENT_SAY {
 }
 
 sub EVENT_REWARD_SELECT {
-	return 0 unless $reward_selection_id == 9001;
-	return $reward_option_id == 1 || $reward_option_id == 2;
+	return $reward_option_index == 1 || $reward_option_index == 2;
 }
 ~~~
 
@@ -198,22 +205,19 @@ sub EVENT_SAY {
 	return unless $text =~ /rewards/i;
 
 	my $opened = $client->OfferRewardSelection({
-		selection_id => 9100,
 		title => "Veteran's Reward",
 		options => [
-			{ option_id => 101, item_id => 1001, quantity => 2 },
-			{ option_id => 102, experience => 50000 },
-			{ option_id => 103, experience_no_aa => 50000 },
-			{ option_id => 104, aa_points => 3 },
-			{ option_id => 105, money => 1234 },
+			{ item_id => 1001, quantity => 2 },
+			{ experience => 50000 },
+			{ experience_no_aa => 50000 },
+			{ aa_points => 3 },
+			{ money => 1234 },
 			{
-				option_id => 106,
 				alternate_currency_id => 19,
 				amount => 25,
 			},
-			{ option_id => 107, title_set_id => 71 },
+			{ title_set_id => 71 },
 			{
-				option_id => 108,
 				label => "Adventurer bundle",
 				rewards => [
 					{ item_id => 1001 },
@@ -230,8 +234,7 @@ sub EVENT_SAY {
 }
 
 sub EVENT_REWARD_SELECT {
-	return 0 unless $reward_selection_id == 9100;
-	return $reward_option_id >= 101 && $reward_option_id <= 108;
+	return $reward_option_index >= 1 && $reward_option_index <= 8;
 }
 ~~~
 
@@ -244,7 +247,6 @@ function event_say(e)
 	end
 
 	e.other:OfferRewardSelection({
-		selection_id = 9001,
 		options = {
 			{ item_id = 1001 },
 			{ experience = 5000 },
@@ -253,10 +255,7 @@ function event_say(e)
 end
 
 function event_reward_select(e)
-	if e.selection_id ~= 9001 then
-		return 0
-	end
-	return (e.option_id == 1 or e.option_id == 2) and 1 or 0
+	return (e.option_index == 1 or e.option_index == 2) and 1 or 0
 end
 ~~~
 
@@ -269,22 +268,19 @@ function event_say(e)
 	end
 
 	local opened = e.other:OfferRewardSelection({
-		selection_id = 9100,
 		title = "Veteran's Reward",
 		options = {
-			{ option_id = 101, item_id = 1001, quantity = 2 },
-			{ option_id = 102, experience = 50000 },
-			{ option_id = 103, experience_no_aa = 50000 },
-			{ option_id = 104, aa_points = 3 },
-			{ option_id = 105, money = 1234 },
+			{ item_id = 1001, quantity = 2 },
+			{ experience = 50000 },
+			{ experience_no_aa = 50000 },
+			{ aa_points = 3 },
+			{ money = 1234 },
 			{
-				option_id = 106,
 				alternate_currency_id = 19,
 				amount = 25,
 			},
-			{ option_id = 107, title_set_id = 71 },
+			{ title_set_id = 71 },
 			{
-				option_id = 108,
 				label = "Adventurer bundle",
 				rewards = {
 					{ item_id = 1001 },
@@ -303,10 +299,7 @@ function event_say(e)
 end
 
 function event_reward_select(e)
-	if e.selection_id ~= 9100 then
-		return 0
-	end
-	return (e.option_id >= 101 and e.option_id <= 108) and 1 or 0
+	return (e.option_index >= 1 and e.option_index <= 8) and 1 or 0
 end
 ~~~
 
@@ -409,8 +402,12 @@ the selector keeps the established at-most-once boundary. Fully crash-safe
 recovery for those fields requires a separate durable grant ledger and is not
 part of this feature.
 
-Completion then opens a copied snapshot on the claimable lane. Client requests
-are handled as follows:
+Completion serializes the validated reward set into the pending character row,
+then opens that immutable snapshot on the claimable lane. Later task-content
+reloads, edits, disables, or removals cannot change or strand an already-earned
+choice. Rows created by an earlier development build without a snapshot are
+backfilled from the matching live set before they can be offered. Client
+requests are handled as follows:
 
 - Action 1 inspects an item in the matching tab snapshot.
 - Action 3 claims one option. Provider validation checks the character,
@@ -454,10 +451,11 @@ already-delivered entries are skipped.
 Install content migration `9352` and character migration `9353` before starting
 a zone that includes this support. The character migration normalizes existing
 task-reward rows to occurrence tokens and removes the obsolete same-second
-identity. Task reload validates and replaces the in-memory reward definitions;
-active client sessions hold copied definitions, so a reload cannot leave
-dangling pointers. Pending rows remain the durable authority across zoning,
-disconnects, and server restarts.
+identity. Task reload validates and replaces the in-memory reward definitions.
+Active client sessions hold copied definitions, and pending rows store
+serialized immutable definitions, so a reload cannot leave dangling pointers
+or alter an earned choice. Pending rows remain the durable authority across
+zoning, disconnects, server restarts, and later content changes.
 
 When changing selectable reward content, avoid reusing a reward, option, or set
 ID for a different semantic grant. Stable IDs are part of claim validation and

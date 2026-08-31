@@ -2032,11 +2032,7 @@ void Client::HandleRewardSelectionPacket(
 		RewardSelectionSource::General
 	) {
 		const auto &claim = *result.claim;
-		const auto export_data = fmt::format(
-			"{} {}",
-			claim.session.source.source_id,
-			claim.selected_option_id
-		);
+		const auto export_data = fmt::format("{}", claim.selected_option_id);
 		const auto origin_key = claim.session.source.source_instance_id;
 		const auto origin_entity_id = static_cast<uint16_t>(
 			origin_key & std::numeric_limits<uint16_t>::max()

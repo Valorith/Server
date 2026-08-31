@@ -7823,6 +7823,7 @@ CREATE TABLE IF NOT EXISTS `character_task_reward_selections` (
 	`accepted_time` INT(10) UNSIGNED NOT NULL,
 	`source_instance_id` BIGINT(20) UNSIGNED NOT NULL,
 	`reward_set_id` INT(10) UNSIGNED NOT NULL,
+	`reward_snapshot` MEDIUMTEXT NOT NULL,
 	`selected_option_id` INT(10) UNSIGNED NOT NULL DEFAULT 0,
 	`status` TINYINT(3) UNSIGNED NOT NULL DEFAULT 0,
 	`attempt_count` INT(10) UNSIGNED NOT NULL DEFAULT 0,
@@ -7861,6 +7862,20 @@ SET @reward_schema_sql = IF(
 	),
 	'SELECT 1',
 	'ALTER TABLE `character_task_reward_selections` ADD COLUMN `source_instance_id` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 AFTER `accepted_time`'
+);
+PREPARE reward_schema_stmt FROM @reward_schema_sql;
+EXECUTE reward_schema_stmt;
+DEALLOCATE PREPARE reward_schema_stmt;
+
+SET @reward_schema_sql = IF(
+	EXISTS (
+		SELECT 1 FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+			AND table_name = 'character_task_reward_selections'
+			AND column_name = 'reward_snapshot'
+	),
+	'SELECT 1',
+	'ALTER TABLE `character_task_reward_selections` ADD COLUMN `reward_snapshot` MEDIUMTEXT NOT NULL AFTER `reward_set_id`'
 );
 PREPARE reward_schema_stmt FROM @reward_schema_sql;
 EXECUTE reward_schema_stmt;
@@ -8035,7 +8050,8 @@ DEALLOCATE PREPARE reward_schema_stmt;
 SELECT `occurrence_id`, `character_id`, `task_id`, `accepted_time`
 FROM `character_task_reward_instances` LIMIT 0;
 SELECT `pending_reward_id`, `character_id`, `task_id`, `accepted_time`,
-	`source_instance_id`, `reward_set_id`, `selected_option_id`, `status`,
+	`source_instance_id`, `reward_set_id`, `reward_snapshot`,
+	`selected_option_id`, `status`,
 	`attempt_count`, `claimed_at`, `last_attempt_at`, `last_error`
 FROM `character_task_reward_selections` LIMIT 0;
 SELECT `character_id`, `pending_reward_id`, `reward_id`, `status`,

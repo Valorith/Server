@@ -350,16 +350,12 @@ bool ClientRewardSelection::OfferScriptSelection(
 		error = "reward selection requires the RoF2 client";
 		return false;
 	}
-	if (!offer.selection_id) {
-		error = "selection_id must be greater than zero";
-		return false;
-	}
-	if (offer.options.empty()) {
-		error = "options must contain at least one choice";
-		return false;
-	}
-	if (offer.options.size() > std::numeric_limits<uint32_t>::max()) {
-		error = "options contains too many choices";
+	uint32_t common_option_id = 0;
+	if (!AssignScriptRewardSelectionOptionIds(
+		offer,
+		common_option_id,
+		&error
+	)) {
 		return false;
 	}
 	if (m_claimable_channel.claim_in_flight) {
@@ -367,19 +363,9 @@ bool ClientRewardSelection::OfferScriptSelection(
 		return false;
 	}
 
-	std::unordered_set<uint32_t> option_ids;
 	uint64_t next_entry_id = 1;
 	for (size_t index = 0; index < offer.options.size(); ++index) {
 		auto &option = offer.options[index];
-		if (!option.option_id) {
-			error = fmt::format(
-			    "options[{}].option_id must be greater than zero", index + 1);
-			return false;
-		}
-		if (!option_ids.insert(option.option_id).second) {
-			error = fmt::format("duplicate option_id {}", option.option_id);
-			return false;
-		}
 		if (option.rewards.empty()) {
 			error = fmt::format("options[{}] has no rewards", index + 1);
 			return false;
@@ -406,15 +392,6 @@ bool ClientRewardSelection::OfferScriptSelection(
 	}
 
 	if (!offer.common_rewards.empty()) {
-		uint32_t common_option_id = std::numeric_limits<uint32_t>::max();
-		while (common_option_id && option_ids.count(common_option_id)) {
-			--common_option_id;
-		}
-		if (!common_option_id) {
-			error = "no internal option ID is available for common_rewards";
-			return false;
-		}
-
 		RewardSelectionOption common_option;
 		common_option.option_id = common_option_id;
 		common_option.sequence = static_cast<uint32_t>(offer.options.size());
@@ -437,13 +414,18 @@ bool ClientRewardSelection::OfferScriptSelection(
 		offer.options.emplace_back(std::move(common_option));
 	}
 
+	const auto selection_id = AllocateScriptSelectionId();
+	if (!selection_id) {
+		error = "no internal selection ID is available";
+		return false;
+	}
 	RewardSelectionSession session;
 	session.source.source = RewardSelectionSource::General;
-	session.source.source_id = offer.selection_id;
+	session.source.source_id = selection_id;
 	session.source.source_instance_id = ScriptOriginKey();
 	session.channel = RewardSelectionChannel::Claimable;
-	session.pending_reward_id = offer.selection_id;
-	session.reward_set.reward_set_id = offer.selection_id;
+	session.pending_reward_id = selection_id;
+	session.reward_set.reward_set_id = selection_id;
 	session.reward_set.title = std::move(offer.title);
 	session.reward_set.options = std::move(offer.options);
 	if (!OpenInternal({session}, RewardSelectionSource::General)) {
@@ -453,10 +435,42 @@ bool ClientRewardSelection::OfferScriptSelection(
 	return true;
 }
 
+uint32_t ClientRewardSelection::AllocateScriptSelectionId()
+{
+	const auto &sessions = m_claimable_channel.sessions;
+	for (size_t attempt = 0; attempt <= sessions.size() * 2; ++attempt) {
+		const auto candidate = m_next_script_selection_id;
+		m_next_script_selection_id = candidate == 1
+			? std::numeric_limits<uint32_t>::max()
+			: candidate - 1;
+		const auto used = std::any_of(
+			sessions.begin(),
+			sessions.end(),
+			[candidate](const RewardSelectionSession &session) {
+				return
+					session.pending_reward_id == candidate ||
+					session.reward_set.reward_set_id == candidate;
+			}
+		);
+		if (!used) {
+			return candidate;
+		}
+	}
+	return 0;
+}
+
 void ClientRewardSelection::ClearScriptOffer(bool notify_client)
 {
 	if (m_claimable_channel.claim_in_flight) {
-		m_script_clear_requested_during_claim = true;
+		if (
+			m_claimable_channel.in_flight_source ==
+			RewardSelectionSource::General
+		) {
+			m_script_clear_requested_during_claim = true;
+		}
+		else {
+			m_script_clear_deferred_during_claim = true;
+		}
 		return;
 	}
 	m_script_clear_requested_during_claim = false;
@@ -748,6 +762,7 @@ void ClientRewardSelection::Clear(
 	auto &state = State(channel);
 	state.sessions.clear();
 	state.claim_in_flight = false;
+	state.in_flight_source = RewardSelectionSource::Unknown;
 	++state.session_generation;
 	if (!state.session_generation) {
 		++state.session_generation;
@@ -781,6 +796,7 @@ void ClientRewardSelection::ClearSource(
 		return;
 	}
 	state.claim_in_flight = false;
+	state.in_flight_source = RewardSelectionSource::Unknown;
 	++state.session_generation;
 	if (!state.session_generation) {
 		++state.session_generation;
@@ -1175,6 +1191,7 @@ ClientRewardSelection::ResolveClaim(
 		selected_option->rewards.begin(),
 		selected_option->rewards.end()
 	);
+	state.in_flight_source = session->source.source;
 	state.claim_in_flight = true;
 	return resolution;
 }
@@ -1227,7 +1244,13 @@ void ClientRewardSelection::CompleteClaim(
 		}
 	}
 	state.claim_in_flight = false;
-	if (result != RewardSelectionDeliveryResult::RetryableFailure) {
+	state.in_flight_source = RewardSelectionSource::Unknown;
+	if (m_script_clear_deferred_during_claim) {
+		m_script_clear_deferred_during_claim = false;
+		ClearScriptOffer(false);
+		SendSessions(channel);
+	}
+	else if (result != RewardSelectionDeliveryResult::RetryableFailure) {
 		SendSessions(channel);
 	}
 }

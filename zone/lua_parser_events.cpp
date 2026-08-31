@@ -226,10 +226,7 @@ void handle_npc_reward_select(
 	lua_setfield(L, -2, "other");
 
 	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
-	lua_setfield(L, -2, "selection_id");
-
-	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
-	lua_setfield(L, -2, "option_id");
+	lua_setfield(L, -2, "option_index");
 }
 
 void handle_npc_waypoint(
@@ -926,10 +923,7 @@ void handle_player_reward_select(
 	Seperator sep(data.c_str());
 
 	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
-	lua_setfield(L, -2, "selection_id");
-
-	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
-	lua_setfield(L, -2, "option_id");
+	lua_setfield(L, -2, "option_index");
 }
 
 void handle_player_pick_up(

@@ -1,6 +1,7 @@
 #include "task_client_state.h"
 
 #include "common/events/player_event_logs.h"
+#include "common/json/json.hpp"
 #include "common/misc_functions.h"
 #include "common/repositories/character_activities_repository.h"
 #include "common/repositories/character_task_timers_repository.h"
@@ -18,6 +19,8 @@
 
 #include <cstdlib>
 #include <limits>
+#include <string_view>
+#include <unordered_set>
 
 #define EBON_CRYSTAL 40902
 #define RADIANT_CRYSTAL 40903
@@ -28,12 +31,221 @@ extern QueryServ   *QServ;
 namespace
 {
 
+using json = nlohmann::json;
+
 enum class TaskRewardSelectionStatus : uint32_t {
 	Pending   = 0,
 	Delivered = 1,
 	Retryable = 2,
 	Ambiguous = 3
 };
+
+constexpr size_t kMaxTaskRewardSnapshotBytes = 1024 * 1024;
+constexpr size_t kMaxTaskRewardSnapshotOptions = 4096;
+constexpr size_t kMaxTaskRewardSnapshotEntries = 65535;
+
+std::string SerializeTaskRewardSnapshot(const RewardSelectionSet &reward_set)
+{
+	json snapshot;
+	snapshot["version"] = 1;
+	snapshot["reward_set_id"] = reward_set.reward_set_id;
+	snapshot["title"] = reward_set.title;
+	snapshot["options"] = json::array();
+
+	for (const auto &option : reward_set.options) {
+		json serialized_option;
+		serialized_option["option_id"] = option.option_id;
+		serialized_option["sequence"] = option.sequence;
+		serialized_option["label"] = option.label;
+		serialized_option["common_to_all"] = option.common_to_all;
+		serialized_option["flags"] = option.flags;
+		serialized_option["rewards"] = json::array();
+		for (const auto &reward : option.rewards) {
+			serialized_option["rewards"].push_back({
+				{"entry_id", reward.entry_id},
+				{"type", static_cast<uint32_t>(reward.type)},
+				{"data_id", reward.data_id},
+				{"amount", reward.amount},
+				{"description", reward.description}
+			});
+		}
+		snapshot["options"].push_back(std::move(serialized_option));
+	}
+	return snapshot.dump();
+}
+
+std::optional<RewardSelectionSet> ParseTaskRewardSnapshot(
+	std::string_view serialized,
+	uint32_t expected_reward_set_id
+)
+{
+	if (
+		serialized.empty() ||
+		serialized.size() > kMaxTaskRewardSnapshotBytes ||
+		!expected_reward_set_id
+	) {
+		return std::nullopt;
+	}
+
+	const auto snapshot = json::parse(serialized, nullptr, false);
+	if (!snapshot.is_object()) {
+		return std::nullopt;
+	}
+	const auto read_uint64 = [](
+		const json &object,
+		const char *key,
+		uint64_t &value
+	) {
+		const auto entry = object.find(key);
+		if (entry == object.end() || !entry->is_number_unsigned()) {
+			return false;
+		}
+		value = entry->get<uint64_t>();
+		return true;
+	};
+	const auto read_uint32 = [&read_uint64](
+		const json &object,
+		const char *key,
+		uint32_t &value
+	) {
+		uint64_t parsed = 0;
+		if (
+			!read_uint64(object, key, parsed) ||
+			parsed > std::numeric_limits<uint32_t>::max()
+		) {
+			return false;
+		}
+		value = static_cast<uint32_t>(parsed);
+		return true;
+	};
+
+	uint32_t version = 0;
+	uint32_t reward_set_id = 0;
+	const auto title = snapshot.find("title");
+	const auto options = snapshot.find("options");
+	if (
+		!read_uint32(snapshot, "version", version) ||
+		version != 1 ||
+		!read_uint32(snapshot, "reward_set_id", reward_set_id) ||
+		reward_set_id != expected_reward_set_id ||
+		title == snapshot.end() ||
+		!title->is_string() ||
+		options == snapshot.end() ||
+		!options->is_array() ||
+		options->empty() ||
+		options->size() > kMaxTaskRewardSnapshotOptions
+	) {
+		return std::nullopt;
+	}
+
+	RewardSelectionSet reward_set;
+	reward_set.reward_set_id = reward_set_id;
+	reward_set.title = title->get<std::string>();
+	std::unordered_set<uint32_t> option_ids;
+	std::unordered_set<uint32_t> reward_ids;
+	size_t reward_count = 0;
+	bool has_selectable_option = false;
+	bool has_common_option = false;
+
+	for (const auto &serialized_option : *options) {
+		if (!serialized_option.is_object()) {
+			return std::nullopt;
+		}
+		RewardSelectionOption option;
+		uint32_t raw_flags = 0;
+		const auto label = serialized_option.find("label");
+		const auto common = serialized_option.find("common_to_all");
+		const auto rewards = serialized_option.find("rewards");
+		if (
+			!read_uint32(serialized_option, "option_id", option.option_id) ||
+			!option.option_id ||
+			!option_ids.insert(option.option_id).second ||
+			!read_uint32(serialized_option, "sequence", option.sequence) ||
+			!read_uint32(serialized_option, "flags", raw_flags) ||
+			raw_flags > std::numeric_limits<uint8_t>::max() ||
+			label == serialized_option.end() ||
+			!label->is_string() ||
+			common == serialized_option.end() ||
+			!common->is_boolean() ||
+			rewards == serialized_option.end() ||
+			!rewards->is_array() ||
+			rewards->empty()
+		) {
+			return std::nullopt;
+		}
+
+		option.flags = static_cast<uint8_t>(raw_flags);
+		option.label = label->get<std::string>();
+		option.common_to_all = common->get<bool>();
+		if (option.common_to_all) {
+			if (has_common_option) {
+				return std::nullopt;
+			}
+			has_common_option = true;
+		}
+		else {
+			has_selectable_option = true;
+		}
+
+		if (
+			rewards->size() > kMaxTaskRewardSnapshotEntries ||
+			reward_count > kMaxTaskRewardSnapshotEntries - rewards->size()
+		) {
+			return std::nullopt;
+		}
+		reward_count += rewards->size();
+		for (const auto &serialized_reward : *rewards) {
+			if (!serialized_reward.is_object()) {
+				return std::nullopt;
+			}
+			RewardSelectionReward reward;
+			uint32_t raw_type = 0;
+			const auto description = serialized_reward.find("description");
+			if (
+				!read_uint32(serialized_reward, "entry_id", reward.entry_id) ||
+				!reward.entry_id ||
+				!reward_ids.insert(reward.entry_id).second ||
+				!read_uint32(serialized_reward, "type", raw_type) ||
+				raw_type > static_cast<uint32_t>(
+					RewardSelectionRewardType::Title
+				) ||
+				!read_uint32(serialized_reward, "data_id", reward.data_id) ||
+				!read_uint64(serialized_reward, "amount", reward.amount) ||
+				description == serialized_reward.end() ||
+				!description->is_string()
+			) {
+				return std::nullopt;
+			}
+			reward.type = static_cast<RewardSelectionRewardType>(raw_type);
+			reward.description = description->get<std::string>();
+			if (!IsValidRewardSelectionRewardDefinition(
+				reward.type,
+				reward.data_id,
+				reward.amount
+			)) {
+				return std::nullopt;
+			}
+			option.rewards.push_back(std::move(reward));
+		}
+		reward_set.options.push_back(std::move(option));
+	}
+
+	return has_selectable_option
+		? std::optional<RewardSelectionSet>(std::move(reward_set))
+		: std::nullopt;
+}
+
+std::string EscapeTaskRewardSnapshot(const std::string &serialized)
+{
+	std::string escaped(serialized.size() * 2 + 1, '\0');
+	const auto escaped_length = database.DoEscapeString(
+		escaped.data(),
+		serialized.data(),
+		static_cast<uint32_t>(serialized.size())
+	);
+	escaped.resize(escaped_length);
+	return escaped;
+}
 
 struct PersistedTaskRewardSelection {
 	uint32_t                  pending_reward_id = 0;
@@ -43,6 +255,8 @@ struct PersistedTaskRewardSelection {
 	uint32_t                  reward_set_id = 0;
 	uint32_t                  selected_option_id = 0;
 	TaskRewardSelectionStatus status = TaskRewardSelectionStatus::Pending;
+	bool                      reward_snapshot_present = false;
+	std::optional<RewardSelectionSet> reward_snapshot;
 };
 
 uint64_t ParseTaskRewardUInt64(const char *value)
@@ -72,7 +286,60 @@ PersistedTaskRewardSelection ParseTaskRewardSelection(
 	selection.status = static_cast<TaskRewardSelectionStatus>(
 		ParseTaskRewardUInt32(row[6])
 	);
+	const std::string serialized_snapshot = row[7] ? row[7] : "";
+	selection.reward_snapshot_present = !serialized_snapshot.empty();
+	if (selection.reward_snapshot_present) {
+		selection.reward_snapshot = ParseTaskRewardSnapshot(
+			serialized_snapshot,
+			selection.reward_set_id
+		);
+	}
 	return selection;
+}
+
+const RewardSelectionSet *ResolvePersistedTaskRewardSet(
+	PersistedTaskRewardSelection &selection,
+	const RewardSelectionSet *legacy_fallback,
+	uint32_t character_id
+)
+{
+	if (selection.reward_snapshot) {
+		return &*selection.reward_snapshot;
+	}
+	if (
+		selection.reward_snapshot_present ||
+		!legacy_fallback ||
+		legacy_fallback->reward_set_id != selection.reward_set_id ||
+		!selection.pending_reward_id ||
+		!character_id
+	) {
+		return nullptr;
+	}
+
+	const auto serialized = SerializeTaskRewardSnapshot(*legacy_fallback);
+	if (
+		serialized.empty() ||
+		serialized.size() > kMaxTaskRewardSnapshotBytes
+	) {
+		return nullptr;
+	}
+	const auto escaped = EscapeTaskRewardSnapshot(serialized);
+	auto persisted = database.QueryDatabase(fmt::format(
+		"UPDATE character_task_reward_selections "
+		"SET reward_snapshot = '{}' "
+		"WHERE pending_reward_id = {} AND character_id = {} "
+		"AND (reward_snapshot = '' OR reward_snapshot IS NULL)",
+		escaped,
+		selection.pending_reward_id,
+		character_id
+	));
+	if (!persisted.Success() || persisted.RowsAffected() != 1) {
+		return nullptr;
+	}
+
+	selection.reward_snapshot = *legacy_fallback;
+	selection.reward_snapshot_present = true;
+	return &*selection.reward_snapshot;
 }
 
 std::optional<uint64_t> ReserveTaskRewardInstance(
@@ -1219,19 +1486,6 @@ bool ClientTaskState::RewardTask(
 	bool grant_ancillary_rewards = true;
 	if (ti->reward_method == METHODSELECT) {
 		const auto task_id = static_cast<uint32_t>(client_task.task_id);
-		const auto reward_set = TaskManager::Instance()
-			? TaskManager::Instance()->GetTaskRewardSet(task_id)
-			: nullptr;
-		if (!ti->has_reward_selection || !reward_set) {
-			LogError(
-				"Task [{}] completed for character [{}], but its selectable "
-				"reward set is not available; leaving the completed task in place",
-				task_id,
-				c->CharacterID()
-			);
-			return false;
-		}
-
 		const auto accepted_time =
 			static_cast<uint32_t>(std::max(client_task.accepted_time, 0));
 		const auto source_instance_id = EnsureTaskRewardInstance(
@@ -1249,80 +1503,152 @@ bool ClientTaskState::RewardTask(
 			return false;
 		}
 
-		auto pending = database.QueryDatabase(fmt::format(
-			"INSERT IGNORE INTO character_task_reward_selections "
-			"(character_id, task_id, accepted_time, source_instance_id, "
-			"reward_set_id, status) "
-			"VALUES ({}, {}, {}, {}, {}, 0)",
+		const auto reward_set = TaskManager::Instance()
+			? TaskManager::Instance()->GetTaskRewardSet(task_id)
+			: nullptr;
+		auto existing = database.QueryDatabase(fmt::format(
+			"SELECT pending_reward_id, task_id, accepted_time, "
+			"source_instance_id, reward_set_id, selected_option_id, status, "
+			"reward_snapshot "
+			"FROM character_task_reward_selections "
+			"WHERE character_id = {} AND source_instance_id = {} LIMIT 1",
 			c->CharacterID(),
-			task_id,
-			accepted_time,
-			*source_instance_id,
-			reward_set->reward_set_id
+			*source_instance_id
 		));
-		if (!pending.Success()) {
+		if (!existing.Success() || existing.RowCount() > 1) {
 			LogError(
-				"Failed to create selectable reward for task [{}], character [{}]",
+				"Failed to look up selectable reward for task [{}], character [{}]",
 				task_id,
 				c->CharacterID()
 			);
 			return false;
 		}
 
-		const bool pending_selection_created = pending.RowsAffected() != 0;
 		PersistedTaskRewardSelection persisted;
-		if (pending_selection_created) {
-			const auto pending_reward_id = pending.LastInsertedID();
-			if (
-				!pending_reward_id ||
-				pending_reward_id > std::numeric_limits<uint32_t>::max()
-			) {
-				LogError(
-					"Task [{}] created an invalid pending reward ID [{}] for "
-					"character [{}]",
-					task_id,
-					pending_reward_id,
-					c->CharacterID()
-				);
-				return false;
-			}
-			persisted.pending_reward_id =
-				static_cast<uint32_t>(pending_reward_id);
-			persisted.task_id = task_id;
-			persisted.accepted_time = accepted_time;
-			persisted.source_instance_id = *source_instance_id;
-			persisted.reward_set_id = reward_set->reward_set_id;
+		bool pending_selection_created = false;
+		if (existing.RowCount() == 1) {
+			persisted = ParseTaskRewardSelection(existing.begin());
 		}
 		else {
-			auto existing = database.QueryDatabase(fmt::format(
-				"SELECT pending_reward_id, task_id, accepted_time, "
-				"source_instance_id, reward_set_id, selected_option_id, status "
-				"FROM character_task_reward_selections "
-				"WHERE character_id = {} AND source_instance_id = {} "
-				"LIMIT 1",
-				c->CharacterID(),
-				*source_instance_id
-			));
-			if (!existing.Success() || existing.RowCount() != 1) {
+			if (!ti->has_reward_selection || !reward_set) {
 				LogError(
-					"Failed to recover selectable reward for task [{}], "
+					"Task [{}] completed for character [{}], but its selectable "
+					"reward set is not available; leaving the completed task in place",
+					task_id,
+					c->CharacterID()
+				);
+				return false;
+			}
+			const auto serialized_reward_snapshot =
+				SerializeTaskRewardSnapshot(*reward_set);
+			if (
+				serialized_reward_snapshot.empty() ||
+				serialized_reward_snapshot.size() >
+					kMaxTaskRewardSnapshotBytes
+			) {
+				LogError(
+					"Task [{}] selectable reward snapshot is too large for "
 					"character [{}]",
 					task_id,
 					c->CharacterID()
 				);
 				return false;
 			}
-			persisted = ParseTaskRewardSelection(existing.begin());
+			const auto escaped_reward_snapshot =
+				EscapeTaskRewardSnapshot(serialized_reward_snapshot);
+			auto pending = database.QueryDatabase(fmt::format(
+				"INSERT IGNORE INTO character_task_reward_selections "
+				"(character_id, task_id, accepted_time, source_instance_id, "
+				"reward_set_id, reward_snapshot, status) "
+				"VALUES ({}, {}, {}, {}, {}, '{}', 0)",
+				c->CharacterID(),
+				task_id,
+				accepted_time,
+				*source_instance_id,
+				reward_set->reward_set_id,
+				escaped_reward_snapshot
+			));
+			if (!pending.Success()) {
+				LogError(
+					"Failed to create selectable reward for task [{}], "
+					"character [{}]",
+					task_id,
+					c->CharacterID()
+				);
+				return false;
+			}
+			pending_selection_created = pending.RowsAffected() != 0;
+			if (pending_selection_created) {
+				const auto pending_reward_id = pending.LastInsertedID();
+				if (
+					!pending_reward_id ||
+					pending_reward_id > std::numeric_limits<uint32_t>::max()
+				) {
+					LogError(
+						"Task [{}] created an invalid pending reward ID [{}] "
+						"for character [{}]",
+						task_id,
+						pending_reward_id,
+						c->CharacterID()
+					);
+					return false;
+				}
+				persisted.pending_reward_id =
+					static_cast<uint32_t>(pending_reward_id);
+				persisted.task_id = task_id;
+				persisted.accepted_time = accepted_time;
+				persisted.source_instance_id = *source_instance_id;
+				persisted.reward_set_id = reward_set->reward_set_id;
+				persisted.reward_snapshot_present = true;
+				persisted.reward_snapshot = *reward_set;
+			}
+			else {
+				existing = database.QueryDatabase(fmt::format(
+					"SELECT pending_reward_id, task_id, accepted_time, "
+					"source_instance_id, reward_set_id, selected_option_id, "
+					"status, reward_snapshot "
+					"FROM character_task_reward_selections "
+					"WHERE character_id = {} AND source_instance_id = {} LIMIT 1",
+					c->CharacterID(),
+					*source_instance_id
+				));
+				if (!existing.Success() || existing.RowCount() != 1) {
+					LogError(
+						"Failed to recover selectable reward for task [{}], "
+						"character [{}]",
+						task_id,
+						c->CharacterID()
+					);
+					return false;
+				}
+				persisted = ParseTaskRewardSelection(existing.begin());
+			}
 		}
 
 		if (
-			persisted.reward_set_id != reward_set->reward_set_id ||
 			persisted.task_id != task_id ||
 			persisted.source_instance_id != *source_instance_id
 		) {
 			LogError(
-				"Task [{}] pending reward [{}] no longer matches its configured "
-				"reward set; refusing to replace the durable selection",
+				"Task [{}] pending reward [{}] does not match its durable "
+				"source occurrence",
+				task_id,
+				persisted.pending_reward_id
+			);
+			return false;
+		}
+
+		const auto persisted_reward_set = ResolvePersistedTaskRewardSet(
+			persisted,
+			reward_set &&
+				reward_set->reward_set_id == persisted.reward_set_id
+					? reward_set
+					: nullptr,
+			c->CharacterID()
+		);
+		if (!persisted_reward_set) {
+			LogError(
+				"Task [{}] pending reward [{}] has no valid durable snapshot",
 				task_id,
 				persisted.pending_reward_id
 			);
@@ -1342,7 +1668,7 @@ bool ClientTaskState::RewardTask(
 			persisted.status == TaskRewardSelectionStatus::Retryable;
 		if (can_present) {
 			task_reward_session = BuildTaskRewardSelectionSession(
-				*reward_set,
+				*persisted_reward_set,
 				persisted.task_id,
 				persisted.source_instance_id,
 				persisted.pending_reward_id,
@@ -1662,7 +1988,8 @@ void ClientTaskState::SendRewardSelection(Client *client, uint32_t task_id)
 	if (active_source_instance_id) {
 		auto existing = database.QueryDatabase(fmt::format(
 			"SELECT pending_reward_id, task_id, accepted_time, "
-			"source_instance_id, reward_set_id, selected_option_id, status "
+			"source_instance_id, reward_set_id, selected_option_id, status, "
+			"reward_snapshot "
 			"FROM character_task_reward_selections WHERE character_id = {} "
 			"AND task_id = {} AND source_instance_id = {} "
 			"ORDER BY pending_reward_id DESC LIMIT 1",
@@ -1690,8 +2017,19 @@ void ClientTaskState::SendRewardSelection(Client *client, uint32_t task_id)
 		persisted.status == TaskRewardSelectionStatus::Ambiguous
 			? persisted.selected_option_id
 			: 0;
+	const auto preview_reward_set = persisted.pending_reward_id
+		? ResolvePersistedTaskRewardSet(
+			persisted,
+			reward_set,
+			client->CharacterID()
+		)
+		: reward_set;
+	if (!preview_reward_set) {
+		client->GetRewardSelection().Clear(RewardSelectionChannel::Preview);
+		return;
+	}
 	const auto session = BuildTaskRewardSelectionSession(
-		*reward_set,
+		*preview_reward_set,
 		task_id,
 		source_instance_id,
 		pending_reward_id,
@@ -1763,7 +2101,7 @@ void ClientTaskState::RestorePendingRewardSelection(Client *client)
 
 	auto pending = database.QueryDatabase(fmt::format(
 		"SELECT pending_reward_id, task_id, accepted_time, source_instance_id, "
-		"reward_set_id, selected_option_id, status "
+		"reward_set_id, selected_option_id, status, reward_snapshot "
 		"FROM character_task_reward_selections "
 		"WHERE character_id = {} AND "
 		"((status = 0 AND selected_option_id = 0) OR status = 2) "
@@ -1773,23 +2111,33 @@ void ClientTaskState::RestorePendingRewardSelection(Client *client)
 	std::vector<RewardSelectionSession> sessions;
 	if (pending.Success()) {
 		for (auto row : pending) {
-			const auto persisted = ParseTaskRewardSelection(row);
-			const auto task = TaskManager::Instance()->GetTaskData(
-				static_cast<int>(persisted.task_id)
+			auto persisted = ParseTaskRewardSelection(row);
+			const RewardSelectionSet *legacy_fallback = nullptr;
+			if (!persisted.reward_snapshot_present) {
+				const auto task = TaskManager::Instance()->GetTaskData(
+					static_cast<int>(persisted.task_id)
+				);
+				const auto reward_set =
+					TaskManager::Instance()->GetTaskRewardSet(persisted.task_id);
+				if (
+					task &&
+					task->reward_method == METHODSELECT &&
+					task->has_reward_selection &&
+					reward_set &&
+					reward_set->reward_set_id == persisted.reward_set_id
+				) {
+					legacy_fallback = reward_set;
+				}
+			}
+			const auto reward_set = ResolvePersistedTaskRewardSet(
+				persisted,
+				legacy_fallback,
+				client->CharacterID()
 			);
-			const auto reward_set = TaskManager::Instance()->GetTaskRewardSet(
-				persisted.task_id
-			);
-			if (
-				!task ||
-				task->reward_method != METHODSELECT ||
-				!task->has_reward_selection ||
-				!reward_set ||
-				reward_set->reward_set_id != persisted.reward_set_id
-			) {
+			if (!reward_set) {
 				LogError(
 					"Pending task reward [{}] for character [{}] cannot be "
-					"restored because its content definition is unavailable",
+					"restored because its durable snapshot is unavailable or invalid",
 					persisted.pending_reward_id,
 					client->CharacterID()
 				);
@@ -1863,7 +2211,7 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 
 	auto selection_result = database.QueryDatabase(fmt::format(
 		"SELECT pending_reward_id, task_id, accepted_time, source_instance_id, "
-		"reward_set_id, selected_option_id, status "
+		"reward_set_id, selected_option_id, status, reward_snapshot "
 		"FROM character_task_reward_selections "
 		"WHERE pending_reward_id = {} AND character_id = {} LIMIT 1",
 		claim.session.pending_reward_id,
@@ -1883,17 +2231,29 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 		return RewardSelectionDeliveryResult::RetryableFailure;
 	}
 
-	const auto task = TaskManager::Instance()->GetTaskData(
-		static_cast<int>(persisted.task_id)
+	const RewardSelectionSet *legacy_fallback = nullptr;
+	if (!persisted.reward_snapshot_present) {
+		const auto task = TaskManager::Instance()->GetTaskData(
+			static_cast<int>(persisted.task_id)
+		);
+		const auto reward_set =
+			TaskManager::Instance()->GetTaskRewardSet(persisted.task_id);
+		if (
+			task &&
+			task->reward_method == METHODSELECT &&
+			task->has_reward_selection &&
+			reward_set &&
+			reward_set->reward_set_id == persisted.reward_set_id
+		) {
+			legacy_fallback = reward_set;
+		}
+	}
+	const auto reward_set = ResolvePersistedTaskRewardSet(
+		persisted,
+		legacy_fallback,
+		client->CharacterID()
 	);
-	const auto reward_set = TaskManager::Instance()->GetTaskRewardSet(persisted.task_id);
-	if (
-		!task ||
-		task->reward_method != METHODSELECT ||
-		!task->has_reward_selection ||
-		!reward_set ||
-		reward_set->reward_set_id != persisted.reward_set_id
-	) {
+	if (!reward_set) {
 		return RewardSelectionDeliveryResult::RetryableFailure;
 	}
 
@@ -2955,26 +3315,52 @@ void ClientTaskState::RemoveTask(Client *client, int sequence_number, TaskType t
 			break;
 	}
 
-	CharacterActivitiesRepository::DeleteWhere(
-		database,
-		fmt::format("charid = {} AND taskid = {}", character_id, task_id)
-	);
-
-	CharacterTasksRepository::DeleteWhere(
-		database,
-		fmt::format("charid = {} AND taskid = {} AND type = {}", character_id, task_id, static_cast<int>(task_type))
-	);
+	const auto activities_deleted = database.QueryDatabase(fmt::format(
+		"DELETE FROM character_activities WHERE charid = {} AND taskid = {}",
+		character_id,
+		task_id
+	));
+	const auto task_deleted = database.QueryDatabase(fmt::format(
+		"DELETE FROM character_tasks "
+		"WHERE charid = {} AND taskid = {} AND type = {}",
+		character_id,
+		task_id,
+		static_cast<int>(task_type)
+	));
 
 	const auto removed_task = TaskManager::Instance()
 		? TaskManager::Instance()->GetTaskData(task_id)
 		: nullptr;
-	if (removed_task && removed_task->reward_method == METHODSELECT) {
-		database.QueryDatabase(fmt::format(
+	if (
+		removed_task &&
+		removed_task->reward_method == METHODSELECT &&
+		activities_deleted.Success() &&
+		task_deleted.Success()
+	) {
+		const auto occurrence_deleted = database.QueryDatabase(fmt::format(
 			"DELETE FROM character_task_reward_instances "
 			"WHERE character_id = {} AND task_id = {}",
 			character_id,
 			task_id
 		));
+		if (!occurrence_deleted.Success()) {
+			LogError(
+				"Failed to clear selectable reward occurrence for character [{}], task [{}]",
+				character_id,
+				task_id
+			);
+		}
+	}
+	else if (
+		removed_task &&
+		removed_task->reward_method == METHODSELECT
+	) {
+		LogError(
+			"Retaining selectable reward occurrence for character [{}], task [{}] "
+			"because task persistence cleanup failed",
+			character_id,
+			task_id
+		);
 	}
 
 	switch (task_type) {

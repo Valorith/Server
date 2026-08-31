@@ -2783,7 +2783,7 @@ static bool PerlRewardSelectionValidateKeys(const perl::hash &table,
 		const std::string key = raw_key;
 		if (reward_keys.count(key) ||
 		    (allow_option_keys &&
-		        (key == "option_id" || key == "label" || key == "rewards"))) {
+		        (key == "label" || key == "rewards"))) {
 			continue;
 		}
 		error = fmt::format("{}.{} is not a supported field", path, key);
@@ -2941,29 +2941,12 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 	} else {
 		perl::hash config = config_ref;
 		static const std::unordered_set<std::string> top_keys = {
-		    "selection_id", "title", "options", "common_rewards"};
+		    "title", "options", "common_rewards"};
 		for (const auto &[raw_key, value] : config) {
 			const std::string key = raw_key;
 			if (!top_keys.count(key)) {
 				error = fmt::format("config.{} is not a supported field", key);
 				break;
-			}
-		}
-
-		uint64_t selection_id = 0;
-		if (error.empty()) {
-			if (!config.exists("selection_id")) {
-				error = "config.selection_id is required";
-			} else if (PerlRewardSelectionReadUInt(config,
-			               "selection_id",
-			               selection_id,
-			               "config",
-			               error)) {
-				if (selection_id > std::numeric_limits<uint32_t>::max()) {
-					error = "config.selection_id exceeds the supported range";
-				} else {
-					offer.selection_id = static_cast<uint32_t>(selection_id);
-				}
 			}
 		}
 
@@ -2999,23 +2982,6 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 					}
 
 					RewardSelectionOption option;
-					uint64_t option_id = index + 1;
-					if (option_table.exists("option_id") &&
-					    !PerlRewardSelectionReadUInt(option_table,
-					        "option_id",
-					        option_id,
-					        path,
-					        error)) {
-						break;
-					}
-					if (!option_id ||
-					    option_id > std::numeric_limits<uint32_t>::max()) {
-						error = fmt::format(
-						    "{}.option_id is outside the supported range",
-						    path);
-						break;
-					}
-					option.option_id = static_cast<uint32_t>(option_id);
 					if (!PerlRewardSelectionReadOptionalString(
 					        option_table, "label", option.label, path, error)) {
 						break;

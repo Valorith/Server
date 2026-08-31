@@ -244,11 +244,48 @@ struct RewardSelectionSet {
 
 struct ScriptRewardSelectionOffer
 {
-	uint32_t selection_id = 0;
 	std::string title;
 	std::vector<RewardSelectionOption> options;
 	std::vector<RewardSelectionReward> common_rewards;
 };
+
+inline bool AssignScriptRewardSelectionOptionIds(
+	ScriptRewardSelectionOffer &offer,
+	uint32_t &common_option_id,
+	std::string *error = nullptr
+)
+{
+	const auto fail = [error](const std::string &message) {
+		if (error) {
+			*error = message;
+		}
+		return false;
+	};
+	if (error) {
+		error->clear();
+	}
+	if (offer.options.empty()) {
+		return fail("options must contain at least one choice");
+	}
+	if (offer.options.size() > std::numeric_limits<uint32_t>::max()) {
+		return fail("options contains too many choices");
+	}
+
+	for (size_t index = 0; index < offer.options.size(); ++index) {
+		offer.options[index].option_id = static_cast<uint32_t>(index + 1);
+	}
+	common_option_id = 0;
+	if (!offer.common_rewards.empty()) {
+		if (
+			offer.options.size() >=
+			std::numeric_limits<uint32_t>::max()
+		) {
+			return fail("no internal option ID is available for common_rewards");
+		}
+		common_option_id = static_cast<uint32_t>(offer.options.size() + 1);
+	}
+	return true;
+}
 
 struct RewardSelectionSourceKey {
 	RewardSelectionSource source = RewardSelectionSource::Unknown;
@@ -403,6 +440,8 @@ private:
 		std::vector<RewardSelectionSession>    sessions;
 		uint64_t                              session_generation = 0;
 		bool                                  claim_in_flight = false;
+		RewardSelectionSource                 in_flight_source =
+			RewardSelectionSource::Unknown;
 		Timer                                 request_rate_limit;
 		Timer                                 item_request_rate_limit;
 		Timer                                 claim_request_rate_limit;
@@ -418,6 +457,7 @@ private:
 	);
 	bool OpenInternal(const std::vector<RewardSelectionSession> &sessions,
 	    std::optional<RewardSelectionSource> replace_source);
+	uint32_t AllocateScriptSelectionId();
 	bool ValidateScriptRewardContent(
 	    const RewardSelectionReward &reward, std::string &error) const;
 	ChannelState &State(RewardSelectionChannel channel);
@@ -442,4 +482,7 @@ private:
 	ChannelState  m_claimable_channel;
 	ChannelState  m_preview_channel;
 	bool m_script_clear_requested_during_claim = false;
+	bool m_script_clear_deferred_during_claim = false;
+	uint32_t m_next_script_selection_id =
+		std::numeric_limits<uint32_t>::max();
 };
