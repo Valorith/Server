@@ -1621,6 +1621,17 @@ void ClientTaskState::SendRewardSelection(Client *client, uint32_t task_id)
 			}
 		}
 	}
+	const auto offered = std::find_if(
+		m_last_offers.begin(),
+		m_last_offers.end(),
+		[task_id](const TaskOffer &offer) {
+			return offer.task_id == static_cast<int>(task_id);
+		}
+	) != m_last_offers.end();
+	if (!active_accepted_time && !offered) {
+		client->GetRewardSelection().Clear(RewardSelectionChannel::Preview);
+		return;
+	}
 
 	std::optional<uint64_t> active_source_instance_id;
 	if (active_accepted_time) {

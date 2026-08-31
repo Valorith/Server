@@ -4,6 +4,7 @@
 #include "../common/timer.h"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -44,6 +45,59 @@ enum class RewardSelectionExperienceMode : uint32_t {
 	Default    = 0,
 	NormalOnly = 1
 };
+
+inline bool IsValidRewardSelectionRewardDefinition(
+	RewardSelectionRewardType type,
+	uint32_t data_id,
+	uint64_t amount
+)
+{
+	if (!amount) {
+		return false;
+	}
+
+	switch (type) {
+	case RewardSelectionRewardType::Item:
+		return
+			data_id &&
+			amount <= static_cast<uint64_t>(
+				std::numeric_limits<int16_t>::max()
+			);
+	case RewardSelectionRewardType::Experience:
+		return
+			data_id <= static_cast<uint32_t>(
+				RewardSelectionExperienceMode::NormalOnly
+			) &&
+			amount <= static_cast<uint64_t>(
+				std::numeric_limits<uint32_t>::max()
+			);
+	case RewardSelectionRewardType::AlternateAdvancement:
+		return
+			amount <= static_cast<uint64_t>(
+				std::numeric_limits<int>::max()
+			);
+	case RewardSelectionRewardType::Copper:
+		return
+			amount <=
+				static_cast<uint64_t>(
+					std::numeric_limits<int32_t>::max()
+				) * 1000ULL + 999ULL;
+	case RewardSelectionRewardType::AlternateCurrency:
+		return
+			data_id &&
+			amount <= static_cast<uint64_t>(
+				std::numeric_limits<int>::max()
+			);
+	case RewardSelectionRewardType::Title:
+		return
+			data_id &&
+			data_id <= static_cast<uint32_t>(
+				std::numeric_limits<int>::max()
+			);
+	}
+
+	return false;
+}
 
 struct RewardSelectionReward {
 	// RoF2 echoes only the low 32 bits; loaders reject wider entry IDs.
@@ -222,6 +276,7 @@ private:
 		bool                                  claim_in_flight = false;
 		Timer                                 request_rate_limit;
 		Timer                                 item_request_rate_limit;
+		Timer                                 claim_request_rate_limit;
 	};
 
 	static bool ValidateSession(const RewardSelectionSession &session);

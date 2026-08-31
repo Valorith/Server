@@ -97,9 +97,10 @@ bool TaskManager::LoadTaskSets()
 bool TaskManager::LoadTaskRewardSets()
 {
 	for (auto &[task_id, task] : m_task_data) {
-		task.has_reward_selection = false;
+		task.has_reward_selection =
+			task.reward_method == METHODSELECT &&
+			m_task_reward_sets.contains(task_id);
 	}
-	m_task_reward_sets.clear();
 
 	std::unordered_map<uint32_t, StagedTaskRewardSet> staged_sets;
 	std::unordered_map<uint32_t, uint32_t> reward_set_ids_by_task;
@@ -360,10 +361,19 @@ bool TaskManager::LoadTaskRewardSets()
 			raw_data_id > static_cast<uint64_t>(
 				RewardSelectionExperienceMode::NormalOnly
 			);
-		if ((requires_data_id && !raw_data_id) || invalid_experience_mode) {
+		if (
+			(requires_data_id && !raw_data_id) ||
+			invalid_experience_mode ||
+			!IsValidRewardSelectionRewardDefinition(
+				reward_type,
+				static_cast<uint32_t>(raw_data_id),
+				amount
+			)
+		) {
 			staged->second.invalid = true;
 			LogError(
-				"Enabled task reward [{}] type [{}] has an invalid data ID",
+				"Enabled task reward [{}] type [{}] has an invalid data ID "
+				"or delivery amount",
 				reward_id,
 				raw_reward_type
 			);
@@ -602,11 +612,13 @@ bool TaskManager::LoadTaskRewardSets()
 
 	m_task_reward_sets.swap(loaded_reward_sets);
 	for (auto &[task_id, task] : m_task_data) {
-		if (task.reward_method != METHODSELECT) {
-			continue;
-		}
-		task.has_reward_selection = m_task_reward_sets.contains(task_id);
-		if (!task.has_reward_selection) {
+		task.has_reward_selection =
+			task.reward_method == METHODSELECT &&
+			m_task_reward_sets.contains(task_id);
+		if (
+			task.reward_method == METHODSELECT &&
+			!task.has_reward_selection
+		) {
 			LogError(
 				"Task [{}] uses METHODSELECT but has no valid enabled reward set",
 				task_id

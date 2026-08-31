@@ -74,6 +74,12 @@ Selection IDs, option IDs, and type-specific data IDs must be nonzero unsigned
 must contain at least one display reward. OpenRewardSelection leaves an invalid
 draft intact so a script can correct or clear it.
 
+Definitions that cannot reach the delivery APIs are rejected before display:
+item quantities are limited to 32,767; experience to 4,294,967,295; AA and
+alternate currency to 2,147,483,647; total coin to 2,147,483,647,999 copper;
+and title-set IDs to 2,147,483,647. Current character balances and cursor
+capacity are checked again at claim time.
+
 These methods describe what the client displays; they do not grant anything.
 When the player chooses a non-common option, the server calls
 EVENT_REWARD_SELECT in Perl or event_reward_select in Lua. An NPC quest that
@@ -89,9 +95,10 @@ fallback. The event receives:
 
 The handler must grant the reward and return a nonzero value only after it
 succeeds. Returning 0, omitting the handler, or raising a script error rejects
-the claim and reopens the offer. A common option is displayed with every
-choice, but the event reports only the chosen non-common option ID; the handler
-is responsible for granting both portions. Normal local, global, and encounter
+the claim and reopens the offer. Claim retries are limited to one attempt every
+500 milliseconds per client. A common option is displayed with every choice,
+but the event reports only the chosen non-common option ID; the handler is
+responsible for granting both portions. Normal local, global, and encounter
 event routing still applies, so define only one granting handler for an offer.
 
 Scripted offers intentionally have no database ledger. Zoning, disconnecting,
@@ -207,6 +214,8 @@ Experience mode `0` uses the established `AddEXP` path, including the
 character's AA allocation and configured experience modifiers. Mode `1`
 preserves AA experience and adds the raw amount directly to normal experience;
 it is the mode for rewards described as **No AA Exp**.
+Mode 0 claims remain retryable while character experience is disabled so a
+suppressed AddEXP call can never be recorded as delivered.
 
 RoF2 supplies the visible list label **Player flags** for title/text rewards.
 The row's `description` is shown in the lower detail pane, so title content

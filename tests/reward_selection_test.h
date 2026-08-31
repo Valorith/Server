@@ -2,6 +2,7 @@
 
 #include "common/reward_selection.h"
 #include "cppunit/cpptest.h"
+#include "zone/reward_selection.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -16,6 +17,7 @@ public:
 		TEST_ADD(RewardSelectionTest::AdditionalRewardTypesLayout);
 		TEST_ADD(RewardSelectionTest::ValidationAndFailedClaimLayout);
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
+		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
 	}
 
 private:
@@ -349,5 +351,110 @@ private:
 		TEST_ASSERT(reader.Read<uint8_t>() == 0);
 		TEST_ASSERT(reader.Read<uint8_t>() == 0);
 		TEST_ASSERT(reader.position == reader.size);
+	}
+
+	void RewardDefinitionValidation()
+	{
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Item,
+				1,
+				std::numeric_limits<int16_t>::max()
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Item,
+				1,
+				static_cast<uint64_t>(
+					std::numeric_limits<int16_t>::max()
+				) + 1
+			)
+		);
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Experience,
+				static_cast<uint32_t>(
+					RewardSelectionExperienceMode::NormalOnly
+				),
+				std::numeric_limits<uint32_t>::max()
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Experience,
+				static_cast<uint32_t>(
+					RewardSelectionExperienceMode::NormalOnly
+				) + 1,
+				1
+			)
+		);
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::AlternateAdvancement,
+				0,
+				std::numeric_limits<int>::max()
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::AlternateAdvancement,
+				0,
+				static_cast<uint64_t>(std::numeric_limits<int>::max()) + 1
+			)
+		);
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Copper,
+				0,
+				static_cast<uint64_t>(
+					std::numeric_limits<int32_t>::max()
+				) * 1000ULL + 999ULL
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Copper,
+				0,
+				static_cast<uint64_t>(
+					std::numeric_limits<int32_t>::max()
+				) * 1000ULL + 1000ULL
+			)
+		);
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::AlternateCurrency,
+				1,
+				std::numeric_limits<int>::max()
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::AlternateCurrency,
+				1,
+				static_cast<uint64_t>(std::numeric_limits<int>::max()) + 1
+			)
+		);
+		TEST_ASSERT(
+			IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Title,
+				std::numeric_limits<int>::max(),
+				1
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				RewardSelectionRewardType::Title,
+				static_cast<uint32_t>(std::numeric_limits<int>::max()) + 1,
+				1
+			)
+		);
+		TEST_ASSERT(
+			!IsValidRewardSelectionRewardDefinition(
+				static_cast<RewardSelectionRewardType>(6),
+				1,
+				1
+			)
+		);
 	}
 };

@@ -1955,6 +1955,9 @@ bool Database::CopyCharacter(
 	};
 
 	std::vector<std::string> ignore_tables = {
+		"character_task_reward_instances",
+		"character_task_reward_selections",
+		"character_task_rewards",
 		"guilds",
 	};
 

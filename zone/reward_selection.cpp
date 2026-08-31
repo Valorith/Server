@@ -20,6 +20,7 @@ namespace
 
 constexpr uint32_t kRewardRequestRateLimitMs = 500;
 constexpr uint32_t kRewardItemRequestRateLimitMs = 100;
+constexpr uint32_t kRewardClaimRequestRateLimitMs = 500;
 constexpr uint32_t kRoF2PlayerFlagsStringId = 3689;
 
 uint32_t RewardDisplayValue(uint64_t value)
@@ -236,18 +237,8 @@ bool ClientRewardSelection::AddScriptReward(
 	if (
 		!m_script_draft ||
 		!option_id ||
-		!amount ||
 		m_script_next_entry_id > std::numeric_limits<uint32_t>::max() ||
-		static_cast<uint8_t>(type) >
-			static_cast<uint8_t>(RewardSelectionRewardType::Title) ||
-		((type == RewardSelectionRewardType::Item ||
-			type == RewardSelectionRewardType::AlternateCurrency ||
-			type == RewardSelectionRewardType::Title) &&
-			!data_id) ||
-		(type == RewardSelectionRewardType::Experience &&
-			data_id > static_cast<uint32_t>(
-				RewardSelectionExperienceMode::NormalOnly
-			))
+		!IsValidRewardSelectionRewardDefinition(type, data_id, amount)
 	) {
 		return false;
 	}
@@ -356,22 +347,10 @@ bool ClientRewardSelection::ValidateSession(
 				!reward.entry_id ||
 				reward.entry_id > std::numeric_limits<uint32_t>::max() ||
 				!entry_ids.insert(reward.entry_id).second ||
-				!reward.amount
-			) {
-				return false;
-			}
-			if (
-				(reward.type == RewardSelectionRewardType::Item ||
-					reward.type == RewardSelectionRewardType::AlternateCurrency ||
-					reward.type == RewardSelectionRewardType::Title) &&
-				!reward.data_id
-			) {
-				return false;
-			}
-			if (
-				reward.type == RewardSelectionRewardType::Experience &&
-				reward.data_id > static_cast<uint32_t>(
-					RewardSelectionExperienceMode::NormalOnly
+				!IsValidRewardSelectionRewardDefinition(
+					reward.type,
+					reward.data_id,
+					reward.amount
 				)
 			) {
 				return false;
@@ -758,6 +737,16 @@ RewardSelectionPacketResult ClientRewardSelection::HandlePacket(
 		return result;
 	}
 
+	auto &state = State(channel);
+	if (
+		state.claim_request_rate_limit.Enabled() &&
+		!state.claim_request_rate_limit.Check(false)
+	) {
+		result.type = RewardSelectionPacketResultType::Handled;
+		return result;
+	}
+	state.claim_request_rate_limit.Start(kRewardClaimRequestRateLimitMs);
+
 	uint32_t pending_reward_id = 0;
 	uint32_t reward_set_id = 0;
 	uint32_t selected_wire_option_id = 0;
@@ -1007,7 +996,7 @@ void ClientRewardSelection::CompleteClaim(
 		}
 	}
 	state.claim_in_flight = false;
-	if (result == RewardSelectionDeliveryResult::Ambiguous) {
+	if (result != RewardSelectionDeliveryResult::RetryableFailure) {
 		SendSessions(channel);
 	}
 }
@@ -1059,6 +1048,16 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 )
 {
 	const auto amount = reward.amount;
+	if (
+		!IsValidRewardSelectionRewardDefinition(
+			reward.type,
+			reward.data_id,
+			amount
+		)
+	) {
+		return RewardSelectionDeliveryResult::RetryableFailure;
+	}
+
 	switch (reward.type) {
 	case RewardSelectionRewardType::Item:
 		if (
@@ -1096,12 +1095,14 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 		}
 	case RewardSelectionRewardType::Experience:
 		if (
-			!amount ||
-			amount > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) ||
-			reward.data_id > static_cast<uint32_t>(
-				RewardSelectionExperienceMode::NormalOnly
-			) ||
-			(policy.require_experience_enabled && !client.IsEXPEnabled())
+			!client.IsEXPEnabled() &&
+			(
+				reward.data_id ==
+					static_cast<uint32_t>(
+						RewardSelectionExperienceMode::Default
+					) ||
+				policy.require_experience_enabled
+			)
 		) {
 			return RewardSelectionDeliveryResult::RetryableFailure;
 		}
