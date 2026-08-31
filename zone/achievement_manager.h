@@ -25,11 +25,23 @@ struct AchievementCriterion {
 struct AchievementReward {
 	uint64_t                     reward_row_id = 0;
 	uint32_t                     achievement_id = 0;
+	uint32_t                     sequence = 0;
 	EQ::Achievements::RewardType reward_type = EQ::Achievements::RewardType::Item;
 	uint32_t                     reward_id = 0;
 	uint64_t                     amount = 0;
 	std::string                  description;
 };
+
+inline bool AchievementRewardSequenceLess(
+	const AchievementReward &left,
+	const AchievementReward &right
+)
+{
+	if (left.sequence != right.sequence) {
+		return left.sequence < right.sequence;
+	}
+	return left.reward_row_id < right.reward_row_id;
+}
 
 struct AchievementRewardOption {
 	uint32_t                       option_id = 0;

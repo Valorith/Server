@@ -3336,6 +3336,7 @@ RewardSelectionDeliveryResult Client::ClaimAchievementReward(
 bool Client::ShouldDeferAchievementMutation() const
 {
 	return
+		m_achievement_state_load_pending ||
 		m_achievement_inventory_transaction_depth ||
 		m_achievement_inventory_update_pending;
 }
@@ -3430,9 +3431,6 @@ void Client::UpdateAchievementForKill(
 	uint32 zone_id
 )
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({
 			DeferredAchievementMutationType::Kill,
@@ -3441,6 +3439,9 @@ void Client::UpdateAchievementForKill(
 			npc_name_identity,
 			zone_id
 		});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::NpcKill, npc_type_id);
@@ -3456,11 +3457,11 @@ void Client::UpdateAchievementForKill(
 
 void Client::UpdateAchievementForLevel(uint32 level)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({DeferredAchievementMutationType::Level, level});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::Level, 0, 0, level);
@@ -3472,11 +3473,11 @@ void Client::UpdateAchievementForLevel(uint32 level)
 
 void Client::UpdateAchievementForTask(uint32 task_id)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({DeferredAchievementMutationType::Task, task_id});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::TaskComplete, task_id);
@@ -3484,11 +3485,11 @@ void Client::UpdateAchievementForTask(uint32 task_id)
 
 void Client::UpdateAchievementForZone(uint32 zone_id)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({DeferredAchievementMutationType::Zone, zone_id});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::ZoneEnter, zone_id);
@@ -3496,15 +3497,15 @@ void Client::UpdateAchievementForZone(uint32 zone_id)
 
 void Client::UpdateAchievementForLoot(uint32 item_id, uint32 quantity)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({
 			DeferredAchievementMutationType::Loot,
 			item_id,
 			quantity
 		});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::LootItem, item_id, 0, quantity);
@@ -3558,11 +3559,11 @@ void Client::EndAchievementInventoryTransaction(bool committed)
 
 void Client::UpdateAchievementForTradeskill(uint32 recipe_id)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({DeferredAchievementMutationType::Tradeskill, recipe_id});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(EQ::Achievements::EventType::TradeskillSuccess, recipe_id);
@@ -3570,15 +3571,15 @@ void Client::UpdateAchievementForTradeskill(uint32 recipe_id)
 
 void Client::UpdateAchievementForSkill(uint32 skill_id, uint32 value)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({
 			DeferredAchievementMutationType::Skill,
 			skill_id,
 			value
 		});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(
@@ -3595,14 +3596,14 @@ void Client::UpdateAchievementForSkill(uint32 skill_id, uint32 value)
 
 void Client::UpdateAchievementForAA(uint32 spent_points)
 {
-	if (!m_achievement_state) {
-		return;
-	}
 	if (ShouldDeferAchievementMutation()) {
 		QueueAchievementMutation({
 			DeferredAchievementMutationType::AlternateAdvancement,
 			spent_points
 		});
+		return;
+	}
+	if (!m_achievement_state) {
 		return;
 	}
 	m_achievement_state->ProcessEvent(
@@ -3641,7 +3642,6 @@ bool Client::SetAchievementProgress(
 )
 {
 	if (
-		!m_achievement_state ||
 		component_type > 2 ||
 		!AchievementManager::Instance().FindDefinitionIndex(achievement_id) ||
 		!AchievementManager::Instance().FindComponentIndex(
@@ -3663,6 +3663,9 @@ bool Client::SetAchievementProgress(
 		});
 		return true;
 	}
+	if (!m_achievement_state) {
+		return false;
+	}
 	return m_achievement_state->SetProgress(
 		achievement_id,
 		component_type,
@@ -3675,9 +3678,7 @@ bool Client::SetAchievementProgress(
 bool Client::CompleteAchievement(uint32 achievement_id)
 {
 	if (
-		!m_achievement_state ||
-		!AchievementManager::Instance().FindDefinitionIndex(achievement_id) ||
-		m_achievement_state->HasCompleted(achievement_id)
+		!AchievementManager::Instance().FindDefinitionIndex(achievement_id)
 	) {
 		return false;
 	}
@@ -3687,6 +3688,12 @@ bool Client::CompleteAchievement(uint32 achievement_id)
 			achievement_id
 		});
 		return true;
+	}
+	if (
+		!m_achievement_state ||
+		m_achievement_state->HasCompleted(achievement_id)
+	) {
+		return false;
 	}
 	return m_achievement_state->Complete(achievement_id);
 }

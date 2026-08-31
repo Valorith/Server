@@ -368,7 +368,7 @@ public:
 	bool IsOfClientBotMerc() const override { return true; }
 	void ReapplyBuff(uint32 index, bool from_suppress = false);
 	void CompleteConnect();
-	bool TryStacking(EQ::ItemInstance* item, uint8 type = ItemPacketTrade, bool try_worn = true, bool try_cursor = true);
+	bool TryStacking(EQ::ItemInstance* item, uint8 type = ItemPacketTrade, bool try_worn = true, bool try_cursor = true, bool *persistence_succeeded = nullptr);
 	void SendTraderPacket(Client* trader, uint32 Unknown72 = 51);
 	void SendBuyerPacket(Client* Buyer);
 	void SendBuyerToBarterWindow(Client* buyer, uint32 action);
@@ -1210,8 +1210,8 @@ public:
 	bool RemoveItemByItemUniqueId(const std::string &item_unique_id, uint32 quantity = 1);
 	bool SwapItem(MoveItem_Struct* move_in);
 	void SwapItemResync(MoveItem_Struct* move_slots);
-	void PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data = 0);
-	bool AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, LootItem** bag_item_data = 0);
+	bool PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data = 0);
+	bool AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, LootItem** bag_item_data = 0, bool *persistence_succeeded = nullptr);
 	bool SummonItem(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool attuned = false, uint16 to_slot = EQ::invslot::slotCursor, uint32 ornament_icon = 0, uint32 ornament_idfile = 0, uint32 ornament_hero_model = 0);
 	bool SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, uint32 aug6, bool attuned, uint16 to_slot, uint32 ornament_icon, uint32 ornament_idfile, uint32 ornament_hero_model, bool *persistence_succeeded);
 	void SummonItemIntoInventory(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool is_attuned = false);
@@ -2121,7 +2121,7 @@ private:
 	void OPRezzAnswer(uint32 Action, uint32 SpellID, uint16 ZoneID, uint16 InstanceID, float x, float y, float z);
 	void OPMemorizeSpell(const EQApplicationPacket *app);
 	void OPMoveCoin(const EQApplicationPacket* app);
-	void MoveItemCharges(EQ::ItemInstance &from, int16 to_slot, uint8 type);
+	void MoveItemCharges(EQ::ItemInstance &from, int16 to_slot, uint8 type, bool *persistence_succeeded = nullptr);
 	void OPGMTraining(const EQApplicationPacket *app);
 	void OPGMEndTraining(const EQApplicationPacket *app);
 	void OPGMTrainSkill(const EQApplicationPacket *app);

@@ -7,7 +7,9 @@
 #include "../common/skills.h"
 #include "../common/types.h"
 #include "../common/compression.h"
+#include "../zone/achievement_manager.h"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
@@ -35,11 +37,36 @@ public:
 		TEST_ADD(AchievementsTest::SkillWildcardDoesNotAliasSkillZero);
 		TEST_ADD(AchievementsTest::TypeThreeIsPresentationOnly);
 		TEST_ADD(AchievementsTest::MutationRequestValidation);
+		TEST_ADD(AchievementsTest::RewardSequenceOrdering);
 		TEST_ADD(AchievementsTest::GuildMemberNotificationRule);
 		TEST_ADD(AchievementsTest::NearbyPlayerNotificationRules);
 	}
 
 private:
+	void RewardSequenceOrdering()
+	{
+		std::vector<AchievementReward> rewards(4);
+		rewards[0].reward_row_id = 40;
+		rewards[0].sequence = 2;
+		rewards[1].reward_row_id = 30;
+		rewards[1].sequence = 1;
+		rewards[2].reward_row_id = 20;
+		rewards[2].sequence = 2;
+		rewards[3].reward_row_id = 10;
+		rewards[3].sequence = 1;
+
+		std::sort(
+			rewards.begin(),
+			rewards.end(),
+			AchievementRewardSequenceLess
+		);
+
+		TEST_ASSERT(rewards[0].reward_row_id == 10);
+		TEST_ASSERT(rewards[1].reward_row_id == 30);
+		TEST_ASSERT(rewards[2].reward_row_id == 20);
+		TEST_ASSERT(rewards[3].reward_row_id == 40);
+	}
+
 	void MutationRequestValidation()
 	{
 		using namespace AchievementMutations;

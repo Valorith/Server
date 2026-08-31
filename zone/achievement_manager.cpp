@@ -12,7 +12,6 @@
 #include <limits>
 #include <map>
 #include <set>
-#include <tuple>
 #include <unordered_set>
 
 namespace
@@ -746,7 +745,7 @@ bool AchievementManager::LoadSnapshot()
 	}
 
 	auto reward_results = content_db.QueryDatabase(
-		"SELECT reward_id, achievement_id, reward_type, reward_data_id, amount, description "
+		"SELECT reward_id, achievement_id, sequence, reward_type, reward_data_id, amount, description "
 		"FROM achievement_rewards WHERE enabled = 1 "
 		"ORDER BY achievement_id, sequence, reward_id"
 	);
@@ -760,7 +759,7 @@ bool AchievementManager::LoadSnapshot()
 	for (auto row : reward_results) {
 		const auto reward_row_id = ParseUInt64(row[0]);
 		const auto achievement_id = ParseUInt32(row[1]);
-		const auto reward_type = ParseUInt32(row[2]);
+		const auto reward_type = ParseUInt32(row[3]);
 		if (!m_definition_indices.contains(achievement_id)) {
 			continue;
 		}
@@ -774,8 +773,8 @@ bool AchievementManager::LoadSnapshot()
 			return false;
 		}
 
-		const auto reward_data_id = ParseUInt32(row[3]);
-		const auto amount = ParseUInt64(row[4]);
+		const auto reward_data_id = ParseUInt32(row[4]);
+		const auto amount = ParseUInt64(row[5]);
 		const auto effective_reward_type = static_cast<RewardType>(reward_type);
 		const auto requires_data_id =
 			effective_reward_type == RewardType::Item ||
@@ -805,10 +804,11 @@ bool AchievementManager::LoadSnapshot()
 		AchievementReward reward;
 		reward.reward_row_id = reward_row_id;
 		reward.achievement_id = achievement_id;
+		reward.sequence = ParseUInt32(row[2]);
 		reward.reward_type = effective_reward_type;
 		reward.reward_id = reward_data_id;
 		reward.amount = amount;
-		reward.description = Text(row[5]);
+		reward.description = Text(row[6]);
 		if (!reward_rows.emplace(reward_row_id, std::move(reward)).second) {
 			LogError("Duplicate enabled achievement reward ID [{}]", reward_row_id);
 			Clear();
@@ -875,6 +875,22 @@ bool AchievementManager::LoadSnapshot()
 	for (const auto &[reward_row_id, reward] : reward_rows) {
 		if (!mapped_reward_ids.contains(reward_row_id)) {
 			m_rewards[reward.achievement_id].push_back(reward);
+		}
+	}
+	for (auto &[achievement_id, rewards] : m_rewards) {
+		std::sort(
+			rewards.begin(),
+			rewards.end(),
+			AchievementRewardSequenceLess
+		);
+	}
+	for (auto &[achievement_id, reward_set] : m_reward_sets) {
+		for (auto &option : reward_set.options) {
+			std::sort(
+				option.rewards.begin(),
+				option.rewards.end(),
+				AchievementRewardSequenceLess
+			);
 		}
 	}
 
