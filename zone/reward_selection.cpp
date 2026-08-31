@@ -390,7 +390,12 @@ RewardSelectionDeliveryResult ClientRewardSelection::CompleteScriptClaim(
 	CompleteClaim(claim, result);
 
 	if (m_script_clear_requested_during_claim) {
-		ClearScriptOffer();
+		// CompleteClaim has already removed the retryable session, so clearing
+		// by source can no longer detect a state change to notify the client.
+		// Reset the script state without a duplicate notification, then send
+		// the remaining claimable collection (or an explicit display clear).
+		ClearScriptOffer(false);
+		SendSessions(RewardSelectionChannel::Claimable);
 	}
 	else if (result == RewardSelectionDeliveryResult::RetryableFailure) {
 		Open(claim.session);
