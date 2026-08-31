@@ -752,6 +752,12 @@ namespace {
 			return "4 Challenge Normal";
 		case 5:
 			return "5 Challenge Hard";
+		case 6:
+			return "6 Lesser Bounty";
+		case 7:
+			return "7 Bounty";
+		case 8:
+			return "8 Greater Bounty";
 		default:
 			return fmt::format("v{}", zone_version);
 		}
@@ -772,7 +778,7 @@ namespace {
 
 	bool IsExpeditionVersionOption(uint32_t zone_version)
 	{
-		return zone_version <= 5;
+		return zone_version <= 8;
 	}
 
 	// Same, with an explicit version suffix: "Nagafen's Lair (soldungb) 0 base zone".
@@ -2344,6 +2350,11 @@ void ShowVersionScreen(Client* c, const ExpeditionDB::Template& template_data)
 		{"#expedition config version 3", ExpeditionVersionOptionLabel(3)},
 		{"#expedition config version 4", ExpeditionVersionOptionLabel(4)},
 		{"#expedition config version 5", ExpeditionVersionOptionLabel(5)}
+	});
+	SendActionRow(c, {
+		{"#expedition config version 6", ExpeditionVersionOptionLabel(6)},
+		{"#expedition config version 7", ExpeditionVersionOptionLabel(7)},
+		{"#expedition config version 8", ExpeditionVersionOptionLabel(8)}
 	});
 
 	SendActionRow(c, {{"#expedition config", "Back to Config"}});
