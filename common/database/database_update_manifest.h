@@ -7658,7 +7658,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_sets` ADD UNIQUE INDEX (`reward_set_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7676,7 +7676,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'task_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_sets` ADD UNIQUE INDEX (`task_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7694,7 +7694,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id,option_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_options` ADD UNIQUE INDEX (`reward_set_id`, `option_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7712,7 +7712,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_rewards` ADD UNIQUE INDEX (`reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7730,7 +7730,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'task_id,sequence'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_rewards` ADD UNIQUE INDEX (`task_id`, `sequence`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7749,7 +7749,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id,option_id,reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_option_entries` ADD UNIQUE INDEX (`reward_set_id`, `option_id`, `reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7768,24 +7768,33 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_option_entries` ADD UNIQUE INDEX (`reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
 EXECUTE reward_uq_stmt;
 DEALLOCATE PREPARE reward_uq_stmt;
 
--- Verify the columns used by the runtime.
-SELECT `reward_set_id`, `task_id`, `title`, `enabled`
-FROM `task_reward_sets` LIMIT 0;
-SELECT `reward_set_id`, `option_id`, `sequence`, `label`, `common_to_all`,
-	`flags`, `enabled`
-FROM `task_reward_options` LIMIT 0;
-SELECT `reward_id`, `task_id`, `sequence`, `reward_type`, `reward_data_id`,
-	`amount`, `description`, `enabled`
-FROM `task_rewards` LIMIT 0;
-SELECT `reward_set_id`, `option_id`, `reward_id`
-FROM `task_reward_option_entries` LIMIT 0;
+-- Verify the columns used by the runtime without returning result sets from
+-- the migration executor.
+DO EXISTS (
+	SELECT `reward_set_id`, `task_id`, `title`, `enabled`
+	FROM `task_reward_sets` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_set_id`, `option_id`, `sequence`, `label`,
+		`common_to_all`, `flags`, `enabled`
+	FROM `task_reward_options` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_id`, `task_id`, `sequence`, `reward_type`,
+		`reward_data_id`, `amount`, `description`, `enabled`
+	FROM `task_rewards` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_set_id`, `option_id`, `reward_id`
+	FROM `task_reward_option_entries` WHERE 0
+);
 )SQL",
 		.content_schema_update = true
 	},
@@ -7860,7 +7869,7 @@ SET @reward_schema_sql = IF(
 			AND table_name = 'character_task_reward_selections'
 			AND column_name = 'source_instance_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_selections` ADD COLUMN `source_instance_id` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 AFTER `accepted_time`'
 );
 PREPARE reward_schema_stmt FROM @reward_schema_sql;
@@ -7874,7 +7883,7 @@ SET @reward_schema_sql = IF(
 			AND table_name = 'character_task_reward_selections'
 			AND column_name = 'reward_snapshot'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_selections` ADD COLUMN `reward_snapshot` MEDIUMTEXT NOT NULL AFTER `reward_set_id`'
 );
 PREPARE reward_schema_stmt FROM @reward_schema_sql;
@@ -7898,7 +7907,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'occurrence_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_instances` ADD UNIQUE INDEX (`occurrence_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7913,7 +7922,7 @@ SET @reward_schema_sql = IF(
 			AND column_name = 'occurrence_id'
 			AND LOWER(extra) LIKE '%auto_increment%'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_instances` MODIFY COLUMN `occurrence_id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT'
 );
 PREPARE reward_schema_stmt FROM @reward_schema_sql;
@@ -7932,7 +7941,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'character_id,task_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_instances` ADD UNIQUE INDEX (`character_id`, `task_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7951,7 +7960,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'pending_reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_selections` ADD UNIQUE INDEX (`pending_reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -7966,7 +7975,7 @@ SET @reward_schema_sql = IF(
 			AND column_name = 'pending_reward_id'
 			AND LOWER(extra) LIKE '%auto_increment%'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_selections` MODIFY COLUMN `pending_reward_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT'
 );
 PREPARE reward_schema_stmt FROM @reward_schema_sql;
@@ -7985,7 +7994,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'character_id,source_instance_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_reward_selections` ADD UNIQUE INDEX (`character_id`, `source_instance_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -8004,7 +8013,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'pending_reward_id,reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `character_task_rewards` ADD UNIQUE INDEX (`pending_reward_id`, `reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -8035,7 +8044,7 @@ SET @reward_old_source_index = (
 );
 SET @reward_schema_sql = IF(
 	@reward_old_source_index IS NULL,
-	'SELECT 1',
+	'DO 0',
 	CONCAT(
 		'ALTER TABLE `character_task_reward_selections` DROP INDEX `',
 		REPLACE(@reward_old_source_index, '`', '``'),
@@ -8046,17 +8055,24 @@ PREPARE reward_schema_stmt FROM @reward_schema_sql;
 EXECUTE reward_schema_stmt;
 DEALLOCATE PREPARE reward_schema_stmt;
 
--- Verify the columns used by the runtime.
-SELECT `occurrence_id`, `character_id`, `task_id`, `accepted_time`
-FROM `character_task_reward_instances` LIMIT 0;
-SELECT `pending_reward_id`, `character_id`, `task_id`, `accepted_time`,
-	`source_instance_id`, `reward_set_id`, `reward_snapshot`,
-	`selected_option_id`, `status`,
-	`attempt_count`, `claimed_at`, `last_attempt_at`, `last_error`
-FROM `character_task_reward_selections` LIMIT 0;
-SELECT `character_id`, `pending_reward_id`, `reward_id`, `status`,
-	`attempt_count`, `granted_at`, `last_attempt_at`, `last_error`
-FROM `character_task_rewards` LIMIT 0;
+-- Verify the columns used by the runtime without returning result sets from
+-- the migration executor.
+DO EXISTS (
+	SELECT `occurrence_id`, `character_id`, `task_id`, `accepted_time`
+	FROM `character_task_reward_instances` WHERE 0
+);
+DO EXISTS (
+	SELECT `pending_reward_id`, `character_id`, `task_id`, `accepted_time`,
+		`source_instance_id`, `reward_set_id`, `reward_snapshot`,
+		`selected_option_id`, `status`, `attempt_count`, `claimed_at`,
+		`last_attempt_at`, `last_error`
+	FROM `character_task_reward_selections` WHERE 0
+);
+DO EXISTS (
+	SELECT `character_id`, `pending_reward_id`, `reward_id`, `status`,
+		`attempt_count`, `granted_at`, `last_attempt_at`, `last_error`
+	FROM `character_task_rewards` WHERE 0
+);
 )SQL"
 	},
 // -- template; copy/paste this when you need to create a new entry

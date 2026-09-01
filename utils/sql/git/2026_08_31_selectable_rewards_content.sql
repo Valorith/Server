@@ -63,7 +63,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_sets` ADD UNIQUE INDEX (`reward_set_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -81,7 +81,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'task_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_sets` ADD UNIQUE INDEX (`task_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -99,7 +99,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id,option_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_options` ADD UNIQUE INDEX (`reward_set_id`, `option_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -117,7 +117,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_rewards` ADD UNIQUE INDEX (`reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -135,7 +135,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'task_id,sequence'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_rewards` ADD UNIQUE INDEX (`task_id`, `sequence`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -154,7 +154,7 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_set_id,option_id,reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_option_entries` ADD UNIQUE INDEX (`reward_set_id`, `option_id`, `reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
@@ -173,21 +173,30 @@ SET @reward_uq_sql = IF(
 			AND GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') =
 				'reward_id'
 	),
-	'SELECT 1',
+	'DO 0',
 	'ALTER TABLE `task_reward_option_entries` ADD UNIQUE INDEX (`reward_id`)'
 );
 PREPARE reward_uq_stmt FROM @reward_uq_sql;
 EXECUTE reward_uq_stmt;
 DEALLOCATE PREPARE reward_uq_stmt;
 
--- Verify the columns used by the runtime.
-SELECT `reward_set_id`, `task_id`, `title`, `enabled`
-FROM `task_reward_sets` LIMIT 0;
-SELECT `reward_set_id`, `option_id`, `sequence`, `label`, `common_to_all`,
-	`flags`, `enabled`
-FROM `task_reward_options` LIMIT 0;
-SELECT `reward_id`, `task_id`, `sequence`, `reward_type`, `reward_data_id`,
-	`amount`, `description`, `enabled`
-FROM `task_rewards` LIMIT 0;
-SELECT `reward_set_id`, `option_id`, `reward_id`
-FROM `task_reward_option_entries` LIMIT 0;
+-- Verify the columns used by the runtime without returning result sets from
+-- the migration executor.
+DO EXISTS (
+	SELECT `reward_set_id`, `task_id`, `title`, `enabled`
+	FROM `task_reward_sets` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_set_id`, `option_id`, `sequence`, `label`,
+		`common_to_all`, `flags`, `enabled`
+	FROM `task_reward_options` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_id`, `task_id`, `sequence`, `reward_type`,
+		`reward_data_id`, `amount`, `description`, `enabled`
+	FROM `task_rewards` WHERE 0
+);
+DO EXISTS (
+	SELECT `reward_set_id`, `option_id`, `reward_id`
+	FROM `task_reward_option_entries` WHERE 0
+);
