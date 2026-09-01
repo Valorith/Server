@@ -566,6 +566,11 @@ bool ClientRewardSelection::ValidateSession(
 	) {
 		return false;
 	}
+	if (!HasSupportedRewardSelectionCommonGrouping(
+		session.reward_set.options
+	)) {
+		return false;
+	}
 
 	std::unordered_set<uint32_t> option_ids;
 	std::unordered_set<uint64_t> entry_ids;
@@ -602,29 +607,18 @@ bool ClientRewardSelection::SameSession(
 	const RewardSelectionSession &right
 )
 {
-	return
-		left.channel == right.channel &&
-		left.source.source == right.source.source &&
-		left.source.source_id == right.source.source_id &&
-		left.source.source_instance_id == right.source.source_instance_id &&
-		left.pending_reward_id == right.pending_reward_id &&
-		left.reward_set.reward_set_id == right.reward_set.reward_set_id;
+	return SameRewardSelectionSession(left, right);
 }
 
 bool ClientRewardSelection::AssignWireOptionIds(
-	std::vector<RewardSelectionSession> &sessions
+	std::vector<RewardSelectionSession> &sessions,
+	const std::vector<RewardSelectionSession> &previous_sessions
 )
 {
-	uint64_t next_id = 1;
-	for (auto &session : sessions) {
-		for (auto &option : session.reward_set.options) {
-			if (next_id > std::numeric_limits<uint32_t>::max()) {
-				return false;
-			}
-			option.wire_option_id = static_cast<uint32_t>(next_id++);
-		}
-	}
-	return true;
+	return AssignStableRewardSelectionWireOptionIds(
+		sessions,
+		previous_sessions
+	);
 }
 
 ClientRewardSelection::ChannelState &ClientRewardSelection::State(
@@ -713,7 +707,7 @@ bool ClientRewardSelection::OpenInternal(
 			}
 		}
 	}
-	if (!AssignWireOptionIds(next_sessions)) {
+	if (!AssignWireOptionIds(next_sessions, state.sessions)) {
 		return false;
 	}
 	state.sessions = std::move(next_sessions);

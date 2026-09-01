@@ -660,6 +660,15 @@ bool TaskManager::LoadTaskRewardSets()
 			has_selectable_option =
 				has_selectable_option || !option.common_to_all;
 		}
+		if (!HasSupportedRewardSelectionCommonGrouping(
+			staged.reward_set.options
+		)) {
+			staged.invalid = true;
+			LogError(
+				"Enabled task reward set [{}] has more than one common option",
+				reward_set_id
+			);
+		}
 		if (
 			staged.reward_set.options.empty() ||
 			!has_selectable_option

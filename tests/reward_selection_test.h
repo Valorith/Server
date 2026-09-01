@@ -4,9 +4,11 @@
 #include "cppunit/cpptest.h"
 #include "zone/reward_selection.h"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 class RewardSelectionTest : public Test::Suite
 {
@@ -21,6 +23,8 @@ public:
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardGrouping);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
+		TEST_ADD(RewardSelectionTest::StableWireOptionIdentity);
+		TEST_ADD(RewardSelectionTest::CommonOptionGroupingValidation);
 		TEST_ADD(RewardSelectionTest::TransientBatchFailureClassification);
 	}
 
@@ -667,6 +671,118 @@ private:
 		    static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
 		TEST_ASSERT(!MakeScriptRewardSelectionReward(config, &error));
 		TEST_ASSERT(error == "title_set_id exceeds the supported range");
+	}
+
+	void StableWireOptionIdentity()
+	{
+		std::vector<RewardSelectionSession> previous(2);
+		previous[0].channel = RewardSelectionChannel::Claimable;
+		previous[0].source = {RewardSelectionSource::Task, 100, 1000};
+		previous[0].pending_reward_id = 10;
+		previous[0].reward_set.reward_set_id = 100;
+		previous[0].reward_set.options.resize(2);
+		previous[0].reward_set.options[0].option_id = 10;
+		previous[0].reward_set.options[0].wire_option_id = 1;
+		previous[0].reward_set.options[1].option_id = 11;
+		previous[0].reward_set.options[1].wire_option_id = 2;
+
+		previous[1].channel = RewardSelectionChannel::Claimable;
+		previous[1].source = {RewardSelectionSource::Task, 200, 2000};
+		previous[1].pending_reward_id = 20;
+		previous[1].reward_set.reward_set_id = 200;
+		previous[1].reward_set.options.resize(1);
+		previous[1].reward_set.options[0].option_id = 20;
+		previous[1].reward_set.options[0].wire_option_id = 3;
+
+		std::vector<RewardSelectionSession> refreshed{
+			previous[1],
+			previous[0]
+		};
+		std::reverse(
+			refreshed[1].reward_set.options.begin(),
+			refreshed[1].reward_set.options.end()
+		);
+		refreshed[1].reward_set.options.push_back({});
+		refreshed[1].reward_set.options.back().option_id = 12;
+
+		RewardSelectionSession added;
+		added.channel = RewardSelectionChannel::Claimable;
+		added.source = {RewardSelectionSource::Task, 300, 3000};
+		added.pending_reward_id = 30;
+		added.reward_set.reward_set_id = 300;
+		added.reward_set.options.push_back({});
+		added.reward_set.options.back().option_id = 30;
+		refreshed.push_back(std::move(added));
+
+		TEST_ASSERT(AssignStableRewardSelectionWireOptionIds(
+			refreshed,
+			previous
+		));
+
+		const auto wire_id = [](
+			const std::vector<RewardSelectionSession> &sessions,
+			uint32_t reward_set_id,
+			uint32_t option_id
+		) {
+			for (const auto &session : sessions) {
+				if (session.reward_set.reward_set_id != reward_set_id) {
+					continue;
+				}
+				for (const auto &option : session.reward_set.options) {
+					if (option.option_id == option_id) {
+						return option.wire_option_id;
+					}
+				}
+			}
+			return uint32_t{0};
+		};
+
+		TEST_ASSERT(wire_id(refreshed, 100, 10) == 1);
+		TEST_ASSERT(wire_id(refreshed, 100, 11) == 2);
+		TEST_ASSERT(wire_id(refreshed, 200, 20) == 3);
+		TEST_ASSERT(wire_id(refreshed, 100, 12) == 4);
+		TEST_ASSERT(wire_id(refreshed, 300, 30) == 5);
+
+		std::unordered_set<uint32_t> assigned_ids;
+		for (const auto &session : refreshed) {
+			for (const auto &option : session.reward_set.options) {
+				TEST_ASSERT(option.wire_option_id);
+				TEST_ASSERT(
+					assigned_ids.insert(option.wire_option_id).second
+				);
+			}
+		}
+
+		std::vector<RewardSelectionSession> after_removal{
+			refreshed[0],
+			refreshed[2]
+		};
+		RewardSelectionSession later_added;
+		later_added.channel = RewardSelectionChannel::Claimable;
+		later_added.source = {RewardSelectionSource::Task, 400, 4000};
+		later_added.pending_reward_id = 40;
+		later_added.reward_set.reward_set_id = 400;
+		later_added.reward_set.options.push_back({});
+		later_added.reward_set.options.back().option_id = 40;
+		after_removal.push_back(std::move(later_added));
+
+		TEST_ASSERT(AssignStableRewardSelectionWireOptionIds(
+			after_removal,
+			refreshed
+		));
+		TEST_ASSERT(wire_id(after_removal, 200, 20) == 3);
+		TEST_ASSERT(wire_id(after_removal, 300, 30) == 5);
+		TEST_ASSERT(wire_id(after_removal, 400, 40) == 1);
+	}
+
+	void CommonOptionGroupingValidation()
+	{
+		std::vector<RewardSelectionOption> options(3);
+		options[1].common_to_all = true;
+		TEST_ASSERT(HasSupportedRewardSelectionCommonGrouping(options));
+
+		options[2].common_to_all = true;
+		TEST_ASSERT(!HasSupportedRewardSelectionCommonGrouping(options));
 	}
 
 	void TransientBatchFailureClassification()

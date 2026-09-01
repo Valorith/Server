@@ -336,7 +336,8 @@ The content database owns four tables:
 
 - `task_reward_sets`: one enabled set per task.
 - `task_reward_options`: ordered choices within the set. An option marked
-  `common_to_all = 1` is granted with every selectable option.
+  `common_to_all = 1` is granted with every selectable option. A set may have
+  at most one enabled common option.
 - `task_rewards`: typed grant entries owned by the task.
 - `task_reward_option_entries`: maps each reward to exactly one option.
 

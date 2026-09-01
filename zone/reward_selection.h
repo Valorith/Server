@@ -3,10 +3,12 @@
 #include "../common/eq_constants.h"
 #include "../common/timer.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 class Client;
@@ -302,6 +304,97 @@ struct RewardSelectionSession {
 	RewardSelectionSet       reward_set;
 };
 
+inline bool SameRewardSelectionSession(
+	const RewardSelectionSession &left,
+	const RewardSelectionSession &right
+)
+{
+	return
+		left.channel == right.channel &&
+		left.source.source == right.source.source &&
+		left.source.source_id == right.source.source_id &&
+		left.source.source_instance_id == right.source.source_instance_id &&
+		left.pending_reward_id == right.pending_reward_id &&
+		left.reward_set.reward_set_id == right.reward_set.reward_set_id;
+}
+
+inline bool HasSupportedRewardSelectionCommonGrouping(
+	const std::vector<RewardSelectionOption> &options
+)
+{
+	return
+		std::count_if(
+			options.begin(),
+			options.end(),
+			[](const RewardSelectionOption &option) {
+				return option.common_to_all;
+			}
+		) <= 1;
+}
+
+inline bool AssignStableRewardSelectionWireOptionIds(
+	std::vector<RewardSelectionSession> &sessions,
+	const std::vector<RewardSelectionSession> &previous_sessions
+)
+{
+	std::unordered_set<uint32_t> used_ids;
+	for (auto &session : sessions) {
+		for (auto &option : session.reward_set.options) {
+			option.wire_option_id = 0;
+		}
+
+		const auto previous = std::find_if(
+			previous_sessions.begin(),
+			previous_sessions.end(),
+			[&session](const RewardSelectionSession &candidate) {
+				return SameRewardSelectionSession(candidate, session);
+			}
+		);
+		if (previous == previous_sessions.end()) {
+			continue;
+		}
+
+		for (auto &option : session.reward_set.options) {
+			const auto previous_option = std::find_if(
+				previous->reward_set.options.begin(),
+				previous->reward_set.options.end(),
+				[&option](const RewardSelectionOption &candidate) {
+					return candidate.option_id == option.option_id;
+				}
+			);
+			if (
+				previous_option != previous->reward_set.options.end() &&
+				previous_option->wire_option_id &&
+				used_ids.insert(previous_option->wire_option_id).second
+			) {
+				option.wire_option_id = previous_option->wire_option_id;
+			}
+		}
+	}
+
+	uint64_t next_id = 1;
+	for (auto &session : sessions) {
+		for (auto &option : session.reward_set.options) {
+			if (option.wire_option_id) {
+				continue;
+			}
+			while (
+				next_id <= std::numeric_limits<uint32_t>::max() &&
+				used_ids.contains(static_cast<uint32_t>(next_id))
+			) {
+				++next_id;
+			}
+			if (next_id > std::numeric_limits<uint32_t>::max()) {
+				return false;
+			}
+			option.wire_option_id = static_cast<uint32_t>(next_id);
+			used_ids.insert(option.wire_option_id);
+			++next_id;
+		}
+	}
+	return true;
+}
+
 enum class RewardSelectionDeliveryResult : uint8_t {
 	Delivered,
 	RetryableFailure,
@@ -453,7 +546,8 @@ private:
 		const RewardSelectionSession &right
 	);
 	static bool AssignWireOptionIds(
-		std::vector<RewardSelectionSession> &sessions
+		std::vector<RewardSelectionSession> &sessions,
+		const std::vector<RewardSelectionSession> &previous_sessions
 	);
 	bool OpenInternal(const std::vector<RewardSelectionSession> &sessions,
 	    std::optional<RewardSelectionSource> replace_source);
