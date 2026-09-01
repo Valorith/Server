@@ -159,6 +159,11 @@ to authorize delivery. It must not manually grant the declared rewards. The
 server grants every common reward plus the chosen option only after the event
 authorizes the claim, then acknowledges the client.
 
+The server validates the selected option index against the active offer before
+firing the event. A quest with no additional per-choice restrictions can simply
+return nonzero. Inspect the index only when different choices require different
+entitlement rules.
+
 Returning `0`, omitting the handler, or raising a script error rejects the
 claim and reopens the offer. Calling `ClearRewardSelection` during the callback
 cancels the offer and suppresses that reopen. The event reports only the chosen
@@ -185,56 +190,66 @@ limited to one attempt every 500 milliseconds per client.
 sub EVENT_SAY {
 	return unless $text =~ /reward/i;
 
-	$client->OfferRewardSelection({
+	my %offer = (
 		options => [
 			{ item_id => 1001 },
 			{ experience => 5000 },
 		],
-	});
+	);
+
+	my $opened = $client->OfferRewardSelection(\%offer);
+	$client->Message(13, "The reward selector is unavailable.") unless $opened;
 }
 
 sub EVENT_REWARD_SELECT {
-	return $reward_option_index == 1 || $reward_option_index == 2;
+	# Returning nonzero authorizes the server to grant the selected option.
+	return 1;
 }
 ~~~
 
 ### Complete Perl example
 
 ~~~perl
+my %veteran_reward_offer = (
+	title => "Veteran's Reward",
+
+	# Each entry is one choice; its array position becomes option_index.
+	options => [
+		{ item_id => 1001, quantity => 2 },
+		{ experience => 50000 },
+		{ experience_no_aa => 50000 },
+		{ aa_points => 3 },
+		{ money => 1234 },
+		{
+			alternate_currency_id => 19,
+			amount => 25,
+		},
+		{ title_set_id => 71 },
+		{
+			label => "Adventurer bundle",
+			rewards => [
+				{ item_id => 1001 },
+				{ aa_points => 1 },
+			],
+		},
+	],
+
+	# Common rewards accompany whichever option the player chooses.
+	common_rewards => [
+		{ money => 1000, description => "Completion bonus" },
+	],
+);
+
 sub EVENT_SAY {
 	return unless $text =~ /rewards/i;
 
-	my $opened = $client->OfferRewardSelection({
-		title => "Veteran's Reward",
-		options => [
-			{ item_id => 1001, quantity => 2 },
-			{ experience => 50000 },
-			{ experience_no_aa => 50000 },
-			{ aa_points => 3 },
-			{ money => 1234 },
-			{
-				alternate_currency_id => 19,
-				amount => 25,
-			},
-			{ title_set_id => 71 },
-			{
-				label => "Adventurer bundle",
-				rewards => [
-					{ item_id => 1001 },
-					{ aa_points => 1 },
-				],
-			},
-		],
-		common_rewards => [
-			{ money => 1000, description => "Completion bonus" },
-		],
-	});
-
+	my $opened = $client->OfferRewardSelection(\%veteran_reward_offer);
 	$client->Message(13, "The reward selector is unavailable.") unless $opened;
 }
 
 sub EVENT_REWARD_SELECT {
-	return $reward_option_index >= 1 && $reward_option_index <= 8;
+	# Add quest-specific entitlement checks here when not every choice is allowed.
+	return 1;
 }
 ~~~
 
@@ -246,60 +261,72 @@ function event_say(e)
 		return
 	end
 
-	e.other:OfferRewardSelection({
+	local offer = {
 		options = {
 			{ item_id = 1001 },
 			{ experience = 5000 },
 		},
-	})
-end
+	}
 
-function event_reward_select(e)
-	return (e.option_index == 1 or e.option_index == 2) and 1 or 0
-end
-~~~
-
-### Complete Lua example
-
-~~~lua
-function event_say(e)
-	if not e.message:lower():find("rewards", 1, true) then
-		return
-	end
-
-	local opened = e.other:OfferRewardSelection({
-		title = "Veteran's Reward",
-		options = {
-			{ item_id = 1001, quantity = 2 },
-			{ experience = 50000 },
-			{ experience_no_aa = 50000 },
-			{ aa_points = 3 },
-			{ money = 1234 },
-			{
-				alternate_currency_id = 19,
-				amount = 25,
-			},
-			{ title_set_id = 71 },
-			{
-				label = "Adventurer bundle",
-				rewards = {
-					{ item_id = 1001 },
-					{ aa_points = 1 },
-				},
-			},
-		},
-		common_rewards = {
-			{ money = 1000, description = "Completion bonus" },
-		},
-	})
-
+	local opened = e.other:OfferRewardSelection(offer)
 	if not opened then
 		e.other:Message(13, "The reward selector is unavailable.")
 	end
 end
 
 function event_reward_select(e)
-	return (e.option_index >= 1 and e.option_index <= 8) and 1 or 0
+	-- Returning nonzero authorizes the server to grant the selected option.
+	return 1
+end
+~~~
+
+### Complete Lua example
+
+~~~lua
+local veteran_reward_offer = {
+	title = "Veteran's Reward",
+
+	-- Each entry is one choice; its array position becomes option_index.
+	options = {
+		{ item_id = 1001, quantity = 2 },
+		{ experience = 50000 },
+		{ experience_no_aa = 50000 },
+		{ aa_points = 3 },
+		{ money = 1234 },
+		{
+			alternate_currency_id = 19,
+			amount = 25,
+		},
+		{ title_set_id = 71 },
+		{
+			label = "Adventurer bundle",
+			rewards = {
+				{ item_id = 1001 },
+				{ aa_points = 1 },
+			},
+		},
+	},
+
+	-- Common rewards accompany whichever option the player chooses.
+	common_rewards = {
+		{ money = 1000, description = "Completion bonus" },
+	},
+}
+
+function event_say(e)
+	if not e.message:lower():find("rewards", 1, true) then
+		return
+	end
+
+	local opened = e.other:OfferRewardSelection(veteran_reward_offer)
+	if not opened then
+		e.other:Message(13, "The reward selector is unavailable.")
+	end
+end
+
+function event_reward_select(e)
+	-- Add quest-specific entitlement checks here when not every choice is allowed.
+	return 1
 end
 ~~~
 
