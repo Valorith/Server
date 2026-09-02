@@ -1483,7 +1483,7 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 			? RewardSelectionDeliveryResult::Delivered
 			: RewardSelectionDeliveryResult::Ambiguous;
 	}
-	case RewardSelectionRewardType::Copper:
+	case RewardSelectionRewardType::Copper: {
 		if (!amount) {
 			return RewardSelectionDeliveryResult::RetryableFailure;
 		}
@@ -1512,6 +1512,7 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 		return persistence_succeeded
 			? RewardSelectionDeliveryResult::Delivered
 			: RewardSelectionDeliveryResult::Ambiguous;
+	}
 	case RewardSelectionRewardType::AlternateCurrency:
 		if (
 			!reward.data_id ||
