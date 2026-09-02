@@ -103,6 +103,31 @@ inline bool IsValidRewardSelectionRewardDefinition(
 	return false;
 }
 
+inline bool IsValidRewardSelectionItemAmount(
+	const EQ::ItemData *item,
+	uint64_t amount
+)
+{
+	if (
+		!item ||
+		!amount ||
+		amount > static_cast<uint64_t>(std::numeric_limits<int16_t>::max())
+	) {
+		return false;
+	}
+	if (amount == 1) {
+		return true;
+	}
+	if (item->Stackable) {
+		return
+			item->StackSize > 0 &&
+			amount <= static_cast<uint64_t>(item->StackSize);
+	}
+	return
+		item->MaxCharges > 0 &&
+		amount <= static_cast<uint64_t>(item->MaxCharges);
+}
+
 struct RewardSelectionReward {
 	// RoF2 echoes only the low 32 bits; loaders reject wider entry IDs.
 	uint64_t                  entry_id = 0;

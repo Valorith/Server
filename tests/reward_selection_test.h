@@ -20,6 +20,7 @@ public:
 		TEST_ADD(RewardSelectionTest::ValidationAndFailedClaimLayout);
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
+		TEST_ADD(RewardSelectionTest::ItemQuantityValidation);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
 		TEST_ADD(RewardSelectionTest::ScriptItemShorthand);
 		TEST_ADD(RewardSelectionTest::ScriptMixedOptionShorthand);
@@ -467,6 +468,36 @@ private:
 				1
 			)
 		);
+	}
+
+	void ItemQuantityValidation()
+	{
+		EQ::ItemData ordinary{};
+		ordinary.ID = 5001;
+		ordinary.Stackable = false;
+		ordinary.MaxCharges = 0;
+		TEST_ASSERT(IsValidRewardSelectionItemAmount(&ordinary, 1));
+		TEST_ASSERT(!IsValidRewardSelectionItemAmount(&ordinary, 2));
+
+		EQ::ItemData stackable{};
+		stackable.ID = 5002;
+		stackable.Stackable = true;
+		stackable.StackSize = 20;
+		TEST_ASSERT(IsValidRewardSelectionItemAmount(&stackable, 20));
+		TEST_ASSERT(!IsValidRewardSelectionItemAmount(&stackable, 21));
+
+		EQ::ItemData charged{};
+		charged.ID = 5003;
+		charged.MaxCharges = 5;
+		TEST_ASSERT(IsValidRewardSelectionItemAmount(&charged, 5));
+		TEST_ASSERT(!IsValidRewardSelectionItemAmount(&charged, 6));
+
+		EQ::ItemData unlimited{};
+		unlimited.ID = 5004;
+		unlimited.MaxCharges = -1;
+		TEST_ASSERT(IsValidRewardSelectionItemAmount(&unlimited, 1));
+		TEST_ASSERT(!IsValidRewardSelectionItemAmount(&unlimited, 2));
+		TEST_ASSERT(!IsValidRewardSelectionItemAmount(nullptr, 1));
 	}
 
 	void StructuredScriptRewardParsing()

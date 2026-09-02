@@ -311,12 +311,22 @@ bool ClientRewardSelection::ValidateScriptRewardContent(
 	}
 
 	switch (reward.type) {
-	case RewardSelectionRewardType::Item:
-		if (!database.GetItem(reward.data_id)) {
+	case RewardSelectionRewardType::Item: {
+		const auto item = database.GetItem(reward.data_id);
+		if (!item) {
 			error = fmt::format("item_id {} does not exist", reward.data_id);
 			return false;
 		}
+		if (!IsValidRewardSelectionItemAmount(item, reward.amount)) {
+			error = fmt::format(
+				"item_id {} does not support quantity {}",
+				reward.data_id,
+				reward.amount
+			);
+			return false;
+		}
 		break;
+	}
 	case RewardSelectionRewardType::AlternateCurrency:
 		if (!zone || !zone->DoesAlternateCurrencyExist(reward.data_id)) {
 			error = fmt::format(
@@ -1332,40 +1342,38 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 	}
 
 	switch (reward.type) {
-	case RewardSelectionRewardType::Item:
+	case RewardSelectionRewardType::Item: {
+		const auto item = database.GetItem(reward.data_id);
 		if (
-			!reward.data_id ||
-			!amount ||
-			amount > static_cast<uint64_t>(std::numeric_limits<int16_t>::max()) ||
+			!IsValidRewardSelectionItemAmount(item, amount) ||
 			client.GetInv().CursorSize() >= EQ::invbag::CURSOR_BAG_COUNT
 		) {
 			return RewardSelectionDeliveryResult::RetryableFailure;
 		}
-		{
-			bool persistence_succeeded = false;
-			const auto summoned = client.SummonItem(
-				reward.data_id,
-				static_cast<int16_t>(amount),
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				false,
-				EQ::invslot::slotCursor,
-				0,
-				0,
-				0,
-				&persistence_succeeded
-			);
-			if (!summoned) {
-				return RewardSelectionDeliveryResult::RetryableFailure;
-			}
-			return persistence_succeeded
-				? RewardSelectionDeliveryResult::Delivered
-				: RewardSelectionDeliveryResult::Ambiguous;
+		bool persistence_succeeded = false;
+		const auto summoned = client.SummonItem(
+			reward.data_id,
+			static_cast<int16_t>(amount),
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			false,
+			EQ::invslot::slotCursor,
+			0,
+			0,
+			0,
+			&persistence_succeeded
+		);
+		if (!summoned) {
+			return RewardSelectionDeliveryResult::RetryableFailure;
 		}
+		return persistence_succeeded
+			? RewardSelectionDeliveryResult::Delivered
+			: RewardSelectionDeliveryResult::Ambiguous;
+	}
 	case RewardSelectionRewardType::Experience:
 		if (
 			!client.IsEXPEnabled() &&

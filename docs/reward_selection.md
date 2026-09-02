@@ -82,7 +82,7 @@ or an array table in Lua. Each outer entry is one selectable reward group:
 ~~~perl
 $client->OfferRewardSelection([
 	1001,
-	{ item_id => 1002, quantity => 3 },
+	{ item_id => 13073, quantity => 3 }, # Stackable item
 	{ experience => 50000 },
 	{ experience_no_aa => 50000 },
 	{ aa_points => 2 },
@@ -101,7 +101,7 @@ $client->OfferRewardSelection([
 ~~~lua
 client:OfferRewardSelection({
 	1001,
-	{ item_id = 1002, quantity = 3 },
+	{ item_id = 13073, quantity = 3 }, -- Stackable item
 	{ experience = 50000 },
 	{ experience_no_aa = 50000 },
 	{ aa_points = 2 },
@@ -167,7 +167,7 @@ detail text.
 
 | Reward | Required fields | Optional fields | Grant and limits |
 | --- | --- | --- | --- |
-| Item | `item_id` | `quantity` (default `1`), `description` | Item stack/charge count; quantity `1..32767`. The item ID must exist. |
+| Item | `item_id` | `quantity` (default `1`), `description` | Stack count or finite charge count. Ordinary non-stackable items require `1`; stacks cannot exceed `StackSize`, and charges cannot exceed `MaxCharges`. The item ID must exist. |
 | Experience | `experience` | `description` | Uses normal AA allocation; amount `1..4294967295`. |
 | Experience without AA allocation | `experience_no_aa` | `description` | Adds fixed normal experience while preserving AA experience; amount `1..4294967295`. |
 | AA points | `aa_points` | `description` | Amount `1..2147483647`. |
@@ -178,8 +178,9 @@ detail text.
 Item, alternate-currency, and title-set IDs are resolved when the offer is
 created. A missing content definition rejects the whole offer before anything
 is shown. Numeric strings, negative values, fractions, zero reward amounts,
-out-of-range values, and combinations such as `item_id` plus `experience` are
-also rejected. Each selectable batch is checked as a whole: lore-conflicting
+out-of-range values, item quantities the referenced item cannot represent, and
+combinations such as `item_id` plus `experience` are also rejected. Each
+selectable batch is checked as a whole: lore-conflicting
 items within one option, or between `common_rewards` and that option, reject
 the offer before any reward can be granted. Repeated stackable non-lore items
 remain valid.
@@ -272,7 +273,7 @@ my %veteran_reward_offer = (
 
 	# Each entry is one choice; its array position becomes option_index.
 	options => [
-		{ item_id => 1001, quantity => 2 },
+		{ item_id => 13073, quantity => 2 }, # Stackable item
 		{ experience => 50000 },
 		{ experience_no_aa => 50000 },
 		{ aa_points => 3 },
@@ -341,7 +342,7 @@ local veteran_reward_offer = {
 
 	-- Each entry is one choice; its array position becomes option_index.
 	options = {
-		{ item_id = 1001, quantity = 2 },
+		{ item_id = 13073, quantity = 2 }, -- Stackable item
 		{ experience = 50000 },
 		{ experience_no_aa = 50000 },
 		{ aa_points = 3 },

@@ -404,17 +404,28 @@ bool TaskManager::LoadTaskRewardSets()
 			);
 			continue;
 		}
-		if (
-			reward_type == RewardSelectionRewardType::Item &&
-			!database.GetItem(static_cast<uint32_t>(raw_data_id))
-		) {
-			staged->second.invalid = true;
-			LogError(
-				"Enabled task reward [{}] references missing item [{}]",
-				reward_id,
-				raw_data_id
-			);
-			continue;
+		if (reward_type == RewardSelectionRewardType::Item) {
+			const auto item = database.GetItem(static_cast<uint32_t>(raw_data_id));
+			if (!item) {
+				staged->second.invalid = true;
+				LogError(
+					"Enabled task reward [{}] references missing item [{}]",
+					reward_id,
+					raw_data_id
+				);
+				continue;
+			}
+			if (!IsValidRewardSelectionItemAmount(item, amount)) {
+				staged->second.invalid = true;
+				LogError(
+					"Enabled task reward [{}] item [{}] does not support "
+					"quantity [{}]",
+					reward_id,
+					raw_data_id,
+					amount
+				);
+				continue;
+			}
 		}
 		if (
 			reward_type == RewardSelectionRewardType::AlternateCurrency &&
