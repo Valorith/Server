@@ -1890,9 +1890,58 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		TaskType type = TaskType::Task;
 	};
 	std::vector<CompletedTaskRemoval> removals;
+	struct DurableRewardEvidence {
+		uint32_t task_id = 0;
+		uint32_t accepted_time = 0;
+		bool has_selection = false;
+	};
+	std::vector<DurableRewardEvidence> durable_rewards;
+	if (force) {
+		auto durable_evidence = database.QueryDatabase(fmt::format(
+			"SELECT instances.task_id, instances.accepted_time, "
+				"selections.pending_reward_id "
+			"FROM character_task_reward_instances AS instances "
+			"LEFT JOIN character_task_reward_selections AS selections "
+			"ON selections.character_id = instances.character_id "
+				"AND selections.source_instance_id = instances.occurrence_id "
+			"WHERE instances.character_id = {}",
+			client->CharacterID()
+		));
+		if (!durable_evidence.Success()) {
+			LogError(
+				"Failed to load durable selectable reward recovery state for "
+				"character [{}]",
+				client->CharacterID()
+			);
+			return;
+		}
+		for (auto row : durable_evidence) {
+			const auto task_id = ParseTaskRewardUInt32(row[0]);
+			if (!task_id) {
+				continue;
+			}
+			const auto accepted_time = ParseTaskRewardUInt32(row[1]);
+			auto existing = std::find_if(
+				durable_rewards.begin(),
+				durable_rewards.end(),
+				[task_id, accepted_time](const auto &evidence) {
+					return
+						evidence.task_id == task_id &&
+						evidence.accepted_time == accepted_time;
+				}
+			);
+			if (existing == durable_rewards.end()) {
+				durable_rewards.push_back({task_id, accepted_time, row[2] != nullptr});
+			}
+			else {
+				existing->has_selection =
+					existing->has_selection || row[2] != nullptr;
+			}
+		}
+	}
 	bool shared_updated = false;
 
-	const auto retry = [this, client, &removals, &shared_updated](
+	const auto retry = [this, client, force, &durable_rewards, &removals, &shared_updated](
 		ClientTaskInformation &task_info,
 		int slot,
 		TaskType type
@@ -1908,7 +1957,25 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 			task && task->reward_method == METHODSELECT;
 		bool has_durable_occurrence = false;
 		bool has_durable_selection = false;
-		if (
+		if (force) {
+			const auto accepted_time = static_cast<uint32_t>(
+				std::max(task_info.accepted_time, 0)
+			);
+			const auto evidence = std::find_if(
+				durable_rewards.begin(),
+				durable_rewards.end(),
+				[&task_info, accepted_time](const auto &candidate) {
+					return
+						candidate.task_id == task_info.task_id &&
+						candidate.accepted_time == accepted_time;
+				}
+			);
+			if (evidence != durable_rewards.end()) {
+				has_durable_occurrence = true;
+				has_durable_selection = evidence->has_selection;
+			}
+		}
+		else if (
 			(!live_selectable_method || !active_task_complete) &&
 			(task_info.was_rewarded || active_task_complete)
 		) {

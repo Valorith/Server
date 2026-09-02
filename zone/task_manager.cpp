@@ -721,6 +721,65 @@ bool TaskManager::LoadTaskRewardSets()
 					);
 					break;
 				}
+				if (!HasRewardSelectionItemBatchCapacity(
+					common_rewards,
+					option.rewards,
+					EQ::invbag::CURSOR_BAG_COUNT
+				)) {
+					staged.invalid = true;
+					LogError(
+						"Enabled task reward set [{}] option [{}] exceeds "
+							"the item delivery capacity",
+						reward_set_id,
+						option.option_id
+					);
+					break;
+				}
+
+				std::vector<RewardSelectionReward> batch(common_rewards);
+				batch.insert(
+					batch.end(),
+					option.rewards.begin(),
+					option.rewards.end()
+				);
+				const RewardSelectionBatchState empty_state;
+				const RewardSelectionDeliveryPolicy task_policy{
+					.experience_source = ExpSource::Task,
+					.require_experience_enabled = false,
+					.require_quest_experience_rule = false
+				};
+				if (!CanGrantRewardSelectionBatch(
+					batch,
+					task_policy,
+					empty_state,
+					[](uint32_t item_id) {
+						return database.GetItem(item_id);
+					},
+					[&alternate_currency_ids](uint32_t currency_id)
+						-> std::optional<uint64_t> {
+						return alternate_currency_ids.contains(currency_id)
+							? std::optional<uint64_t>(0)
+							: std::nullopt;
+					},
+					[](uint32_t title_set) {
+						return std::any_of(
+							title_manager.GetTitles().begin(),
+							title_manager.GetTitles().end(),
+							[title_set](const auto &title) {
+								return title.title_set == static_cast<int>(title_set);
+							}
+						);
+					}
+				)) {
+					staged.invalid = true;
+					LogError(
+						"Enabled task reward set [{}] option [{}] exceeds "
+							"the aggregate delivery limits",
+						reward_set_id,
+						option.option_id
+					);
+					break;
+				}
 			}
 		}
 		if (

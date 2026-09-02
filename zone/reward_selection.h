@@ -670,6 +670,15 @@ enum class RewardSelectionDeliveryResult : uint8_t {
 	Ambiguous
 };
 
+inline bool ShouldRemoveRewardSelectionSessionAfterClaim(
+	RewardSelectionDeliveryResult result,
+	bool delivered
+)
+{
+	return
+		delivered || result == RewardSelectionDeliveryResult::Ambiguous;
+}
+
 inline RewardSelectionDeliveryResult ResolveTransientRewardBatchFailure(
 	bool delivered_non_idempotent,
 	bool delivered_idempotent,

@@ -948,6 +948,7 @@ private:
 		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, true, false, true, false));
 		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true, true, false));
 		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, false, true, true, true));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, false, false, true, true));
 		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, true, false, false));
 		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(true, false, false, true, false));
 		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true, true, false));
@@ -1223,6 +1224,23 @@ private:
 			) == RewardSelectionDeliveryResult::Ambiguous
 		);
 
+		TEST_ASSERT(!ShouldRemoveRewardSelectionSessionAfterClaim(
+			RewardSelectionDeliveryResult::RetryableFailure,
+			false
+		));
+		TEST_ASSERT(!ShouldRemoveRewardSelectionSessionAfterClaim(
+			RewardSelectionDeliveryResult::RetryableFailureSameOption,
+			false
+		));
+		TEST_ASSERT(ShouldRemoveRewardSelectionSessionAfterClaim(
+			RewardSelectionDeliveryResult::Ambiguous,
+			false
+		));
+		TEST_ASSERT(ShouldRemoveRewardSelectionSessionAfterClaim(
+			RewardSelectionDeliveryResult::Delivered,
+			true
+		));
+
 		EQ::ItemData stackable{};
 		stackable.ID = 1001;
 		stackable.Stackable = 1;
@@ -1320,6 +1338,18 @@ private:
 				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 6)
 			},
 			aa_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{
+				reward(
+					RewardSelectionRewardType::AlternateAdvancement,
+					0,
+					std::numeric_limits<int>::max()
+				),
+				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 1)
+			},
+			empty_state,
 			default_policy
 		));
 
