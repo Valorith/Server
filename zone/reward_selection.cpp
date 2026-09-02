@@ -1359,6 +1359,39 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
+	const RewardSelectionBatchState state{
+		.experience_enabled = client.IsEXPEnabled(),
+		.aa_points = client.GetAAPoints(),
+		.spent_aa_points = client.GetSpentAA(),
+		.platinum = client.GetPlatinum(),
+		.gold = client.GetGold(),
+		.silver = client.GetSilver(),
+		.copper = client.GetCopper()
+	};
+	if (!CanGrantRewardSelectionBatch(
+		rewards,
+		policy,
+		state,
+		[](uint32_t item_id) { return database.GetItem(item_id); },
+		[&client](uint32_t currency_id) -> std::optional<uint64_t> {
+			if (!zone || !zone->DoesAlternateCurrencyExist(currency_id)) {
+				return std::nullopt;
+			}
+			return client.GetAlternateCurrencyValue(currency_id);
+		},
+		[](uint32_t title_set) {
+			return std::any_of(
+				title_manager.GetTitles().begin(),
+				title_manager.GetTitles().end(),
+				[title_set](const auto &title) {
+					return title.title_set == static_cast<int>(title_set);
+				}
+			);
+		}
+	)) {
+		return RewardSelectionDeliveryResult::RetryableFailure;
+	}
+
 	uint32_t conflicting_lore_item_id = 0;
 	if (HasRewardSelectionInventoryLoreConflict(
 		rewards,

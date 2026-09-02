@@ -943,10 +943,13 @@ private:
 			"common_rewards[1].description cannot contain embedded NUL bytes"
 		);
 
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, false, false));
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true));
-		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, false));
-		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, false, true, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, false, true));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, true, false, true));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true, true));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, true, false));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(true, false, false, true));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true, true));
 
 		ScriptRewardSelectionRewardConfig config;
 		TEST_ASSERT(!MakeScriptRewardSelectionReward(config, &error));
@@ -1198,5 +1201,153 @@ private:
 				RewardSelectionDeliveryResult::Ambiguous
 			) == RewardSelectionDeliveryResult::Ambiguous
 		);
+
+		EQ::ItemData stackable{};
+		stackable.ID = 1001;
+		stackable.Stackable = 1;
+		stackable.StackSize = 20;
+		const auto resolve_item = [&stackable](uint32_t item_id)
+			-> const EQ::ItemData * {
+			return item_id == stackable.ID ? &stackable : nullptr;
+		};
+		const auto resolve_alternate_currency = [](uint32_t currency_id)
+			-> std::optional<uint64_t> {
+			return currency_id == 7
+				? std::optional<uint64_t>(
+					static_cast<uint64_t>(std::numeric_limits<int>::max()) - 10
+				)
+				: std::nullopt;
+		};
+		const auto resolve_title = [](uint32_t title_set) {
+			return title_set == 42;
+		};
+		const auto reward = [](
+			RewardSelectionRewardType type,
+			uint32_t data_id,
+			uint64_t amount
+		) {
+			return RewardSelectionReward{
+				.type = type,
+				.data_id = data_id,
+				.amount = amount
+			};
+		};
+		const auto can_grant = [&resolve_item, &resolve_alternate_currency, &resolve_title](
+			const std::vector<RewardSelectionReward> &rewards,
+			const RewardSelectionBatchState &state,
+			const RewardSelectionDeliveryPolicy &policy
+		) {
+			return CanGrantRewardSelectionBatch(
+				rewards,
+				policy,
+				state,
+				resolve_item,
+				resolve_alternate_currency,
+				resolve_title
+			);
+		};
+		const RewardSelectionBatchState empty_state;
+		const RewardSelectionDeliveryPolicy default_policy;
+
+		TEST_ASSERT(can_grant(
+			{
+				reward(RewardSelectionRewardType::Item, 1001, 20),
+				reward(RewardSelectionRewardType::Title, 42, 1)
+			},
+			empty_state,
+			default_policy
+		));
+
+		auto no_experience_state = empty_state;
+		no_experience_state.experience_enabled = false;
+		TEST_ASSERT(!can_grant(
+			{
+				reward(RewardSelectionRewardType::Copper, 0, 10),
+				reward(RewardSelectionRewardType::Experience, 0, 100)
+			},
+			no_experience_state,
+			default_policy
+		));
+		const RewardSelectionDeliveryPolicy task_policy{
+			.experience_source = ExpSource::Task,
+			.require_experience_enabled = false,
+			.require_quest_experience_rule = false
+		};
+		TEST_ASSERT(can_grant(
+			{reward(
+				RewardSelectionRewardType::Experience,
+				static_cast<uint32_t>(RewardSelectionExperienceMode::NormalOnly),
+				100
+			)},
+			no_experience_state,
+			task_policy
+		));
+
+		auto aa_state = empty_state;
+		aa_state.aa_points = std::numeric_limits<int>::max() - 10;
+		TEST_ASSERT(can_grant(
+			{
+				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 5),
+				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 5)
+			},
+			aa_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{
+				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 5),
+				reward(RewardSelectionRewardType::AlternateAdvancement, 0, 6)
+			},
+			aa_state,
+			default_policy
+		));
+
+		auto coin_state = empty_state;
+		coin_state.platinum = std::numeric_limits<int32_t>::max() - 1;
+		TEST_ASSERT(!can_grant(
+			{
+				reward(RewardSelectionRewardType::Copper, 0, 1000),
+				reward(RewardSelectionRewardType::Copper, 0, 1000)
+			},
+			coin_state,
+			default_policy
+		));
+
+		TEST_ASSERT(can_grant(
+			{
+				reward(RewardSelectionRewardType::AlternateCurrency, 7, 5),
+				reward(RewardSelectionRewardType::AlternateCurrency, 7, 5)
+			},
+			empty_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{
+				reward(RewardSelectionRewardType::AlternateCurrency, 7, 5),
+				reward(RewardSelectionRewardType::AlternateCurrency, 7, 6)
+			},
+			empty_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{reward(RewardSelectionRewardType::AlternateCurrency, 8, 1)},
+			empty_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{reward(RewardSelectionRewardType::Item, 9999, 1)},
+			empty_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{reward(RewardSelectionRewardType::Item, 1001, 21)},
+			empty_state,
+			default_policy
+		));
+		TEST_ASSERT(!can_grant(
+			{reward(RewardSelectionRewardType::Title, 99, 1)},
+			empty_state,
+			default_policy
+		));
 	}
 };

@@ -9,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -354,12 +355,13 @@ inline bool ValidateScriptRewardSelectionDisplayText(
 inline bool ShouldRecoverCompletedSelectableReward(
 	bool live_selectable_method,
 	bool was_rewarded,
-	bool has_durable_snapshot
+	bool active_task_complete,
+	bool has_durable_occurrence
 )
 {
 	return
-		live_selectable_method ||
-		(was_rewarded && has_durable_snapshot);
+		(live_selectable_method && active_task_complete) ||
+		(was_rewarded && has_durable_occurrence);
 }
 
 template <typename ItemResolver>
@@ -668,6 +670,146 @@ struct RewardSelectionDeliveryPolicy {
 	bool      require_experience_enabled = true;
 	bool      require_quest_experience_rule = true;
 };
+
+struct RewardSelectionBatchState {
+	bool     experience_enabled = true;
+	int64_t  aa_points = 0;
+	int64_t  spent_aa_points = 0;
+	uint64_t platinum = 0;
+	uint64_t gold = 0;
+	uint64_t silver = 0;
+	uint64_t copper = 0;
+};
+
+template <typename ItemResolver, typename AlternateCurrencyResolver, typename TitleResolver>
+inline bool CanGrantRewardSelectionBatch(
+	const std::vector<RewardSelectionReward> &rewards,
+	const RewardSelectionDeliveryPolicy &policy,
+	const RewardSelectionBatchState &state,
+	ItemResolver resolve_item,
+	AlternateCurrencyResolver resolve_alternate_currency,
+	TitleResolver resolve_title
+)
+{
+	const auto max_int =
+		static_cast<uint64_t>(std::numeric_limits<int>::max());
+	const auto max_currency =
+		static_cast<uint64_t>(std::numeric_limits<int32_t>::max());
+	uint64_t aa_total = 0;
+	uint64_t platinum_total = 0;
+	uint64_t gold_total = 0;
+	uint64_t silver_total = 0;
+	uint64_t copper_total = 0;
+	bool has_coin_rewards = false;
+	std::unordered_map<uint32_t, uint64_t> alternate_currency_totals;
+
+	for (const auto &reward : rewards) {
+		if (!IsValidRewardSelectionRewardDefinition(
+			reward.type,
+			reward.data_id,
+			reward.amount
+		)) {
+			return false;
+		}
+
+		switch (reward.type) {
+		case RewardSelectionRewardType::Item:
+			if (!IsValidRewardSelectionItemAmount(
+				resolve_item(reward.data_id),
+				reward.amount
+			)) {
+				return false;
+			}
+			break;
+		case RewardSelectionRewardType::Experience:
+			if (
+				!state.experience_enabled &&
+				(
+					reward.data_id == static_cast<uint32_t>(
+						RewardSelectionExperienceMode::Default
+					) ||
+					policy.require_experience_enabled
+				)
+			) {
+				return false;
+			}
+			break;
+		case RewardSelectionRewardType::AlternateAdvancement:
+			if (reward.amount > max_int - aa_total) {
+				return false;
+			}
+			aa_total += reward.amount;
+			break;
+		case RewardSelectionRewardType::Copper: {
+			has_coin_rewards = true;
+			const auto platinum = reward.amount / 1000;
+			const auto gold = (reward.amount % 1000) / 100;
+			const auto silver = (reward.amount % 100) / 10;
+			const auto copper = reward.amount % 10;
+			if (
+				platinum > max_currency - platinum_total ||
+				gold > max_currency - gold_total ||
+				silver > max_currency - silver_total ||
+				copper > max_currency - copper_total
+			) {
+				return false;
+			}
+			platinum_total += platinum;
+			gold_total += gold;
+			silver_total += silver;
+			copper_total += copper;
+			break;
+		}
+		case RewardSelectionRewardType::AlternateCurrency: {
+			auto &total = alternate_currency_totals[reward.data_id];
+			if (reward.amount > max_int - total) {
+				return false;
+			}
+			total += reward.amount;
+			break;
+		}
+		case RewardSelectionRewardType::Title:
+			if (!resolve_title(reward.data_id)) {
+				return false;
+			}
+			break;
+		}
+	}
+
+	if (aa_total) {
+		if (state.aa_points < 0 || state.spent_aa_points < 0) {
+			return false;
+		}
+		const auto current =
+			static_cast<uint64_t>(state.aa_points) +
+			static_cast<uint64_t>(state.spent_aa_points);
+		if (current > max_int || aa_total > max_int - current) {
+			return false;
+		}
+	}
+	if (
+		has_coin_rewards &&
+		(
+			state.platinum > max_currency ||
+			state.gold > max_currency ||
+			state.silver > max_currency ||
+			state.copper > max_currency ||
+			platinum_total > max_currency - state.platinum ||
+			gold_total > max_currency - state.gold ||
+			silver_total > max_currency - state.silver ||
+			copper_total > max_currency - state.copper
+		)
+	) {
+		return false;
+	}
+	for (const auto &[currency_id, total] : alternate_currency_totals) {
+		const auto current = resolve_alternate_currency(currency_id);
+		if (!current || *current > max_int || total > max_int - *current) {
+			return false;
+		}
+	}
+	return true;
+}
 
 struct ResolvedRewardSelectionClaim {
 	RewardSelectionSession              session;

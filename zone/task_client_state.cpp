@@ -1897,47 +1897,44 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		int slot,
 		TaskType type
 	) {
-		if (
-			task_info.task_id == TASKSLOTEMPTY ||
-			!TaskManager::Instance()->IsActiveTaskComplete(task_info)
-		) {
+		if (task_info.task_id == TASKSLOTEMPTY) {
 			return;
 		}
 
+		const bool active_task_complete =
+			TaskManager::Instance()->IsActiveTaskComplete(task_info);
 		const auto task = TaskManager::Instance()->GetTaskData(task_info.task_id);
 		const bool live_selectable_method =
 			task && task->reward_method == METHODSELECT;
-		bool has_durable_snapshot = false;
-		if (!live_selectable_method && task_info.was_rewarded) {
+		bool has_durable_occurrence = false;
+		if (task_info.was_rewarded && (!live_selectable_method || !active_task_complete)) {
 			const auto accepted_time = static_cast<uint32_t>(
 				std::max(task_info.accepted_time, 0)
 			);
-			auto durable_selection = database.QueryDatabase(fmt::format(
-				"SELECT pending_reward_id "
-				"FROM character_task_reward_selections "
+			auto durable_occurrence = database.QueryDatabase(fmt::format(
+				"SELECT occurrence_id FROM character_task_reward_instances "
 				"WHERE character_id = {} AND task_id = {} "
-				"AND accepted_time = {} "
-				"AND reward_snapshot IS NOT NULL "
-				"AND reward_snapshot <> '' LIMIT 1",
+				"AND accepted_time = {} LIMIT 1",
 				client->CharacterID(),
 				task_info.task_id,
 				accepted_time
 			));
-			if (!durable_selection.Success()) {
+			if (!durable_occurrence.Success()) {
 				LogError(
-					"Failed to verify durable selectable reward for completed "
+					"Failed to verify selectable reward occurrence for completed "
 					"task [{}], character [{}]",
 					task_info.task_id,
 					client->CharacterID()
 				);
 				return;
 			}
-			has_durable_snapshot = durable_selection.RowCount() == 1;
+			has_durable_occurrence = durable_occurrence.RowCount() == 1;
 		}
 		if (!ShouldRecoverCompletedSelectableReward(
 			live_selectable_method,
 			task_info.was_rewarded,
-			has_durable_snapshot
+			active_task_complete,
+			has_durable_occurrence
 		)) {
 			return;
 		}
@@ -3463,12 +3460,7 @@ void ClientTaskState::RemoveTask(Client *client, int sequence_number, TaskType t
 	const auto removed_task = TaskManager::Instance()
 		? TaskManager::Instance()->GetTaskData(task_id)
 		: nullptr;
-	if (
-		removed_task &&
-		removed_task->reward_method == METHODSELECT &&
-		activities_deleted.Success() &&
-		task_deleted.Success()
-	) {
+	if (activities_deleted.Success() && task_deleted.Success()) {
 		const auto occurrence_deleted = database.QueryDatabase(fmt::format(
 			"DELETE FROM character_task_reward_instances "
 			"WHERE character_id = {} AND task_id = {}",

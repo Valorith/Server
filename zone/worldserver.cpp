@@ -5011,6 +5011,12 @@ void WorldServer::ProcessReload(const ServerReload::Request& request)
 
 		case ServerReload::Type::AlternateCurrencies:
 			zone->LoadAlternateCurrencies();
+			if (
+				TaskManager::Instance() &&
+				!TaskManager::Instance()->LoadTaskRewardSets()
+			) {
+				LogError("Failed to revalidate task reward sets after alternate currency reload");
+			}
 			break;
 
 		case ServerReload::Type::BaseData:
