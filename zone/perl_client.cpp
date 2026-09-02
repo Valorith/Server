@@ -2819,8 +2819,9 @@ static bool PerlRewardSelectionReadUInt(perl::hash &table,
 	const std::string &path,
 	std::string &error)
 {
+	perl::scalar value = table[key];
 	return PerlRewardSelectionReadUInt(
-		perl::scalar(table[key]),
+		value,
 		output,
 		fmt::format("{}.{}", path, key),
 		error
@@ -3018,8 +3019,9 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 		offer.options.reserve(values.size());
 		for (size_t index = 0; error.empty() && index < values.size();
 		     ++index) {
+			perl::scalar option_value = values[index];
 			RewardSelectionOption option;
-			if (!PerlRewardSelectionParseOption(perl::scalar(values[index]),
+			if (!PerlRewardSelectionParseOption(option_value,
 			        fmt::format("options[{}]", index + 1),
 			        option,
 			        error)) {
@@ -3058,11 +3060,12 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 				}
 				for (size_t index = 0; error.empty() && index < options.size();
 				     ++index) {
+					perl::scalar option_value = options[index];
 					const auto path =
 					    fmt::format("config.options[{}]", index + 1);
 					RewardSelectionOption option;
 					if (!PerlRewardSelectionParseOption(
-					        perl::scalar(options[index]),
+					        option_value,
 					        path,
 					        option,
 					        error)) {
