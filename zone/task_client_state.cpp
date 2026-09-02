@@ -1399,9 +1399,24 @@ int ClientTaskState::IncrementDoneCount(
 			// If Experience and/or cash rewards are set, reward them from the task even if reward_method is METHODQUEST
 			// do not reward client if EVENT_TASK_COMPLETE returns non-zero
 			bool reward_ready = true;
-			if (event_res == 0)
-			{
+			if (event_res == 0) {
 				reward_ready = RewardTask(client, task_data, *info);
+			} else {
+				// A non-zero task-complete event means the script handled or
+				// intentionally suppressed the reward. Persist that terminal
+				// outcome before removing the task so crash recovery cannot
+				// mistake it for an unpaid selectable reward.
+				info->was_rewarded = true;
+				info->updated = true;
+				reward_ready = TaskManager::Instance()->SaveClientState(client, this);
+				if (!reward_ready) {
+					LogError(
+						"Failed to persist suppressed reward state for task [{}], character [{}]; "
+						"leaving the completed task in place",
+						info->task_id,
+						client->CharacterID()
+					);
+				}
 			}
 			//RemoveTask(c, TaskIndex);
 
@@ -1852,7 +1867,6 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 	) {
 		if (
 			task_info.task_id == TASKSLOTEMPTY ||
-			task_info.was_rewarded ||
 			!TaskManager::Instance()->IsActiveTaskComplete(task_info)
 		) {
 			return;
@@ -1865,10 +1879,33 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		) {
 			return;
 		}
+		if (task_info.was_rewarded) {
+			// A completed task can survive a failed delete. When its reward
+			// outcome is already terminal (including script
+			// suppression), remove it without replaying RewardTask. If the
+			// marker is still dirty, make it durable before cleanup.
+			if (
+				task_info.updated &&
+				!TaskManager::Instance()->SaveClientState(client, this)
+			) {
+				LogError(
+					"Failed to persist completed reward state for task [{}], character [{}]; "
+					"deferring selectable reward cleanup",
+					task_info.task_id,
+					client->CharacterID()
+				);
+				return;
+			}
+			// Completed shared tasks intentionally linger. Their terminal
+			// reward state is now durable, so there is nothing to recover.
+			if (type == TaskType::Shared) {
+				return;
+			}
+		}
 		// RewardTask can recover an existing immutable pending snapshot even
 		// when the current selectable set is disabled or no longer valid. It
 		// still fails closed before creating a new pending row without a live set.
-		if (!RewardTask(client, task, task_info)) {
+		else if (!RewardTask(client, task, task_info)) {
 			return;
 		}
 
