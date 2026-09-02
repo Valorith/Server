@@ -2886,6 +2886,17 @@ void Client::AddPlatinum(uint32 platinum, bool update_client) {
 }
 
 void Client::AddMoneyToPP(uint64 copper, bool update_client){
+	AddMoneyToPP(copper, update_client, nullptr);
+}
+
+void Client::AddMoneyToPP(
+	uint64 copper,
+	bool update_client,
+	bool *persistence_succeeded
+) {
+	if (persistence_succeeded) {
+		*persistence_succeeded = false;
+	}
 	uint64 temporary_copper;
 	uint64 temporary_copper_two;
 	temporary_copper = copper;
@@ -2947,7 +2958,10 @@ void Client::AddMoneyToPP(uint64 copper, bool update_client){
 
 	RecalcWeight();
 
-	SaveCurrency();
+	const bool persisted = SaveCurrency();
+	if (persistence_succeeded) {
+		*persistence_succeeded = persisted;
+	}
 
 	m_external_handin_money_returned.return_source = "AddMoneyToPP";
 

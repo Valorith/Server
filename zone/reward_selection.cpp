@@ -1507,8 +1507,9 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantReward(
 				return RewardSelectionDeliveryResult::RetryableFailure;
 			}
 		}
-		client.AddMoneyToPP(amount, true);
-		return client.SaveCurrency()
+		bool persistence_succeeded = false;
+		client.AddMoneyToPP(amount, true, &persistence_succeeded);
+		return persistence_succeeded
 			? RewardSelectionDeliveryResult::Delivered
 			: RewardSelectionDeliveryResult::Ambiguous;
 	case RewardSelectionRewardType::AlternateCurrency:

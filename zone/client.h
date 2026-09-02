@@ -954,6 +954,7 @@ public:
 	bool TakeMoneyFromPP(uint64 copper, bool update_client = false);
 	bool TakePlatinum(uint32 platinum, bool update_client = false);
 	void AddMoneyToPP(uint64 copper, bool update_client = false);
+	void AddMoneyToPP(uint64 copper, bool update_client, bool *persistence_succeeded);
 	void AddMoneyToPP(uint32 copper, uint32 silver, uint32 gold, uint32 platinum, bool update_client = false);
 	void AddPlatinum(uint32 platinu, bool update_client = false);
 	bool HasMoney(uint64 copper);
