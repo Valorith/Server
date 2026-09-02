@@ -22,6 +22,7 @@ public:
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
 		TEST_ADD(RewardSelectionTest::ScriptItemShorthand);
+		TEST_ADD(RewardSelectionTest::ScriptMixedOptionShorthand);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardGrouping);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
 		TEST_ADD(RewardSelectionTest::StableWireOptionIdentity);
@@ -589,6 +590,16 @@ private:
 	void ScriptItemShorthand()
 	{
 		std::string error;
+		auto item_option =
+		    MakeScriptItemRewardSelectionOption(2001, &error);
+		TEST_ASSERT(item_option);
+		TEST_ASSERT(error.empty());
+		TEST_ASSERT(item_option->rewards.size() == 1);
+		TEST_ASSERT(
+		    item_option->rewards[0].type == RewardSelectionRewardType::Item);
+		TEST_ASSERT(item_option->rewards[0].data_id == 2001);
+		TEST_ASSERT(item_option->rewards[0].amount == 1);
+
 		auto offer = MakeScriptItemRewardSelectionOffer(
 			{1001, 1002, 1003},
 			&error
@@ -633,6 +644,100 @@ private:
 			&error
 		));
 		TEST_ASSERT(error == "item_ids[1]: item_id exceeds the supported range");
+	}
+
+	void ScriptMixedOptionShorthand()
+	{
+		std::string error;
+		ScriptRewardSelectionOffer offer;
+
+		auto item = MakeScriptItemRewardSelectionOption(1001, &error);
+		TEST_ASSERT(item);
+		offer.options.emplace_back(std::move(*item));
+
+		const auto append_reward =
+		    [&offer, &error](const ScriptRewardSelectionRewardConfig &config) {
+			auto reward = MakeScriptRewardSelectionReward(config, &error);
+			if (!reward) {
+				return false;
+			}
+			RewardSelectionOption option;
+			option.rewards.emplace_back(std::move(*reward));
+			offer.options.emplace_back(std::move(option));
+			return true;
+		};
+
+		ScriptRewardSelectionRewardConfig config;
+		config.experience = 50000;
+		TEST_ASSERT(append_reward(config));
+
+		config = {};
+		config.experience_no_aa = 50000;
+		TEST_ASSERT(append_reward(config));
+
+		config = {};
+		config.aa_points = 2;
+		TEST_ASSERT(append_reward(config));
+
+		config = {};
+		config.money = 10000;
+		TEST_ASSERT(append_reward(config));
+
+		config = {};
+		config.alternate_currency_id = 19;
+		config.amount = 5;
+		TEST_ASSERT(append_reward(config));
+
+		config = {};
+		config.title_set_id = 7;
+		TEST_ASSERT(append_reward(config));
+
+		RewardSelectionOption bundle;
+		auto bundle_item = MakeScriptItemRewardSelectionOption(1002, &error);
+		TEST_ASSERT(bundle_item);
+		bundle.rewards.emplace_back(
+		    std::move(bundle_item->rewards.front()));
+		config = {};
+		config.aa_points = 1;
+		auto bundle_aa = MakeScriptRewardSelectionReward(config, &error);
+		TEST_ASSERT(bundle_aa);
+		bundle.rewards.emplace_back(std::move(*bundle_aa));
+		offer.options.emplace_back(std::move(bundle));
+
+		TEST_ASSERT(offer.options.size() == 8);
+		TEST_ASSERT(
+		    offer.options[0].rewards[0].type ==
+		    RewardSelectionRewardType::Item);
+		TEST_ASSERT(
+		    offer.options[1].rewards[0].type ==
+		    RewardSelectionRewardType::Experience);
+		TEST_ASSERT(
+		    offer.options[2].rewards[0].type ==
+		    RewardSelectionRewardType::Experience);
+		TEST_ASSERT(
+		    offer.options[2].rewards[0].data_id ==
+		    static_cast<uint32_t>(RewardSelectionExperienceMode::NormalOnly));
+		TEST_ASSERT(
+		    offer.options[3].rewards[0].type ==
+		    RewardSelectionRewardType::AlternateAdvancement);
+		TEST_ASSERT(
+		    offer.options[4].rewards[0].type ==
+		    RewardSelectionRewardType::Copper);
+		TEST_ASSERT(
+		    offer.options[5].rewards[0].type ==
+		    RewardSelectionRewardType::AlternateCurrency);
+		TEST_ASSERT(
+		    offer.options[6].rewards[0].type ==
+		    RewardSelectionRewardType::Title);
+		TEST_ASSERT(offer.options[7].rewards.size() == 2);
+
+		uint32_t common_option_id = 0;
+		TEST_ASSERT(AssignScriptRewardSelectionOptionIds(
+		    offer, common_option_id, &error));
+		for (size_t index = 0; index < offer.options.size(); ++index) {
+			TEST_ASSERT(offer.options[index].option_id == index + 1);
+		}
+		TEST_ASSERT(common_option_id == 0);
 	}
 
 	void StructuredScriptRewardValidation()

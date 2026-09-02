@@ -251,6 +251,33 @@ struct ScriptRewardSelectionOffer
 	std::vector<RewardSelectionReward> common_rewards;
 };
 
+inline std::optional<RewardSelectionOption>
+MakeScriptItemRewardSelectionOption(
+	uint64_t item_id,
+	std::string *error = nullptr
+)
+{
+	if (error) {
+		error->clear();
+	}
+
+	ScriptRewardSelectionRewardConfig config;
+	config.item_id = item_id;
+
+	std::string reward_error;
+	auto reward = MakeScriptRewardSelectionReward(config, &reward_error);
+	if (!reward) {
+		if (error) {
+			*error = reward_error;
+		}
+		return std::nullopt;
+	}
+
+	RewardSelectionOption option;
+	option.rewards.emplace_back(std::move(*reward));
+	return option;
+}
+
 inline std::optional<ScriptRewardSelectionOffer>
 MakeScriptItemRewardSelectionOffer(
 	const std::vector<uint64_t> &item_ids,
@@ -273,21 +300,18 @@ MakeScriptItemRewardSelectionOffer(
 	ScriptRewardSelectionOffer offer;
 	offer.options.reserve(item_ids.size());
 	for (size_t index = 0; index < item_ids.size(); ++index) {
-		ScriptRewardSelectionRewardConfig config;
-		config.item_id = item_ids[index];
-
-		std::string reward_error;
-		auto reward = MakeScriptRewardSelectionReward(config, &reward_error);
-		if (!reward) {
+		std::string option_error;
+		auto option = MakeScriptItemRewardSelectionOption(
+			item_ids[index],
+			&option_error
+		);
+		if (!option) {
 			return fail(
 				"item_ids[" + std::to_string(index + 1) + "]: " +
-				reward_error
+				option_error
 			);
 		}
-
-		RewardSelectionOption option;
-		option.rewards.emplace_back(std::move(*reward));
-		offer.options.emplace_back(std::move(option));
+		offer.options.emplace_back(std::move(*option));
 	}
 	return offer;
 }

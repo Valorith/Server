@@ -2944,35 +2944,91 @@ static bool PerlRewardSelectionParseRewardArray(perl::scalar value,
 	return true;
 }
 
+static bool PerlRewardSelectionParseOption(perl::scalar value,
+    const std::string &path,
+    RewardSelectionOption &option,
+    std::string &error)
+{
+	if (!value.is_hash_ref()) {
+		if (value.is_reference()) {
+			error = fmt::format(
+			    "{} must be an item ID or hash reference", path);
+			return false;
+		}
+
+		uint64_t item_id = 0;
+		if (!PerlRewardSelectionReadUInt(value, item_id, path, error)) {
+			return false;
+		}
+
+		std::string option_error;
+		auto parsed = MakeScriptItemRewardSelectionOption(
+		    item_id, &option_error);
+		if (!parsed) {
+			error = fmt::format("{}: {}", path, option_error);
+			return false;
+		}
+		option = std::move(*parsed);
+		return true;
+	}
+
+	perl::hash option_table = value;
+	if (!PerlRewardSelectionValidateKeys(
+	        option_table, true, path, error)) {
+		return false;
+	}
+	if (!PerlRewardSelectionReadOptionalString(
+	        option_table, "label", option.label, path, error)) {
+		return false;
+	}
+
+	if (option_table.exists("rewards")) {
+		for (const auto &key : PerlRewardSelectionRewardKeys()) {
+			if (option_table.exists(key)) {
+				error = fmt::format(
+				    "{} cannot mix rewards with flat reward fields", path);
+				return false;
+			}
+		}
+		return PerlRewardSelectionParseRewardArray(option_table["rewards"],
+		    path + ".rewards",
+		    true,
+		    option.rewards,
+		    error);
+	}
+
+	RewardSelectionReward reward;
+	if (!PerlRewardSelectionParseReward(
+	        option_table, true, path, reward, error)) {
+		return false;
+	}
+	option.rewards.emplace_back(std::move(reward));
+	return true;
+}
+
 bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 {
 	std::string error;
 	ScriptRewardSelectionOffer offer;
 	if (config_ref.is_array_ref()) {
 		perl::array values = config_ref;
-		std::vector<uint64_t> item_ids;
-		item_ids.reserve(values.size());
-		for (size_t index = 0; index < values.size(); ++index) {
-			uint64_t item_id = 0;
-			if (!PerlRewardSelectionReadUInt(
-					perl::scalar(values[index]),
-					item_id,
-					fmt::format("item_ids[{}]", index + 1),
-					error
-				)) {
+		if (values.size() == 0) {
+			error = "options must contain at least one choice";
+		}
+		offer.options.reserve(values.size());
+		for (size_t index = 0; error.empty() && index < values.size();
+		     ++index) {
+			RewardSelectionOption option;
+			if (!PerlRewardSelectionParseOption(perl::scalar(values[index]),
+			        fmt::format("options[{}]", index + 1),
+			        option,
+			        error)) {
 				break;
 			}
-			item_ids.emplace_back(item_id);
-		}
-
-		if (error.empty()) {
-			auto parsed = MakeScriptItemRewardSelectionOffer(item_ids, &error);
-			if (parsed) {
-				offer = std::move(*parsed);
-			}
+			offer.options.emplace_back(std::move(option));
 		}
 	} else if (!config_ref.is_hash_ref()) {
-		error = "argument must be a config hash reference or item ID array reference";
+		error = "argument must be a config hash reference or option array reference";
 	} else {
 		perl::hash config = config_ref;
 		static const std::unordered_set<std::string> top_keys = {
@@ -3002,52 +3058,15 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 				}
 				for (size_t index = 0; error.empty() && index < options.size();
 				     ++index) {
-					perl::scalar option_value = options[index];
 					const auto path =
 					    fmt::format("config.options[{}]", index + 1);
-					if (!option_value.is_hash_ref()) {
-						error =
-						    fmt::format("{} must be a hash reference", path);
-						break;
-					}
-					perl::hash option_table = option_value;
-					if (!PerlRewardSelectionValidateKeys(
-					        option_table, true, path, error)) {
-						break;
-					}
-
 					RewardSelectionOption option;
-					if (!PerlRewardSelectionReadOptionalString(
-					        option_table, "label", option.label, path, error)) {
+					if (!PerlRewardSelectionParseOption(
+					        perl::scalar(options[index]),
+					        path,
+					        option,
+					        error)) {
 						break;
-					}
-
-					if (option_table.exists("rewards")) {
-						for (const auto &key :
-						    PerlRewardSelectionRewardKeys()) {
-							if (option_table.exists(key)) {
-								error = fmt::format("{} cannot mix rewards "
-								                    "with flat reward fields",
-								    path);
-								break;
-							}
-						}
-						if (error.empty() &&
-						    !PerlRewardSelectionParseRewardArray(
-						        option_table["rewards"],
-						        path + ".rewards",
-						        true,
-						        option.rewards,
-						        error)) {
-							break;
-						}
-					} else {
-						RewardSelectionReward reward;
-						if (!PerlRewardSelectionParseReward(
-						        option_table, true, path, reward, error)) {
-							break;
-						}
-						option.rewards.emplace_back(std::move(reward));
 					}
 					offer.options.emplace_back(std::move(option));
 				}

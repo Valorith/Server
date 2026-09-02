@@ -51,17 +51,17 @@ the set so content does not award it twice.
 ## Scripted offers
 
 Perl and Lua quests can offer a transient reward selector with one atomic call.
-The script supplies either a concise item-ID array or the complete selection as
-a Perl hash reference or Lua config table. The server parses and validates the
-entire definition before replacing any currently open scripted offer. Invalid
-input returns `false`, logs the precise field path, and leaves the current offer
-unchanged.
+The script supplies either a concise ordered option list or the complete
+selection as a Perl hash reference or Lua config table. The server parses and
+validates the entire definition before replacing any currently open scripted
+offer. Invalid input returns `false`, logs the precise field path, and leaves
+the current offer unchanged.
 
 The scripting surface intentionally contains only three methods:
 
 | Client method | Return | Purpose |
 | --- | --- | --- |
-| **OfferRewardSelection(config_or_item_ids)** | Boolean | Validates and opens an advanced offer or a shorthand list of item choices. |
+| **OfferRewardSelection(config_or_options)** | Boolean | Validates and opens an advanced offer or a concise ordered list of item, typed, or bundled choices. |
 | **ClearRewardSelection()** | None | Removes the client's open scripted offer. During the selection callback it also cancels automatic delivery and reopening. |
 | **HasRewardSelection()** | Boolean | Reports whether the client currently has an open scripted offer. |
 
@@ -70,34 +70,61 @@ clients, so a quest can provide a fallback interaction. Calling it while a
 claim is being processed also returns `false` rather than replacing the
 in-flight selection.
 
-### Item-list shorthand
+### Ordered option-list shorthand
 
-For a simple choice between items, pass their IDs directly as an array
-reference in Perl or an array table in Lua. Each ID becomes one selectable
-option with quantity `1`. The server uses the item database name for the option
-label and item description, preserves array order for `option_index`, and uses
-the default **Choose a Reward** window title.
+For the shortest form, pass the choices directly as an array reference in Perl
+or an array table in Lua. Each outer entry is one selectable reward group:
+
+- A positive integer is an item ID with quantity `1`.
+- A hash/table uses the same flat reward fields described below.
+- A hash/table with `rewards` bundles several rewards into one choice.
 
 ~~~perl
-my @item_ids = (1001, 1002, 1003, 1004);
-$client->OfferRewardSelection(\@item_ids);
-
-# Inline form
-$client->OfferRewardSelection([1001, 1002, 1003, 1004]);
+$client->OfferRewardSelection([
+	1001,
+	{ item_id => 1002, quantity => 3 },
+	{ experience => 50000 },
+	{ experience_no_aa => 50000 },
+	{ aa_points => 2 },
+	{ money => 10000 },
+	{ alternate_currency_id => 19, amount => 5 },
+	{ title_set_id => 7 },
+	{
+		rewards => [
+			{ item_id => 1003 },
+			{ aa_points => 1 },
+		],
+	},
+]);
 ~~~
 
 ~~~lua
-local item_ids = {1001, 1002, 1003, 1004}
-client:OfferRewardSelection(item_ids)
-
--- Inline form
-client:OfferRewardSelection({1001, 1002, 1003, 1004})
+client:OfferRewardSelection({
+	1001,
+	{ item_id = 1002, quantity = 3 },
+	{ experience = 50000 },
+	{ experience_no_aa = 50000 },
+	{ aa_points = 2 },
+	{ money = 10000 },
+	{ alternate_currency_id = 19, amount = 5 },
+	{ title_set_id = 7 },
+	{
+		rewards = {
+			{ item_id = 1003 },
+			{ aa_points = 1 },
+		},
+	},
+})
 ~~~
 
-The list must be non-empty, dense, and contain only unsigned integer item IDs.
-Every item must exist; one invalid ID rejects the entire offer. Use the advanced
-config form when choices need quantities, custom text, bundles, common rewards,
-or non-item reward types.
+The server infers the default **Choose a Reward** title plus labels and
+descriptions for every choice. Array order becomes the 1-based `option_index`.
+The list must be non-empty and dense, and every referenced database definition
+must exist. One invalid entry rejects the entire offer.
+
+Use the advanced config form to add a custom window title or common rewards.
+Its `options` field accepts this same concise option-list grammar, so adding
+global configuration never requires rewriting bare item IDs.
 
 ### Advanced offer config
 
@@ -117,18 +144,19 @@ all protocol selection and option IDs; scripts never supply or persist them.
 A later successful call atomically replaces the client's previous scripted
 selector group.
 
-Each option supports either a concise flat reward or an explicit reward
-bundle:
+Each option supports a bare item ID, a concise flat reward, or an explicit
+reward bundle:
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
+| Bare item ID | Alternative to a table | Positive integer | Equivalent to an item reward with quantity `1`; valid in both the top-level shorthand and advanced `options`. |
 | `label` | No | String | Choice label. When omitted, the server infers it from the reward definitions. |
 | One reward definition | Yes for a flat option | Reward fields from the table below | The shortest form for a one-reward choice, such as `{ item_id => 1001 }`. |
 | `rewards` | Yes for a bundle | Non-empty ordered array of reward tables | Grants every listed reward when this choice is authorized. Do not mix `rewards` with flat reward fields. |
 
 The first entry in `options` is option index 1, the second is index 2, and so
-on. A reward group may contain a single flat reward or several rewards in its
-`rewards` array. The callback receives that group position as
+on. A reward group may contain one bare item, a single flat reward, or several
+rewards in its `rewards` array. The callback receives that group position as
 `option_index`.
 
 ### Reward definitions
@@ -220,14 +248,10 @@ limited to one attempt every 500 milliseconds per client.
 sub EVENT_SAY {
 	return unless $text =~ /reward/i;
 
-	my %offer = (
-		options => [
-			{ item_id => 1001 },
-			{ experience => 5000 },
-		],
-	);
-
-	my $opened = $client->OfferRewardSelection(\%offer);
+	my $opened = $client->OfferRewardSelection([
+		1001,
+		{ experience => 5000 },
+	]);
 	$client->Message(13, "The reward selector is unavailable.") unless $opened;
 }
 
@@ -291,14 +315,10 @@ function event_say(e)
 		return
 	end
 
-	local offer = {
-		options = {
-			{ item_id = 1001 },
-			{ experience = 5000 },
-		},
-	}
-
-	local opened = e.other:OfferRewardSelection(offer)
+	local opened = e.other:OfferRewardSelection({
+		1001,
+		{ experience = 5000 },
+	})
 	if not opened then
 		e.other:Message(13, "The reward selector is unavailable.")
 	end

@@ -3067,6 +3067,63 @@ static bool LuaRewardSelectionParseRewardArray(luabind::object table,
 	return true;
 }
 
+static bool LuaRewardSelectionParseOption(luabind::object value,
+    const std::string &path,
+    RewardSelectionOption &option,
+    std::string &error)
+{
+	if (luabind::type(value) != LUA_TTABLE) {
+		uint64_t item_id = 0;
+		if (!LuaRewardSelectionReadUInt(value, item_id, path, error)) {
+			return false;
+		}
+
+		std::string option_error;
+		auto parsed = MakeScriptItemRewardSelectionOption(
+		    item_id, &option_error);
+		if (!parsed) {
+			error = fmt::format("{}: {}", path, option_error);
+			return false;
+		}
+		option = std::move(*parsed);
+		return true;
+	}
+
+	auto allowed = LuaRewardSelectionRewardKeys();
+	allowed.insert("label");
+	allowed.insert("rewards");
+	if (!LuaRewardSelectionValidateKeys(value, allowed, path, error)) {
+		return false;
+	}
+	if (!LuaRewardSelectionReadOptionalString(
+	        value, "label", option.label, path, error)) {
+		return false;
+	}
+
+	if (luabind::type(value["rewards"]) != LUA_TNIL) {
+		for (const auto &key : LuaRewardSelectionRewardKeys()) {
+			if (luabind::type(value[key]) != LUA_TNIL) {
+				error = fmt::format(
+				    "{} cannot mix rewards with flat reward fields", path);
+				return false;
+			}
+		}
+		return LuaRewardSelectionParseRewardArray(value["rewards"],
+		    path + ".rewards",
+		    true,
+		    option.rewards,
+		    error);
+	}
+
+	RewardSelectionReward reward;
+	if (!LuaRewardSelectionParseReward(
+	        value, true, path, reward, error)) {
+		return false;
+	}
+	option.rewards.emplace_back(std::move(reward));
+	return true;
+}
+
 bool Lua_Client::OfferRewardSelection(luabind::object config)
 {
 	Lua_Safe_Call_Bool();
@@ -3074,43 +3131,42 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 	ScriptRewardSelectionOffer offer;
 	if (luabind::type(config) != LUA_TTABLE) {
 		LogError(
-		    "OfferRewardSelection Lua error: argument must be a config or item ID table");
+		    "OfferRewardSelection Lua error: argument must be a config or option table");
 		return false;
 	}
 
-	bool item_shorthand = true;
+	bool option_shorthand = true;
 	luabind::raw_iterator end;
 	for (luabind::raw_iterator it(config); it != end; ++it) {
 		if (luabind::type(it.key()) == LUA_TSTRING) {
-			item_shorthand = false;
+			option_shorthand = false;
 			break;
 		}
 	}
 
-	if (item_shorthand) {
-		size_t item_count = 0;
-		LuaRewardSelectionArraySize(config, "item_ids", item_count, error);
-		std::vector<uint64_t> item_ids;
-		item_ids.reserve(item_count);
-		for (size_t index = 1; error.empty() && index <= item_count; ++index) {
-			uint64_t item_id = 0;
-			if (!LuaRewardSelectionReadUInt(
-					config[index],
-					item_id,
-					fmt::format("item_ids[{}]", index),
-					error
-				)) {
+	if (option_shorthand) {
+		size_t option_count = 0;
+		LuaRewardSelectionArraySize(
+		    config, "options", option_count, error);
+		if (error.empty() && !option_count) {
+			error = "options must contain at least one choice";
+		}
+		offer.options.reserve(option_count);
+		for (size_t index = 1; error.empty() && index <= option_count;
+		     ++index) {
+			RewardSelectionOption option;
+			if (!LuaRewardSelectionParseOption(config[index],
+			        fmt::format("options[{}]", index),
+			        option,
+			        error)) {
 				break;
 			}
-			item_ids.emplace_back(item_id);
+			offer.options.emplace_back(std::move(option));
 		}
 
-		if (error.empty()) {
-			auto parsed = MakeScriptItemRewardSelectionOffer(item_ids, &error);
-			if (parsed && self->GetRewardSelection().OfferScriptSelection(
-			                  std::move(*parsed), error)) {
-				return true;
-			}
+		if (error.empty() && self->GetRewardSelection().OfferScriptSelection(
+		                         std::move(offer), error)) {
+			return true;
 		}
 		LogError("OfferRewardSelection Lua error: {}", error);
 		return false;
@@ -3137,49 +3193,13 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 	}
 
 	for (size_t index = 1; error.empty() && index <= option_count; ++index) {
-		auto option_table = options_table[index];
 		const auto path = fmt::format("config.options[{}]", index);
-		if (luabind::type(option_table) != LUA_TTABLE) {
-			error = fmt::format("{} must be a table", path);
-			break;
-		}
-		auto allowed = LuaRewardSelectionRewardKeys();
-		allowed.insert("label");
-		allowed.insert("rewards");
-		if (!LuaRewardSelectionValidateKeys(
-		        option_table, allowed, path, error)) {
-			break;
-		}
-
 		RewardSelectionOption option;
-		if (!LuaRewardSelectionReadOptionalString(
-		        option_table, "label", option.label, path, error)) {
+		if (!LuaRewardSelectionParseOption(options_table[index],
+		        path,
+		        option,
+		        error)) {
 			break;
-		}
-
-		if (luabind::type(option_table["rewards"]) != LUA_TNIL) {
-			for (const auto &key : LuaRewardSelectionRewardKeys()) {
-				if (luabind::type(option_table[key]) != LUA_TNIL) {
-					error = fmt::format(
-					    "{} cannot mix rewards with flat reward fields", path);
-					break;
-				}
-			}
-			if (error.empty() &&
-			    !LuaRewardSelectionParseRewardArray(option_table["rewards"],
-			        path + ".rewards",
-			        true,
-			        option.rewards,
-			        error)) {
-				break;
-			}
-		} else {
-			RewardSelectionReward reward;
-			if (!LuaRewardSelectionParseReward(
-			        option_table, true, path, reward, error)) {
-				break;
-			}
-			option.rewards.emplace_back(std::move(reward));
 		}
 		offer.options.emplace_back(std::move(option));
 	}
