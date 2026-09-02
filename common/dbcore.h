@@ -5,6 +5,7 @@
 #include "common/types.h"
 
 #include "mysql.h"
+#include <memory>
 #include <mutex>
 
 #define CR_SERVER_GONE_ERROR    2006
@@ -27,6 +28,11 @@ public:
 	MySQLRequestResult TransactionBegin();
 	MySQLRequestResult TransactionCommit();
 	void TransactionRollback();
+	MySQLRequestResult TransactionBeginStrict();
+	MySQLRequestResult TransactionCommitStrict();
+	void TransactionRollbackStrict();
+	void TransactionFailStrict();
+	bool TransactionStrictFailed() const;
 	std::string Escape(const std::string& s);
 	uint32 DoEscapeString(char *tobuf, const char *frombuf, uint32 fromlen);
 	void ping();
@@ -38,8 +44,9 @@ public:
 
 	void SetMySQL(const DBcore &o)
 	{
-		mysql      = o.mysql;
-		mysqlOwner = false;
+		mysql                       = o.mysql;
+		mysqlOwner                  = false;
+		m_strict_transaction_state = o.m_strict_transaction_state;
 	}
 	void SetMutex(Mutex *mutex);
 
@@ -62,12 +69,19 @@ protected:
 	);
 
 private:
+	struct StrictTransactionState {
+		bool active = false;
+		bool failed = false;
+	};
+
 	bool Open(uint32 *errnum = nullptr, char *errbuf = nullptr);
 
-	MYSQL*  mysql;
-	bool    mysqlOwner;
-	Mutex   *m_mutex;
-	eStatus pStatus;
+	MYSQL*  mysql = nullptr;
+	bool    mysqlOwner = true;
+	Mutex   *m_mutex = nullptr;
+	eStatus pStatus = Closed;
+	std::shared_ptr<StrictTransactionState> m_strict_transaction_state =
+		std::make_shared<StrictTransactionState>();
 
 	std::mutex m_query_lock{};
 
