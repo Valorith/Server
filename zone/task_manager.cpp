@@ -1141,7 +1141,9 @@ bool TaskManager::SaveClientState(Client *client, ClientTaskState *cts)
 				continue;
 			}
 
-			active_task.updated = false;
+			// Leave active_task.updated as-is. A failed character_tasks write
+			// must stay dirty so a later save retries was_rewarded. Activity
+			// rows persisted here, so only those flags are cleared.
 			for (int activity_index = 0; activity_index < task_data->activity_count; ++activity_index) {
 				active_task.activity[activity_index].updated = false;
 			}

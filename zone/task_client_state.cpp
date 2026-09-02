@@ -1410,6 +1410,10 @@ int ClientTaskState::IncrementDoneCount(
 				info->updated = true;
 				reward_ready = TaskManager::Instance()->SaveClientState(client, this);
 				if (!reward_ready) {
+					// SaveClientState can persist activities and still fail
+					// the character_tasks row. Keep the terminal marker dirty
+					// so a later save or recovery retry can finish it.
+					info->updated = true;
 					LogError(
 						"Failed to persist suppressed reward state for task [{}], character [{}]; "
 						"leaving the completed task in place",
@@ -1888,6 +1892,7 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 				task_info.updated &&
 				!TaskManager::Instance()->SaveClientState(client, this)
 			) {
+				task_info.updated = true;
 				LogError(
 					"Failed to persist completed reward state for task [{}], character [{}]; "
 					"deferring selectable reward cleanup",
