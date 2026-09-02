@@ -7896,7 +7896,7 @@ DEALLOCATE PREPARE reward_schema_stmt;
 INSERT INTO `character_task_reward_instances` (
 	`character_id`, `task_id`, `accepted_time`
 )
-SELECT
+SELECT DISTINCT
 	selections.`character_id`,
 	selections.`task_id`,
 	selections.`accepted_time`
@@ -7927,13 +7927,45 @@ LEFT JOIN `character_task_reward_selections` AS linked
 	ON linked.`character_id` = selections.`character_id`
 	AND linked.`source_instance_id` = instances.`occurrence_id`
 	AND linked.`pending_reward_id` <> selections.`pending_reward_id`
+LEFT JOIN `character_task_reward_selections` AS newer
+	ON newer.`character_id` = selections.`character_id`
+	AND newer.`task_id` = selections.`task_id`
+	AND newer.`accepted_time` = selections.`accepted_time`
+	AND newer.`pending_reward_id` > selections.`pending_reward_id`
+	AND (
+		newer.`source_instance_id` = 0 OR
+		newer.`source_instance_id` =
+			9223372036854775808 + newer.`pending_reward_id`
+	)
 SET selections.`source_instance_id` = instances.`occurrence_id`
 WHERE linked.`pending_reward_id` IS NULL
+	AND newer.`pending_reward_id` IS NULL
 	AND (
 		selections.`source_instance_id` = 0 OR
 		selections.`source_instance_id` =
 			9223372036854775808 + selections.`pending_reward_id`
 	);
+
+-- A previously affected development database can contain both the migrated
+-- row and a newer runtime-created row for the same completion. Keep the
+-- linked row claimable and quarantine superseded rows from automatic restore.
+UPDATE `character_task_reward_selections` AS selections
+INNER JOIN `character_tasks` AS tasks
+	ON tasks.`charid` = selections.`character_id`
+	AND tasks.`taskid` = selections.`task_id`
+	AND tasks.`acceptedtime` = selections.`accepted_time`
+INNER JOIN `character_task_reward_instances` AS instances
+	ON instances.`character_id` = selections.`character_id`
+	AND instances.`task_id` = selections.`task_id`
+INNER JOIN `character_task_reward_selections` AS linked
+	ON linked.`character_id` = selections.`character_id`
+	AND linked.`source_instance_id` = instances.`occurrence_id`
+	AND linked.`pending_reward_id` <> selections.`pending_reward_id`
+SET selections.`status` = 3,
+	selections.`last_error` = 'superseded duplicate task reward'
+WHERE selections.`source_instance_id` = 0 OR
+	selections.`source_instance_id` =
+		9223372036854775808 + selections.`pending_reward_id`;
 
 UPDATE `character_task_reward_selections`
 SET `source_instance_id` = 9223372036854775808 + `pending_reward_id`
