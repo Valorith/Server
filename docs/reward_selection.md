@@ -179,7 +179,10 @@ Item, alternate-currency, and title-set IDs are resolved when the offer is
 created. A missing content definition rejects the whole offer before anything
 is shown. Numeric strings, negative values, fractions, zero reward amounts,
 out-of-range values, and combinations such as `item_id` plus `experience` are
-also rejected.
+also rejected. Each selectable batch is checked as a whole: lore-conflicting
+items within one option, or between `common_rewards` and that option, reject
+the offer before any reward can be granted. Repeated stackable non-lore items
+remain valid.
 
 ### Automatic display text
 

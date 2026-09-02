@@ -23,6 +23,7 @@ public:
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
 		TEST_ADD(RewardSelectionTest::ScriptItemShorthand);
 		TEST_ADD(RewardSelectionTest::ScriptMixedOptionShorthand);
+		TEST_ADD(RewardSelectionTest::RewardLoreConflictValidation);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardGrouping);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
 		TEST_ADD(RewardSelectionTest::StableWireOptionIdentity);
@@ -738,6 +739,107 @@ private:
 			TEST_ASSERT(offer.options[index].option_id == index + 1);
 		}
 		TEST_ASSERT(common_option_id == 0);
+	}
+
+	void RewardLoreConflictValidation()
+	{
+		EQ::ItemData unique_a{};
+		unique_a.ID = 5001;
+		unique_a.LoreGroup = -1;
+		EQ::ItemData unique_b{};
+		unique_b.ID = 5002;
+		unique_b.LoreGroup = -1;
+		EQ::ItemData group_a{};
+		group_a.ID = 5003;
+		group_a.LoreGroup = 77;
+		EQ::ItemData group_b{};
+		group_b.ID = 5004;
+		group_b.LoreGroup = 77;
+		EQ::ItemData stackable{};
+		stackable.ID = 5005;
+		stackable.LoreGroup = 0;
+
+		const auto resolve_item = [&](uint32_t item_id)
+		    -> const EQ::ItemData * {
+			switch (item_id) {
+			case 5001:
+				return &unique_a;
+			case 5002:
+				return &unique_b;
+			case 5003:
+				return &group_a;
+			case 5004:
+				return &group_b;
+			case 5005:
+				return &stackable;
+			default:
+				return nullptr;
+			}
+		};
+		const auto item_reward = [](uint32_t item_id) {
+			return RewardSelectionReward{
+				.type = RewardSelectionRewardType::Item,
+				.data_id = item_id,
+				.amount = 1
+			};
+		};
+
+		uint32_t left_item_id = 0;
+		uint32_t right_item_id = 0;
+		std::vector<RewardSelectionReward> common_rewards;
+		std::vector<RewardSelectionReward> selected_rewards = {
+			item_reward(5001),
+			item_reward(5002)
+		};
+		TEST_ASSERT(!FindRewardSelectionLoreConflict(
+			common_rewards,
+			selected_rewards,
+			resolve_item,
+			left_item_id,
+			right_item_id
+		));
+
+		selected_rewards = {item_reward(5001), item_reward(5001)};
+		TEST_ASSERT(FindRewardSelectionLoreConflict(
+			common_rewards,
+			selected_rewards,
+			resolve_item,
+			left_item_id,
+			right_item_id
+		));
+		TEST_ASSERT(left_item_id == 5001);
+		TEST_ASSERT(right_item_id == 5001);
+
+		selected_rewards = {item_reward(5003), item_reward(5004)};
+		TEST_ASSERT(FindRewardSelectionLoreConflict(
+			common_rewards,
+			selected_rewards,
+			resolve_item,
+			left_item_id,
+			right_item_id
+		));
+		TEST_ASSERT(left_item_id == 5003);
+		TEST_ASSERT(right_item_id == 5004);
+
+		common_rewards = {item_reward(5003)};
+		selected_rewards = {item_reward(5004)};
+		TEST_ASSERT(FindRewardSelectionLoreConflict(
+			common_rewards,
+			selected_rewards,
+			resolve_item,
+			left_item_id,
+			right_item_id
+		));
+
+		common_rewards = {item_reward(5005)};
+		selected_rewards = {item_reward(5005)};
+		TEST_ASSERT(!FindRewardSelectionLoreConflict(
+			common_rewards,
+			selected_rewards,
+			resolve_item,
+			left_item_id,
+			right_item_id
+		));
 	}
 
 	void StructuredScriptRewardValidation()

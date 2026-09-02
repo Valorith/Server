@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common/eq_constants.h"
+#include "../common/item_data.h"
 #include "../common/timer.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 class Client;
@@ -250,6 +252,51 @@ struct ScriptRewardSelectionOffer
 	std::vector<RewardSelectionOption> options;
 	std::vector<RewardSelectionReward> common_rewards;
 };
+
+template <typename ItemResolver>
+bool FindRewardSelectionLoreConflict(
+	const std::vector<RewardSelectionReward> &common_rewards,
+	const std::vector<RewardSelectionReward> &selected_rewards,
+	ItemResolver resolve_item,
+	uint32_t &left_item_id,
+	uint32_t &right_item_id
+)
+{
+	left_item_id = 0;
+	right_item_id = 0;
+	std::vector<std::pair<uint32_t, const EQ::ItemData *>> items;
+	items.reserve(common_rewards.size() + selected_rewards.size());
+
+	const auto append_items = [&items, &resolve_item](
+		const std::vector<RewardSelectionReward> &rewards
+	) {
+		for (const auto &reward : rewards) {
+			if (reward.type != RewardSelectionRewardType::Item) {
+				continue;
+			}
+			const auto item = resolve_item(reward.data_id);
+			if (item) {
+				items.emplace_back(reward.data_id, item);
+			}
+		}
+	};
+	append_items(common_rewards);
+	append_items(selected_rewards);
+
+	for (size_t left = 0; left < items.size(); ++left) {
+		for (size_t right = left + 1; right < items.size(); ++right) {
+			if (EQ::ItemData::CheckLoreConflict(
+				items[left].second,
+				items[right].second
+			)) {
+				left_item_id = items[left].first;
+				right_item_id = items[right].first;
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 inline std::optional<RewardSelectionOption>
 MakeScriptItemRewardSelectionOption(

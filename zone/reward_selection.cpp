@@ -392,13 +392,8 @@ bool ClientRewardSelection::OfferScriptSelection(
 	}
 
 	if (!offer.common_rewards.empty()) {
-		RewardSelectionOption common_option;
-		common_option.option_id = common_option_id;
-		common_option.sequence = static_cast<uint32_t>(offer.options.size());
-		common_option.common_to_all = true;
-		common_option.rewards = std::move(offer.common_rewards);
-		for (size_t index = 0; index < common_option.rewards.size(); ++index) {
-			auto &reward = common_option.rewards[index];
+		for (size_t index = 0; index < offer.common_rewards.size(); ++index) {
+			auto &reward = offer.common_rewards[index];
 			std::string content_error;
 			if (!ValidateScriptRewardContent(reward, content_error)) {
 				error = fmt::format(
@@ -411,6 +406,36 @@ bool ClientRewardSelection::OfferScriptSelection(
 			}
 			reward.entry_id = next_entry_id++;
 		}
+	}
+
+	for (size_t index = 0; index < offer.options.size(); ++index) {
+		uint32_t left_item_id = 0;
+		uint32_t right_item_id = 0;
+		if (FindRewardSelectionLoreConflict(
+			offer.common_rewards,
+			offer.options[index].rewards,
+			[](uint32_t item_id) {
+				return database.GetItem(item_id);
+			},
+			left_item_id,
+			right_item_id
+		)) {
+			error = fmt::format(
+				"options[{}] would grant lore-conflicting items {} and {}",
+				index + 1,
+				left_item_id,
+				right_item_id
+			);
+			return false;
+		}
+	}
+
+	if (!offer.common_rewards.empty()) {
+		RewardSelectionOption common_option;
+		common_option.option_id = common_option_id;
+		common_option.sequence = static_cast<uint32_t>(offer.options.size());
+		common_option.common_to_all = true;
+		common_option.rewards = std::move(offer.common_rewards);
 		offer.options.emplace_back(std::move(common_option));
 	}
 

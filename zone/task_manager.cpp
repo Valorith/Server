@@ -660,14 +660,57 @@ bool TaskManager::LoadTaskRewardSets()
 			has_selectable_option =
 				has_selectable_option || !option.common_to_all;
 		}
-		if (!HasSupportedRewardSelectionCommonGrouping(
-			staged.reward_set.options
-		)) {
+		const bool supported_common_grouping =
+			HasSupportedRewardSelectionCommonGrouping(
+				staged.reward_set.options
+			);
+		if (!supported_common_grouping) {
 			staged.invalid = true;
 			LogError(
 				"Enabled task reward set [{}] has more than one common option",
 				reward_set_id
 			);
+		}
+		if (supported_common_grouping) {
+			const auto common = std::find_if(
+				staged.reward_set.options.begin(),
+				staged.reward_set.options.end(),
+				[](const RewardSelectionOption &option) {
+					return option.common_to_all;
+				}
+			);
+			const std::vector<RewardSelectionReward> no_common_rewards;
+			const auto &common_rewards =
+				common == staged.reward_set.options.end()
+					? no_common_rewards
+					: common->rewards;
+			for (const auto &option : staged.reward_set.options) {
+				if (option.common_to_all) {
+					continue;
+				}
+				uint32_t left_item_id = 0;
+				uint32_t right_item_id = 0;
+				if (FindRewardSelectionLoreConflict(
+					common_rewards,
+					option.rewards,
+					[](uint32_t item_id) {
+						return database.GetItem(item_id);
+					},
+					left_item_id,
+					right_item_id
+				)) {
+					staged.invalid = true;
+					LogError(
+						"Enabled task reward set [{}] option [{}] would grant "
+						"lore-conflicting items [{}] and [{}]",
+						reward_set_id,
+						option.option_id,
+						left_item_id,
+						right_item_id
+					);
+					break;
+				}
+			}
 		}
 		if (
 			staged.reward_set.options.empty() ||

@@ -1861,11 +1861,13 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		const auto task = TaskManager::Instance()->GetTaskData(task_info.task_id);
 		if (
 			!task ||
-			task->reward_method != METHODSELECT ||
-			!task->has_reward_selection
+			task->reward_method != METHODSELECT
 		) {
 			return;
 		}
+		// RewardTask can recover an existing immutable pending snapshot even
+		// when the current selectable set is disabled or no longer valid. It
+		// still fails closed before creating a new pending row without a live set.
 		if (!RewardTask(client, task, task_info)) {
 			return;
 		}
