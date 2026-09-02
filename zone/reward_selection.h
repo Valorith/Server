@@ -670,6 +670,14 @@ enum class RewardSelectionDeliveryResult : uint8_t {
 	Ambiguous
 };
 
+inline bool ShouldAuthorizeScriptRewardSelection(
+	bool handler_found,
+	int handler_result
+)
+{
+	return !handler_found || handler_result != 0;
+}
+
 inline bool ShouldRemoveRewardSelectionSessionAfterClaim(
 	RewardSelectionDeliveryResult result,
 	bool delivered

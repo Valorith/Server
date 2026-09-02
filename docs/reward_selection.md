@@ -207,8 +207,9 @@ blank, so scripts and database-backed content present consistent text.
 ### Selection event
 
 The entries in `OfferRewardSelection` are both the display definition and the
-exact grant definition. Selecting a non-common option dispatches the existing
-reward-selection event:
+exact grant definition. No event handler is required: without one, selecting
+an option automatically authorizes the server to grant it. Define the optional
+reward-selection event only when the quest needs manual authorization:
 
 | Language and context | Event | Chosen reward-group index | Client |
 | --- | --- | --- | --- |
@@ -216,26 +217,27 @@ reward-selection event:
 | Lua NPC | `event_reward_select(e)` | `e.option_index` | `e.other` |
 | Lua player | `event_reward_select(e)` | `e.option_index` | `e.self` |
 
-The handler validates quest-specific entitlement and returns a nonzero value
-to authorize delivery. It must not manually grant the declared rewards. The
-server grants every common reward plus the chosen option only after the event
-authorizes the claim, then acknowledges the client.
+When provided, the handler validates quest-specific entitlement and returns a
+nonzero value to authorize delivery. Returning `0` or raising a script error
+rejects the claim and reopens the offer. The handler must not manually grant
+the declared rewards. After authorization, the server grants every common
+reward plus the chosen option, then acknowledges the client.
 
 The server validates the selected option index against the active offer before
-firing the event. A quest with no additional per-choice restrictions can simply
-return nonzero. Inspect the index only when different choices require different
-entitlement rules.
+firing an available event. Omit the handler when every displayed choice is
+allowed. Inspect the index and return an authorization result only when choices
+have additional entitlement rules.
 
-Returning `0`, omitting the handler, or raising a script error rejects the
-claim and reopens the offer. Calling `ClearRewardSelection` during the callback
-cancels the offer and suppresses that reopen. The event reports only the chosen
-non-common reward group's 1-based `option_index`; common rewards are
-automatic. Normal local, global, and encounter event routing still applies, so
-only one handler should authorize a given offer.
+Calling `ClearRewardSelection` during the callback cancels the offer and
+suppresses a rejected claim's reopen. The event reports only the chosen
+non-common reward group's 1-based `option_index`; common rewards are automatic.
+Normal local, global, and encounter event routing still applies, so only one
+handler should control a given offer.
 
 An NPC-created offer remains associated with that exact NPC lifetime. Removing
 the NPC clears its outstanding offers before the entity ID can be reused. If
-the live originating NPC has no handler, the player quest is the fallback.
+the live originating NPC has no handler, the player quest is the fallback. If
+neither has a handler, delivery is automatically authorized.
 
 Scripted offers intentionally have no database ledger. Zoning, disconnecting,
 or restarting the zone discards them. The grant engine stops at the first
@@ -257,11 +259,6 @@ sub EVENT_SAY {
 		{ experience => 5000 },
 	]);
 	$client->Message(13, "The reward selector is unavailable.") unless $opened;
-}
-
-sub EVENT_REWARD_SELECT {
-	# Returning nonzero authorizes the server to grant the selected option.
-	return 1;
 }
 ~~~
 
@@ -306,7 +303,8 @@ sub EVENT_SAY {
 }
 
 sub EVENT_REWARD_SELECT {
-	# Add quest-specific entitlement checks here when not every choice is allowed.
+	# Optional: use this event only when the quest must approve each choice.
+	# Return 0 to reject and reopen the offer; nonzero authorizes delivery.
 	return 1;
 }
 ~~~
@@ -326,11 +324,6 @@ function event_say(e)
 	if not opened then
 		e.other:Message(13, "The reward selector is unavailable.")
 	end
-end
-
-function event_reward_select(e)
-	-- Returning nonzero authorizes the server to grant the selected option.
-	return 1
 end
 ~~~
 
@@ -379,7 +372,8 @@ function event_say(e)
 end
 
 function event_reward_select(e)
-	-- Add quest-specific entitlement checks here when not every choice is allowed.
+	-- Optional: use this event only when the quest must approve each choice.
+	-- Return 0 to reject and reopen the offer; nonzero authorizes delivery.
 	return 1
 end
 ~~~

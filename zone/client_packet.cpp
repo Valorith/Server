@@ -2076,7 +2076,7 @@ void Client::HandleRewardSelectionPacket(
 
 		selection.CompleteScriptClaim(
 			claim,
-			handler_found && handler_result
+			ShouldAuthorizeScriptRewardSelection(handler_found, handler_result)
 		);
 		return;
 	}

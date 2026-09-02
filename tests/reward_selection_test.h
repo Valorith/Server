@@ -29,6 +29,7 @@ public:
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
 		TEST_ADD(RewardSelectionTest::StableWireOptionIdentity);
 		TEST_ADD(RewardSelectionTest::CommonOptionGroupingValidation);
+		TEST_ADD(RewardSelectionTest::ScriptClaimAuthorizationPolicy);
 		TEST_ADD(RewardSelectionTest::TransientBatchFailureClassification);
 	}
 
@@ -1149,6 +1150,15 @@ private:
 
 		options[2].common_to_all = true;
 		TEST_ASSERT(!HasSupportedRewardSelectionCommonGrouping(options));
+	}
+
+	void ScriptClaimAuthorizationPolicy()
+	{
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, 0));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, 1));
+		TEST_ASSERT(!ShouldAuthorizeScriptRewardSelection(true, 0));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, 1));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, -1));
 	}
 
 	void TransientBatchFailureClassification()
