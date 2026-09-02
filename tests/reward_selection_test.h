@@ -1089,23 +1089,35 @@ private:
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
 				false,
+				false,
 				RewardSelectionDeliveryResult::RetryableFailure
 			) == RewardSelectionDeliveryResult::RetryableFailure
 		);
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
 				true,
+				false,
 				RewardSelectionDeliveryResult::RetryableFailure
 			) == RewardSelectionDeliveryResult::Ambiguous
 		);
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
 				false,
+				true,
+				RewardSelectionDeliveryResult::RetryableFailure
+			) ==
+				RewardSelectionDeliveryResult::RetryableFailureSameOption
+		);
+		TEST_ASSERT(
+			ResolveTransientRewardBatchFailure(
+				false,
+				false,
 				RewardSelectionDeliveryResult::Ambiguous
 			) == RewardSelectionDeliveryResult::Ambiguous
 		);
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
+				true,
 				true,
 				RewardSelectionDeliveryResult::Ambiguous
 			) == RewardSelectionDeliveryResult::Ambiguous

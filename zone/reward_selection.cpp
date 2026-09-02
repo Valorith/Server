@@ -581,8 +581,24 @@ RewardSelectionDeliveryResult ClientRewardSelection::CompleteScriptClaim(
 		ClearScriptOffer(false);
 		SendSessions(RewardSelectionChannel::Claimable);
 	}
-	else if (result == RewardSelectionDeliveryResult::RetryableFailure) {
-		Open(claim.session);
+	else if (
+		result == RewardSelectionDeliveryResult::RetryableFailure ||
+		result == RewardSelectionDeliveryResult::RetryableFailureSameOption
+	) {
+		auto retry_session = claim.session;
+		if (
+			result == RewardSelectionDeliveryResult::RetryableFailureSameOption
+		) {
+			std::erase_if(
+				retry_session.reward_set.options,
+				[&claim](const RewardSelectionOption &option) {
+					return
+						!option.common_to_all &&
+						option.option_id != claim.selected_option_id;
+				}
+			);
+		}
+		Open(retry_session);
 	}
 
 	return result;
@@ -1264,6 +1280,7 @@ void ClientRewardSelection::CompleteClaim(
 	if (
 		result == RewardSelectionDeliveryResult::Ambiguous ||
 		result == RewardSelectionDeliveryResult::RetryableFailure ||
+		result == RewardSelectionDeliveryResult::RetryableFailureSameOption ||
 		delivered
 	) {
 		state.sessions.erase(session);
@@ -1279,7 +1296,10 @@ void ClientRewardSelection::CompleteClaim(
 		ClearScriptOffer(false);
 		SendSessions(channel);
 	}
-	else if (result != RewardSelectionDeliveryResult::RetryableFailure) {
+	else if (
+		result != RewardSelectionDeliveryResult::RetryableFailure &&
+		result != RewardSelectionDeliveryResult::RetryableFailureSameOption
+	) {
 		SendSessions(channel);
 	}
 }
@@ -1309,12 +1329,16 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 )
 {
 	bool delivered_non_idempotent = false;
+	bool delivered_idempotent = false;
 	for (const auto &reward : rewards) {
 		const auto result = GrantReward(client, reward, policy);
 		if (result == RewardSelectionDeliveryResult::Delivered) {
 			delivered_non_idempotent =
 				delivered_non_idempotent ||
 				!IsRewardSelectionRewardIdempotent(reward.type);
+			delivered_idempotent =
+				delivered_idempotent ||
+				IsRewardSelectionRewardIdempotent(reward.type);
 			continue;
 		}
 
@@ -1324,6 +1348,7 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 		// be replayed safely because EnableTitle ignores an already-owned set.
 		return ResolveTransientRewardBatchFailure(
 			delivered_non_idempotent,
+			delivered_idempotent,
 			result
 		);
 	}

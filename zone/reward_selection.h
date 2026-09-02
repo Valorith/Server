@@ -542,11 +542,13 @@ inline bool AssignStableRewardSelectionWireOptionIds(
 enum class RewardSelectionDeliveryResult : uint8_t {
 	Delivered,
 	RetryableFailure,
+	RetryableFailureSameOption,
 	Ambiguous
 };
 
 inline RewardSelectionDeliveryResult ResolveTransientRewardBatchFailure(
-	bool delivered_any,
+	bool delivered_non_idempotent,
+	bool delivered_idempotent,
 	RewardSelectionDeliveryResult failure
 )
 {
@@ -554,8 +556,14 @@ inline RewardSelectionDeliveryResult ResolveTransientRewardBatchFailure(
 		return RewardSelectionDeliveryResult::Delivered;
 	}
 
-	return delivered_any || failure == RewardSelectionDeliveryResult::Ambiguous
-		? RewardSelectionDeliveryResult::Ambiguous
+	if (
+		delivered_non_idempotent ||
+		failure == RewardSelectionDeliveryResult::Ambiguous
+	) {
+		return RewardSelectionDeliveryResult::Ambiguous;
+	}
+	return delivered_idempotent
+		? RewardSelectionDeliveryResult::RetryableFailureSameOption
 		: RewardSelectionDeliveryResult::RetryableFailure;
 }
 
