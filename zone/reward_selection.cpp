@@ -1308,18 +1308,24 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
-	bool delivered_any = false;
+	bool delivered_non_idempotent = false;
 	for (const auto &reward : rewards) {
 		const auto result = GrantReward(client, reward, policy);
 		if (result == RewardSelectionDeliveryResult::Delivered) {
-			delivered_any = true;
+			delivered_non_idempotent =
+				delivered_non_idempotent ||
+				!IsRewardSelectionRewardIdempotent(reward.type);
 			continue;
 		}
 
 		// Scripted batches have no per-entry ledger. Stop at the first failure;
-		// if an earlier entry committed, quarantine the result as ambiguous so a
-		// retry cannot duplicate the successful prefix.
-		return ResolveTransientRewardBatchFailure(delivered_any, result);
+		// if an earlier non-idempotent entry committed, quarantine the result as
+		// ambiguous so a retry cannot duplicate the successful prefix. Titles may
+		// be replayed safely because EnableTitle ignores an already-owned set.
+		return ResolveTransientRewardBatchFailure(
+			delivered_non_idempotent,
+			result
+		);
 	}
 	return RewardSelectionDeliveryResult::Delivered;
 }

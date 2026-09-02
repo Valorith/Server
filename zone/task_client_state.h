@@ -6,10 +6,15 @@
 
 #include <algorithm>
 #include <list>
+#include <optional>
 #include <string>
 #include <vector>
 
 constexpr float MAX_TASK_SELECT_DISTANCE = 60.0f; // client closes window at this distance
+
+std::optional<std::string> SerializeValidatedTaskRewardSnapshot(
+	const RewardSelectionSet &reward_set
+);
 
 struct TaskOffer
 {

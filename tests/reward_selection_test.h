@@ -1076,6 +1076,17 @@ private:
 	void TransientBatchFailureClassification()
 	{
 		TEST_ASSERT(
+			IsRewardSelectionRewardIdempotent(
+				RewardSelectionRewardType::Title
+			)
+		);
+		TEST_ASSERT(
+			!IsRewardSelectionRewardIdempotent(
+				RewardSelectionRewardType::Item
+			)
+		);
+
+		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
 				false,
 				RewardSelectionDeliveryResult::RetryableFailure

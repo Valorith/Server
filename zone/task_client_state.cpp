@@ -316,14 +316,11 @@ const RewardSelectionSet *ResolvePersistedTaskRewardSet(
 		return nullptr;
 	}
 
-	const auto serialized = SerializeTaskRewardSnapshot(*legacy_fallback);
-	if (
-		serialized.empty() ||
-		serialized.size() > kMaxTaskRewardSnapshotBytes
-	) {
+	const auto serialized = SerializeValidatedTaskRewardSnapshot(*legacy_fallback);
+	if (!serialized) {
 		return nullptr;
 	}
-	const auto escaped = EscapeTaskRewardSnapshot(serialized);
+	const auto escaped = EscapeTaskRewardSnapshot(*serialized);
 	auto persisted = database.QueryDatabase(fmt::format(
 		"UPDATE character_task_reward_selections "
 		"SET reward_snapshot = '{}' "
@@ -489,6 +486,42 @@ std::optional<RewardSelectionSession> BuildTaskRewardSelectionSession(
 }
 
 } // namespace
+
+std::optional<std::string> SerializeValidatedTaskRewardSnapshot(
+	const RewardSelectionSet &reward_set
+)
+{
+	size_t reward_count = 0;
+	for (const auto &option : reward_set.options) {
+		if (
+			option.rewards.size() > kMaxTaskRewardSnapshotEntries ||
+			reward_count >
+				kMaxTaskRewardSnapshotEntries - option.rewards.size()
+		) {
+			return std::nullopt;
+		}
+		reward_count += option.rewards.size();
+	}
+
+	if (
+		reward_set.options.empty() ||
+		reward_set.options.size() > kMaxTaskRewardSnapshotOptions ||
+		reward_count > kMaxTaskRewardSnapshotEntries
+	) {
+		return std::nullopt;
+	}
+
+	auto serialized = SerializeTaskRewardSnapshot(reward_set);
+	if (
+		serialized.empty() ||
+		serialized.size() > kMaxTaskRewardSnapshotBytes ||
+		!ParseTaskRewardSnapshot(serialized, reward_set.reward_set_id)
+	) {
+		return std::nullopt;
+	}
+
+	return serialized;
+}
 
 ClientTaskState::ClientTaskState()
 {
@@ -1401,7 +1434,7 @@ int ClientTaskState::IncrementDoneCount(
 			bool reward_ready = true;
 			if (event_res == 0) {
 				reward_ready = RewardTask(client, task_data, *info);
-			} else {
+			} else if (task_data->reward_method == METHODSELECT) {
 				// A non-zero task-complete event means the script handled or
 				// intentionally suppressed the reward. Persist that terminal
 				// outcome before removing the task so crash recovery cannot
@@ -1559,22 +1592,18 @@ bool ClientTaskState::RewardTask(
 				return false;
 			}
 			const auto serialized_reward_snapshot =
-				SerializeTaskRewardSnapshot(*reward_set);
-			if (
-				serialized_reward_snapshot.empty() ||
-				serialized_reward_snapshot.size() >
-					kMaxTaskRewardSnapshotBytes
-			) {
+				SerializeValidatedTaskRewardSnapshot(*reward_set);
+			if (!serialized_reward_snapshot) {
 				LogError(
-					"Task [{}] selectable reward snapshot is too large for "
-					"character [{}]",
+					"Task [{}] selectable reward set cannot produce a valid "
+					"durable snapshot for character [{}]",
 					task_id,
 					c->CharacterID()
 				);
 				return false;
 			}
 			const auto escaped_reward_snapshot =
-				EscapeTaskRewardSnapshot(serialized_reward_snapshot);
+				EscapeTaskRewardSnapshot(*serialized_reward_snapshot);
 			auto pending = database.QueryDatabase(fmt::format(
 				"INSERT IGNORE INTO character_task_reward_selections "
 				"(character_id, task_id, accepted_time, source_instance_id, "

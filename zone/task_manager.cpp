@@ -733,6 +733,17 @@ bool TaskManager::LoadTaskRewardSets()
 				reward_set_id
 			);
 		}
+		if (
+			!staged.invalid &&
+			!SerializeValidatedTaskRewardSnapshot(staged.reward_set)
+		) {
+			staged.invalid = true;
+			LogError(
+				"Enabled task reward set [{}] exceeds "
+				"the durable snapshot limits",
+				reward_set_id
+			);
+		}
 		if (staged.invalid) {
 			continue;
 		}

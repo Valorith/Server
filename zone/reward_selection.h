@@ -44,6 +44,13 @@ enum class RewardSelectionRewardType : uint8_t {
 	Title                = 5
 };
 
+inline constexpr bool IsRewardSelectionRewardIdempotent(
+	RewardSelectionRewardType type
+)
+{
+	return type == RewardSelectionRewardType::Title;
+}
+
 // Experience rewards use data_id to select normal-only or normal/AA allocation.
 enum class RewardSelectionExperienceMode : uint32_t {
 	Default    = 0,
