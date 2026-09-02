@@ -251,6 +251,47 @@ struct ScriptRewardSelectionOffer
 	std::vector<RewardSelectionReward> common_rewards;
 };
 
+inline std::optional<ScriptRewardSelectionOffer>
+MakeScriptItemRewardSelectionOffer(
+	const std::vector<uint64_t> &item_ids,
+	std::string *error = nullptr
+)
+{
+	const auto fail = [error](const std::string &message) {
+		if (error) {
+			*error = message;
+		}
+		return std::optional<ScriptRewardSelectionOffer>{};
+	};
+	if (error) {
+		error->clear();
+	}
+	if (item_ids.empty()) {
+		return fail("item_ids must contain at least one item ID");
+	}
+
+	ScriptRewardSelectionOffer offer;
+	offer.options.reserve(item_ids.size());
+	for (size_t index = 0; index < item_ids.size(); ++index) {
+		ScriptRewardSelectionRewardConfig config;
+		config.item_id = item_ids[index];
+
+		std::string reward_error;
+		auto reward = MakeScriptRewardSelectionReward(config, &reward_error);
+		if (!reward) {
+			return fail(
+				"item_ids[" + std::to_string(index + 1) + "]: " +
+				reward_error
+			);
+		}
+
+		RewardSelectionOption option;
+		option.rewards.emplace_back(std::move(*reward));
+		offer.options.emplace_back(std::move(option));
+	}
+	return offer;
+}
+
 inline bool AssignScriptRewardSelectionOptionIds(
 	ScriptRewardSelectionOffer &offer,
 	uint32_t &common_option_id,

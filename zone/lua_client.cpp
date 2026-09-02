@@ -3074,9 +3074,48 @@ bool Lua_Client::OfferRewardSelection(luabind::object config)
 	ScriptRewardSelectionOffer offer;
 	if (luabind::type(config) != LUA_TTABLE) {
 		LogError(
-		    "OfferRewardSelection Lua config error: config must be a table");
+		    "OfferRewardSelection Lua error: argument must be a config or item ID table");
 		return false;
 	}
+
+	bool item_shorthand = true;
+	luabind::raw_iterator end;
+	for (luabind::raw_iterator it(config); it != end; ++it) {
+		if (luabind::type(it.key()) == LUA_TSTRING) {
+			item_shorthand = false;
+			break;
+		}
+	}
+
+	if (item_shorthand) {
+		size_t item_count = 0;
+		LuaRewardSelectionArraySize(config, "item_ids", item_count, error);
+		std::vector<uint64_t> item_ids;
+		item_ids.reserve(item_count);
+		for (size_t index = 1; error.empty() && index <= item_count; ++index) {
+			uint64_t item_id = 0;
+			if (!LuaRewardSelectionReadUInt(
+					config[index],
+					item_id,
+					fmt::format("item_ids[{}]", index),
+					error
+				)) {
+				break;
+			}
+			item_ids.emplace_back(item_id);
+		}
+
+		if (error.empty()) {
+			auto parsed = MakeScriptItemRewardSelectionOffer(item_ids, &error);
+			if (parsed && self->GetRewardSelection().OfferScriptSelection(
+			                  std::move(*parsed), error)) {
+				return true;
+			}
+		}
+		LogError("OfferRewardSelection Lua error: {}", error);
+		return false;
+	}
+
 	static const std::unordered_set<std::string> top_keys = {
 	    "title", "options", "common_rewards"};
 	LuaRewardSelectionValidateKeys(config, top_keys, "config", error);

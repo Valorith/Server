@@ -51,16 +51,17 @@ the set so content does not award it twice.
 ## Scripted offers
 
 Perl and Lua quests can offer a transient reward selector with one atomic call.
-The script supplies the complete selection as a Perl hash reference or Lua
-table; the server parses and validates the entire definition before replacing
-any currently open scripted offer. Invalid input returns `false`, logs the
-precise field path, and leaves the current offer unchanged.
+The script supplies either a concise item-ID array or the complete selection as
+a Perl hash reference or Lua config table. The server parses and validates the
+entire definition before replacing any currently open scripted offer. Invalid
+input returns `false`, logs the precise field path, and leaves the current offer
+unchanged.
 
 The scripting surface intentionally contains only three methods:
 
 | Client method | Return | Purpose |
 | --- | --- | --- |
-| **OfferRewardSelection(config)** | Boolean | Validates and opens one complete scripted offer. |
+| **OfferRewardSelection(config_or_item_ids)** | Boolean | Validates and opens an advanced offer or a shorthand list of item choices. |
 | **ClearRewardSelection()** | None | Removes the client's open scripted offer. During the selection callback it also cancels automatic delivery and reopening. |
 | **HasRewardSelection()** | Boolean | Reports whether the client currently has an open scripted offer. |
 
@@ -69,7 +70,36 @@ clients, so a quest can provide a fallback interaction. Calling it while a
 claim is being processed also returns `false` rather than replacing the
 in-flight selection.
 
-### Offer config
+### Item-list shorthand
+
+For a simple choice between items, pass their IDs directly as an array
+reference in Perl or an array table in Lua. Each ID becomes one selectable
+option with quantity `1`. The server uses the item database name for the option
+label and item description, preserves array order for `option_index`, and uses
+the default **Choose a Reward** window title.
+
+~~~perl
+my @item_ids = (1001, 1002, 1003, 1004);
+$client->OfferRewardSelection(\@item_ids);
+
+# Inline form
+$client->OfferRewardSelection([1001, 1002, 1003, 1004]);
+~~~
+
+~~~lua
+local item_ids = {1001, 1002, 1003, 1004}
+client:OfferRewardSelection(item_ids)
+
+-- Inline form
+client:OfferRewardSelection({1001, 1002, 1003, 1004})
+~~~
+
+The list must be non-empty, dense, and contain only unsigned integer item IDs.
+Every item must exist; one invalid ID rejects the entire offer. Use the advanced
+config form when choices need quantities, custom text, bundles, common rewards,
+or non-item reward types.
+
+### Advanced offer config
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |

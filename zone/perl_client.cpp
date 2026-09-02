@@ -2792,15 +2792,13 @@ static bool PerlRewardSelectionValidateKeys(const perl::hash &table,
 	return true;
 }
 
-static bool PerlRewardSelectionReadUInt(perl::hash &table,
-    const char *key,
-    uint64_t &output,
-    const std::string &path,
-    std::string &error)
+static bool PerlRewardSelectionReadUInt(perl::scalar value,
+	uint64_t &output,
+	const std::string &path,
+	std::string &error)
 {
-	perl::scalar value = table[key];
 	if (value.is_null() || value.is_reference() || !value.is_integer()) {
-		error = fmt::format("{}.{} must be an unsigned integer", path, key);
+		error = fmt::format("{} must be an unsigned integer", path);
 		return false;
 	}
 
@@ -2809,10 +2807,24 @@ static bool PerlRewardSelectionReadUInt(perl::hash &table,
 	    std::from_chars(text.data(), text.data() + text.size(), output);
 	if (text.empty() || parse_error != std::errc{} ||
 	    end != text.data() + text.size()) {
-		error = fmt::format("{}.{} must be an unsigned integer", path, key);
+		error = fmt::format("{} must be an unsigned integer", path);
 		return false;
 	}
 	return true;
+}
+
+static bool PerlRewardSelectionReadUInt(perl::hash &table,
+	const char *key,
+	uint64_t &output,
+	const std::string &path,
+	std::string &error)
+{
+	return PerlRewardSelectionReadUInt(
+		perl::scalar(table[key]),
+		output,
+		fmt::format("{}.{}", path, key),
+		error
+	);
 }
 
 static bool PerlRewardSelectionReadOptionalUInt(perl::hash &table,
@@ -2936,8 +2948,31 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 {
 	std::string error;
 	ScriptRewardSelectionOffer offer;
-	if (!config_ref.is_hash_ref()) {
-		error = "config must be a hash reference";
+	if (config_ref.is_array_ref()) {
+		perl::array values = config_ref;
+		std::vector<uint64_t> item_ids;
+		item_ids.reserve(values.size());
+		for (size_t index = 0; index < values.size(); ++index) {
+			uint64_t item_id = 0;
+			if (!PerlRewardSelectionReadUInt(
+					perl::scalar(values[index]),
+					item_id,
+					fmt::format("item_ids[{}]", index + 1),
+					error
+				)) {
+				break;
+			}
+			item_ids.emplace_back(item_id);
+		}
+
+		if (error.empty()) {
+			auto parsed = MakeScriptItemRewardSelectionOffer(item_ids, &error);
+			if (parsed) {
+				offer = std::move(*parsed);
+			}
+		}
+	} else if (!config_ref.is_hash_ref()) {
+		error = "argument must be a config hash reference or item ID array reference";
 	} else {
 		perl::hash config = config_ref;
 		static const std::unordered_set<std::string> top_keys = {
@@ -3032,7 +3067,7 @@ bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
 	                         std::move(offer), error)) {
 		return true;
 	}
-	LogError("OfferRewardSelection Perl config error: {}", error);
+	LogError("OfferRewardSelection Perl error: {}", error);
 	return false;
 }
 

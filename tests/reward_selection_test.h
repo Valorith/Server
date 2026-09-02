@@ -21,6 +21,7 @@ public:
 		TEST_ADD(RewardSelectionTest::ClaimReplyLayout);
 		TEST_ADD(RewardSelectionTest::RewardDefinitionValidation);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardParsing);
+		TEST_ADD(RewardSelectionTest::ScriptItemShorthand);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardGrouping);
 		TEST_ADD(RewardSelectionTest::StructuredScriptRewardValidation);
 		TEST_ADD(RewardSelectionTest::StableWireOptionIdentity);
@@ -583,6 +584,55 @@ private:
 			&error
 		));
 		TEST_ASSERT(error == "options must contain at least one choice");
+	}
+
+	void ScriptItemShorthand()
+	{
+		std::string error;
+		auto offer = MakeScriptItemRewardSelectionOffer(
+			{1001, 1002, 1003},
+			&error
+		);
+		TEST_ASSERT(offer);
+		TEST_ASSERT(error.empty());
+		TEST_ASSERT(offer->title.empty());
+		TEST_ASSERT(offer->common_rewards.empty());
+		TEST_ASSERT(offer->options.size() == 3);
+		for (size_t index = 0; index < offer->options.size(); ++index) {
+			const auto &option = offer->options[index];
+			TEST_ASSERT(option.label.empty());
+			TEST_ASSERT(option.rewards.size() == 1);
+			TEST_ASSERT(
+				option.rewards[0].type == RewardSelectionRewardType::Item
+			);
+			TEST_ASSERT(option.rewards[0].data_id == 1001 + index);
+			TEST_ASSERT(option.rewards[0].amount == 1);
+		}
+
+		uint32_t common_option_id = 0;
+		TEST_ASSERT(AssignScriptRewardSelectionOptionIds(
+			*offer,
+			common_option_id,
+			&error
+		));
+		TEST_ASSERT(offer->options[0].option_id == 1);
+		TEST_ASSERT(offer->options[1].option_id == 2);
+		TEST_ASSERT(offer->options[2].option_id == 3);
+		TEST_ASSERT(common_option_id == 0);
+
+		TEST_ASSERT(!MakeScriptItemRewardSelectionOffer({}, &error));
+		TEST_ASSERT(error == "item_ids must contain at least one item ID");
+
+		TEST_ASSERT(!MakeScriptItemRewardSelectionOffer({1001, 0}, &error));
+		TEST_ASSERT(
+			error == "item_ids[2]: reward value is zero or exceeds the supported range"
+		);
+
+		TEST_ASSERT(!MakeScriptItemRewardSelectionOffer(
+			{static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1},
+			&error
+		));
+		TEST_ASSERT(error == "item_ids[1]: item_id exceeds the supported range");
 	}
 
 	void StructuredScriptRewardValidation()
