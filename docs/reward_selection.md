@@ -237,7 +237,10 @@ handler should control a given offer.
 An NPC-created offer remains associated with that exact NPC lifetime. Removing
 the NPC clears its outstanding offers before the entity ID can be reused. If
 the live originating NPC has no handler, the player quest is the fallback. If
-neither has a handler, delivery is automatically authorized.
+neither has a handler when the offer opens or the claim is made, delivery is
+automatically authorized. If an authorization handler existed when the offer
+opened but is unavailable at claim time after a quest reload, the claim fails
+closed and the offer reopens.
 
 Scripted offers intentionally have no database ledger. Zoning, disconnecting,
 or restarting the zone discards them. The grant engine stops at the first

@@ -2074,7 +2074,6 @@ namespace RoF2
 				"Refusing invalid OP_AchievementReward item inspection for item [{}]",
 				item_id
 			);
-			safe_delete_array(internal_buffer);
 			safe_delete(in);
 			return;
 		}
@@ -2089,7 +2088,6 @@ namespace RoF2
 				"RoF2::ENCODE(OP_AchievementReward) failed to serialize item [{}]",
 				item_id
 			);
-			safe_delete_array(internal_buffer);
 			safe_delete(in);
 			return;
 		}

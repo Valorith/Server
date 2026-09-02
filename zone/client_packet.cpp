@@ -2076,7 +2076,11 @@ void Client::HandleRewardSelectionPacket(
 
 		selection.CompleteScriptClaim(
 			claim,
-			ShouldAuthorizeScriptRewardSelection(handler_found, handler_result)
+			ShouldAuthorizeScriptRewardSelection(
+				claim.session.requires_script_authorization,
+				handler_found,
+				handler_result
+			)
 		);
 		return;
 	}

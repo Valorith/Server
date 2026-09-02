@@ -4,7 +4,9 @@
 #include "../common/reward_selection.h"
 #include "../common/rulesys.h"
 #include "client.h"
+#include "event_codes.h"
 #include "questmgr.h"
+#include "quest_parser_collection.h"
 #include "titles.h"
 #include "zone.h"
 #include "zonedb.h"
@@ -294,6 +296,23 @@ uint64_t ScriptOriginKey()
 		owner->GetID();
 }
 
+bool ScriptOfferRequiresAuthorization()
+{
+	if (!parse) {
+		return false;
+	}
+
+	const auto owner = quest_manager.GetOwner();
+	if (
+		owner &&
+		owner->IsNPC() &&
+		parse->HasQuestSub(owner->GetNPCTypeID(), EVENT_REWARD_SELECT)
+	) {
+		return true;
+	}
+	return parse->PlayerHasQuestSub(EVENT_REWARD_SELECT);
+}
+
 } // namespace
 
 ClientRewardSelection::ClientRewardSelection(Client &client)
@@ -472,6 +491,8 @@ bool ClientRewardSelection::OfferScriptSelection(
 	session.source.source = RewardSelectionSource::General;
 	session.source.source_id = selection_id;
 	session.source.source_instance_id = ScriptOriginKey();
+	session.requires_script_authorization =
+		ScriptOfferRequiresAuthorization();
 	session.channel = RewardSelectionChannel::Claimable;
 	session.pending_reward_id = selection_id;
 	session.reward_set.reward_set_id = selection_id;

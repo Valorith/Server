@@ -570,6 +570,7 @@ struct RewardSelectionSession {
 	RewardSelectionChannel   channel = RewardSelectionChannel::Preview;
 	uint32_t                 pending_reward_id = 0;
 	RewardSelectionSet       reward_set;
+	bool                     requires_script_authorization = false;
 };
 
 inline bool SameRewardSelectionSession(
@@ -671,11 +672,12 @@ enum class RewardSelectionDeliveryResult : uint8_t {
 };
 
 inline bool ShouldAuthorizeScriptRewardSelection(
+	bool authorization_required,
 	bool handler_found,
 	int handler_result
 )
 {
-	return !handler_found || handler_result != 0;
+	return handler_found ? handler_result != 0 : !authorization_required;
 }
 
 inline bool ShouldRemoveRewardSelectionSessionAfterClaim(

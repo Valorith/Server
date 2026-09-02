@@ -1154,11 +1154,15 @@ private:
 
 	void ScriptClaimAuthorizationPolicy()
 	{
-		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, 0));
-		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, 1));
-		TEST_ASSERT(!ShouldAuthorizeScriptRewardSelection(true, 0));
-		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, 1));
-		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, -1));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, false, 0));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, false, 1));
+		TEST_ASSERT(!ShouldAuthorizeScriptRewardSelection(false, true, 0));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(false, true, 1));
+
+		TEST_ASSERT(!ShouldAuthorizeScriptRewardSelection(true, false, 0));
+		TEST_ASSERT(!ShouldAuthorizeScriptRewardSelection(true, true, 0));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, true, 1));
+		TEST_ASSERT(ShouldAuthorizeScriptRewardSelection(true, true, -1));
 	}
 
 	void TransientBatchFailureClassification()
