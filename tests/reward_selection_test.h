@@ -871,6 +871,24 @@ private:
 			left_item_id,
 			right_item_id
 		));
+
+		selected_rewards = {
+			RewardSelectionReward{
+				.type = RewardSelectionRewardType::Copper,
+				.amount = 1000
+			},
+			item_reward(5004)
+		};
+		TEST_ASSERT(HasRewardSelectionInventoryLoreConflict(
+			selected_rewards,
+			resolve_item,
+			[](const EQ::ItemData *item) { return item->ID == 5004; }
+		));
+		TEST_ASSERT(!HasRewardSelectionInventoryLoreConflict(
+			selected_rewards,
+			resolve_item,
+			[](const EQ::ItemData *) { return false; }
+		));
 	}
 
 	void StructuredScriptRewardValidation()

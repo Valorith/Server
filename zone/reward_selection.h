@@ -341,6 +341,25 @@ bool FindRewardSelectionLoreConflict(
 	return false;
 }
 
+template <typename ItemResolver, typename LoreConflictChecker>
+bool HasRewardSelectionInventoryLoreConflict(
+	const std::vector<RewardSelectionReward> &rewards,
+	ItemResolver resolve_item,
+	LoreConflictChecker has_lore_conflict
+)
+{
+	for (const auto &reward : rewards) {
+		if (reward.type != RewardSelectionRewardType::Item) {
+			continue;
+		}
+		const auto item = resolve_item(reward.data_id);
+		if (item && has_lore_conflict(item)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 inline std::optional<RewardSelectionOption>
 MakeScriptItemRewardSelectionOption(
 	uint64_t item_id,

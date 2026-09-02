@@ -1328,6 +1328,16 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
+	if (HasRewardSelectionInventoryLoreConflict(
+		rewards,
+		[](uint32_t item_id) { return database.GetItem(item_id); },
+		[&client](const EQ::ItemData *item) {
+			return client.CheckLoreConflict(item);
+		}
+	)) {
+		return RewardSelectionDeliveryResult::RetryableFailure;
+	}
+
 	const auto item_reward_count = static_cast<size_t>(std::count_if(
 		rewards.begin(),
 		rewards.end(),
