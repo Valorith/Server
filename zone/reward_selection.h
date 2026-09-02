@@ -296,6 +296,72 @@ struct ScriptRewardSelectionOffer
 	std::vector<RewardSelectionReward> common_rewards;
 };
 
+inline bool ValidateScriptRewardSelectionDisplayText(
+	const ScriptRewardSelectionOffer &offer,
+	std::string &error
+)
+{
+	error.clear();
+	const auto validate = [&error](
+		const std::string &value,
+		const std::string &path
+	) {
+		if (value.find('\0') == std::string::npos) {
+			return true;
+		}
+		error = path + " cannot contain embedded NUL bytes";
+		return false;
+	};
+
+	if (!validate(offer.title, "title")) {
+		return false;
+	}
+	for (size_t option_index = 0; option_index < offer.options.size();
+	     ++option_index) {
+		const auto &option = offer.options[option_index];
+		const auto option_path =
+			"options[" + std::to_string(option_index + 1) + "]";
+		if (!validate(option.label, option_path + ".label")) {
+			return false;
+		}
+		for (size_t reward_index = 0;
+		     reward_index < option.rewards.size();
+		     ++reward_index) {
+			if (!validate(
+				option.rewards[reward_index].description,
+				option_path + ".rewards[" +
+					std::to_string(reward_index + 1) +
+					"].description"
+			)) {
+				return false;
+			}
+		}
+	}
+	for (size_t reward_index = 0;
+	     reward_index < offer.common_rewards.size();
+	     ++reward_index) {
+		if (!validate(
+			offer.common_rewards[reward_index].description,
+			"common_rewards[" + std::to_string(reward_index + 1) +
+				"].description"
+		)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+inline bool ShouldRecoverCompletedSelectableReward(
+	bool live_selectable_method,
+	bool was_rewarded,
+	bool has_durable_snapshot
+)
+{
+	return
+		live_selectable_method ||
+		(was_rewarded && has_durable_snapshot);
+}
+
 template <typename ItemResolver>
 bool FindRewardSelectionLoreConflict(
 	const std::vector<RewardSelectionReward> &common_rewards,

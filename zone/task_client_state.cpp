@@ -1905,10 +1905,40 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		}
 
 		const auto task = TaskManager::Instance()->GetTaskData(task_info.task_id);
-		if (
-			!task ||
-			task->reward_method != METHODSELECT
-		) {
+		const bool live_selectable_method =
+			task && task->reward_method == METHODSELECT;
+		bool has_durable_snapshot = false;
+		if (!live_selectable_method && task_info.was_rewarded) {
+			const auto accepted_time = static_cast<uint32_t>(
+				std::max(task_info.accepted_time, 0)
+			);
+			auto durable_selection = database.QueryDatabase(fmt::format(
+				"SELECT pending_reward_id "
+				"FROM character_task_reward_selections "
+				"WHERE character_id = {} AND task_id = {} "
+				"AND accepted_time = {} "
+				"AND reward_snapshot IS NOT NULL "
+				"AND reward_snapshot <> '' LIMIT 1",
+				client->CharacterID(),
+				task_info.task_id,
+				accepted_time
+			));
+			if (!durable_selection.Success()) {
+				LogError(
+					"Failed to verify durable selectable reward for completed "
+					"task [{}], character [{}]",
+					task_info.task_id,
+					client->CharacterID()
+				);
+				return;
+			}
+			has_durable_snapshot = durable_selection.RowCount() == 1;
+		}
+		if (!ShouldRecoverCompletedSelectableReward(
+			live_selectable_method,
+			task_info.was_rewarded,
+			has_durable_snapshot
+		)) {
 			return;
 		}
 		if (task_info.was_rewarded) {

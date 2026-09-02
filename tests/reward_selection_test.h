@@ -894,6 +894,60 @@ private:
 	void StructuredScriptRewardValidation()
 	{
 		std::string error;
+		ScriptRewardSelectionOffer text_offer;
+		TEST_ASSERT(ValidateScriptRewardSelectionDisplayText(
+			text_offer,
+			error
+		));
+
+		const std::string embedded_nul("bad\0text", 8);
+		text_offer.title = embedded_nul;
+		TEST_ASSERT(!ValidateScriptRewardSelectionDisplayText(
+			text_offer,
+			error
+		));
+		TEST_ASSERT(error == "title cannot contain embedded NUL bytes");
+
+		text_offer.title.clear();
+		text_offer.options.resize(1);
+		text_offer.options[0].label = embedded_nul;
+		TEST_ASSERT(!ValidateScriptRewardSelectionDisplayText(
+			text_offer,
+			error
+		));
+		TEST_ASSERT(
+			error == "options[1].label cannot contain embedded NUL bytes"
+		);
+
+		text_offer.options[0].label.clear();
+		text_offer.options[0].rewards.resize(1);
+		text_offer.options[0].rewards[0].description = embedded_nul;
+		TEST_ASSERT(!ValidateScriptRewardSelectionDisplayText(
+			text_offer,
+			error
+		));
+		TEST_ASSERT(
+			error ==
+			"options[1].rewards[1].description cannot contain embedded NUL bytes"
+		);
+
+		text_offer.options[0].rewards[0].description.clear();
+		text_offer.common_rewards.resize(1);
+		text_offer.common_rewards[0].description = embedded_nul;
+		TEST_ASSERT(!ValidateScriptRewardSelectionDisplayText(
+			text_offer,
+			error
+		));
+		TEST_ASSERT(
+			error ==
+			"common_rewards[1].description cannot contain embedded NUL bytes"
+		);
+
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, false, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, false));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true));
+
 		ScriptRewardSelectionRewardConfig config;
 		TEST_ASSERT(!MakeScriptRewardSelectionReward(config, &error));
 		TEST_ASSERT(

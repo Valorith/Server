@@ -360,6 +360,9 @@ bool ClientRewardSelection::OfferScriptSelection(
 		error = "reward selection requires the RoF2 client";
 		return false;
 	}
+	if (!ValidateScriptRewardSelectionDisplayText(offer, error)) {
+		return false;
+	}
 	uint32_t common_option_id = 0;
 	if (!AssignScriptRewardSelectionOptionIds(
 		offer,
