@@ -1520,23 +1520,22 @@ bool ClientTaskState::RewardTask(
 	if (client_task.was_rewarded) {
 		return true;
 	}
-	if (
+	const bool supports_selectable_reward =
 		ti->reward_method == METHODSELECT &&
-		c->ClientVersion() != EQ::versions::ClientVersion::RoF2
-	) {
+		c->ClientVersion() == EQ::versions::ClientVersion::RoF2;
+	if (ti->reward_method == METHODSELECT && !supports_selectable_reward) {
 		LogError(
 			"Task [{}] completed for character [{}] on unsupported client [{}]; "
-			"leaving the completed task in place without granting rewards",
+			"finishing the grandfathered task with ancillary rewards only",
 			client_task.task_id,
 			c->CharacterID(),
 			static_cast<int>(c->ClientVersion())
 		);
-		return false;
 	}
 
 	std::optional<RewardSelectionSession> task_reward_session;
 	bool grant_ancillary_rewards = true;
-	if (ti->reward_method == METHODSELECT) {
+	if (supports_selectable_reward) {
 		const auto task_id = static_cast<uint32_t>(client_task.task_id);
 		const auto accepted_time =
 			static_cast<uint32_t>(std::max(client_task.accepted_time, 0));
@@ -2401,14 +2400,20 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 	};
 	for (const auto &reward : expected_rewards) {
 		const auto entry_now = static_cast<uint32_t>(std::time(nullptr));
+		const auto in_flight_status = static_cast<uint32_t>(
+			IsRewardSelectionRewardIdempotent(reward.type)
+				? TaskRewardSelectionStatus::Retryable
+				: TaskRewardSelectionStatus::Pending
+		);
 		auto entry_claim = database.QueryDatabase(fmt::format(
 			"INSERT IGNORE INTO character_task_rewards "
 			"(character_id, pending_reward_id, reward_id, status, "
 			"attempt_count, last_attempt_at) "
-			"VALUES ({}, {}, {}, 0, 1, {})",
+			"VALUES ({}, {}, {}, {}, 1, {})",
 			client->CharacterID(),
 			persisted.pending_reward_id,
 			reward.entry_id,
+			in_flight_status,
 			entry_now
 		));
 		if (!entry_claim.Success()) {
@@ -2442,11 +2447,23 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 			if (entry_status == 1) {
 				continue;
 			}
-			if (entry_status == 0) {
+			if (
+				entry_status == static_cast<uint32_t>(
+					TaskRewardSelectionStatus::Pending
+				) &&
+				!IsRewardSelectionRewardIdempotent(reward.type)
+			) {
 				batch_result = RewardSelectionDeliveryResult::Ambiguous;
 				continue;
 			}
-			if (entry_status != 2) {
+			if (
+				entry_status != static_cast<uint32_t>(
+					TaskRewardSelectionStatus::Pending
+				) &&
+				entry_status != static_cast<uint32_t>(
+					TaskRewardSelectionStatus::Retryable
+				)
+			) {
 				if (batch_result == RewardSelectionDeliveryResult::Delivered) {
 					batch_result =
 						RewardSelectionDeliveryResult::RetryableFailure;
@@ -2456,14 +2473,16 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 
 			auto retry_entry = database.QueryDatabase(fmt::format(
 				"UPDATE character_task_rewards "
-				"SET status = 0, attempt_count = attempt_count + 1, "
+				"SET status = {}, attempt_count = attempt_count + 1, "
 				"last_attempt_at = {}, last_error = '' "
 				"WHERE character_id = {} AND pending_reward_id = {} "
-				"AND reward_id = {} AND status = 2",
+				"AND reward_id = {} AND status = {}",
+				in_flight_status,
 				entry_now,
 				client->CharacterID(),
 				persisted.pending_reward_id,
-				reward.entry_id
+				reward.entry_id,
+				entry_status
 			));
 			owns_entry =
 				retry_entry.Success() && retry_entry.RowsAffected() != 0;
@@ -2483,11 +2502,12 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 				"UPDATE character_task_rewards "
 				"SET status = 1, granted_at = {}, last_error = '' "
 				"WHERE character_id = {} AND pending_reward_id = {} "
-				"AND reward_id = {} AND status = 0",
+				"AND reward_id = {} AND status = {}",
 				static_cast<uint32_t>(std::time(nullptr)),
 				client->CharacterID(),
 				persisted.pending_reward_id,
-				reward.entry_id
+				reward.entry_id,
+				in_flight_status
 			));
 			if (!finalized.Success() || finalized.RowsAffected() == 0) {
 				batch_result = RewardSelectionDeliveryResult::Ambiguous;
@@ -2500,10 +2520,11 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 				"UPDATE character_task_rewards "
 				"SET status = 2, last_error = 'delivery API reported failure' "
 				"WHERE character_id = {} AND pending_reward_id = {} "
-				"AND reward_id = {} AND status = 0",
+				"AND reward_id = {} AND status = {}",
 				client->CharacterID(),
 				persisted.pending_reward_id,
-				reward.entry_id
+				reward.entry_id,
+				in_flight_status
 			));
 			if (!failed.Success() || failed.RowsAffected() == 0) {
 				batch_result = RewardSelectionDeliveryResult::Ambiguous;
@@ -2518,10 +2539,11 @@ RewardSelectionDeliveryResult ClientTaskState::ClaimRewardSelection(
 				"UPDATE character_task_rewards "
 				"SET last_error = 'delivery persistence result was ambiguous' "
 				"WHERE character_id = {} AND pending_reward_id = {} "
-				"AND reward_id = {} AND status = 0",
+				"AND reward_id = {} AND status = {}",
 				client->CharacterID(),
 				persisted.pending_reward_id,
-				reward.entry_id
+				reward.entry_id,
+				in_flight_status
 			));
 			batch_result = RewardSelectionDeliveryResult::Ambiguous;
 		}

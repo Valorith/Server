@@ -51,6 +51,17 @@ inline constexpr bool IsRewardSelectionRewardIdempotent(
 	return type == RewardSelectionRewardType::Title;
 }
 
+inline constexpr bool HasRewardSelectionCursorCapacity(
+	size_t current_cursor_items,
+	size_t required_item_rewards,
+	size_t cursor_capacity
+)
+{
+	return
+		current_cursor_items <= cursor_capacity &&
+		required_item_rewards <= cursor_capacity - current_cursor_items;
+}
+
 // Experience rewards use data_id to select normal-only or normal/AA allocation.
 enum class RewardSelectionExperienceMode : uint32_t {
 	Default    = 0,

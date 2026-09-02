@@ -1086,6 +1086,10 @@ private:
 			)
 		);
 
+		TEST_ASSERT(HasRewardSelectionCursorCapacity(9, 1, 10));
+		TEST_ASSERT(!HasRewardSelectionCursorCapacity(9, 2, 10));
+		TEST_ASSERT(!HasRewardSelectionCursorCapacity(11, 1, 10));
+
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(
 				false,

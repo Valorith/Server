@@ -1328,6 +1328,24 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
+	const auto item_reward_count = static_cast<size_t>(std::count_if(
+		rewards.begin(),
+		rewards.end(),
+		[](const RewardSelectionReward &reward) {
+			return reward.type == RewardSelectionRewardType::Item;
+		}
+	));
+	if (
+		item_reward_count &&
+		!HasRewardSelectionCursorCapacity(
+			client.GetInv().CursorSize(),
+			item_reward_count,
+			EQ::invbag::CURSOR_BAG_COUNT
+		)
+	) {
+		return RewardSelectionDeliveryResult::RetryableFailure;
+	}
+
 	bool delivered_non_idempotent = false;
 	bool delivered_idempotent = false;
 	for (const auto &reward : rewards) {
