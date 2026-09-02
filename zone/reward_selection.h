@@ -156,6 +156,28 @@ struct RewardSelectionReward {
 	std::string               description;
 };
 
+inline bool HasRewardSelectionItemBatchCapacity(
+	const std::vector<RewardSelectionReward> &common_rewards,
+	const std::vector<RewardSelectionReward> &selected_rewards,
+	size_t cursor_capacity
+)
+{
+	const auto count_items = [](const auto &rewards) {
+		return static_cast<size_t>(std::count_if(
+			rewards.begin(),
+			rewards.end(),
+			[](const RewardSelectionReward &reward) {
+				return reward.type == RewardSelectionRewardType::Item;
+			}
+		));
+	};
+	const auto common_item_count = count_items(common_rewards);
+	const auto selected_item_count = count_items(selected_rewards);
+	return
+		common_item_count <= cursor_capacity &&
+		selected_item_count <= cursor_capacity - common_item_count;
+}
+
 // Parser-neutral input shared by the Perl hashref and Lua table bindings.
 // Exactly one reward discriminator must be present.
 struct ScriptRewardSelectionRewardConfig
@@ -356,12 +378,16 @@ inline bool ShouldRecoverCompletedSelectableReward(
 	bool live_selectable_method,
 	bool was_rewarded,
 	bool active_task_complete,
-	bool has_durable_occurrence
+	bool has_durable_occurrence,
+	bool has_durable_selection
 )
 {
 	return
 		(live_selectable_method && active_task_complete) ||
-		(was_rewarded && has_durable_occurrence);
+		(
+			has_durable_occurrence &&
+			(was_rewarded || has_durable_selection)
+		);
 }
 
 template <typename ItemResolver>

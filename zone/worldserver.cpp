@@ -5135,6 +5135,12 @@ void WorldServer::ProcessReload(const ServerReload::Request& request)
 
 		case ServerReload::Type::Titles:
 			title_manager.LoadTitles();
+			if (
+				TaskManager::Instance() &&
+				!TaskManager::Instance()->LoadTaskRewardSets()
+			) {
+				LogError("Failed to revalidate task reward sets after title reload");
+			}
 			break;
 
 		case ServerReload::Type::Traps:

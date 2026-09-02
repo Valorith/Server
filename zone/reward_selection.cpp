@@ -422,6 +422,17 @@ bool ClientRewardSelection::OfferScriptSelection(
 	}
 
 	for (size_t index = 0; index < offer.options.size(); ++index) {
+		if (!HasRewardSelectionItemBatchCapacity(
+			offer.common_rewards,
+			offer.options[index].rewards,
+			EQ::invbag::CURSOR_BAG_COUNT
+		)) {
+			error = fmt::format("options[{}] contains too many item rewards", index + 1);
+			return false;
+		}
+	}
+
+	for (size_t index = 0; index < offer.options.size(); ++index) {
 		uint32_t left_item_id = 0;
 		uint32_t right_item_id = 0;
 		if (FindRewardSelectionLoreConflict(

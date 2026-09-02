@@ -943,13 +943,15 @@ private:
 			"common_rewards[1].description cannot contain embedded NUL bytes"
 		);
 
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, false, true, false));
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, false, true));
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, true, false, true));
-		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true, true));
-		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, true, false));
-		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(true, false, false, true));
-		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true, true));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, false, true, false, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, false, true, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(true, true, false, true, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, true, true, true, false));
+		TEST_ASSERT(ShouldRecoverCompletedSelectableReward(false, false, true, true, true));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, true, true, false, false));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(true, false, false, true, false));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true, true, false));
+		TEST_ASSERT(!ShouldRecoverCompletedSelectableReward(false, false, true, false, true));
 
 		ScriptRewardSelectionRewardConfig config;
 		TEST_ASSERT(!MakeScriptRewardSelectionReward(config, &error));
@@ -1164,6 +1166,25 @@ private:
 		TEST_ASSERT(HasRewardSelectionCursorCapacity(9, 1, 10));
 		TEST_ASSERT(!HasRewardSelectionCursorCapacity(9, 2, 10));
 		TEST_ASSERT(!HasRewardSelectionCursorCapacity(11, 1, 10));
+
+		const RewardSelectionReward item_reward{
+			.type = RewardSelectionRewardType::Item,
+			.data_id = 1001,
+			.amount = 1
+		};
+		std::vector<RewardSelectionReward> common_items(4, item_reward);
+		std::vector<RewardSelectionReward> selected_items(6, item_reward);
+		TEST_ASSERT(HasRewardSelectionItemBatchCapacity(
+			common_items,
+			selected_items,
+			10
+		));
+		selected_items.emplace_back(item_reward);
+		TEST_ASSERT(!HasRewardSelectionItemBatchCapacity(
+			common_items,
+			selected_items,
+			10
+		));
 
 		TEST_ASSERT(
 			ResolveTransientRewardBatchFailure(

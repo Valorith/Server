@@ -1907,36 +1907,54 @@ void ClientTaskState::RetryCompletedSelectableRewards(
 		const bool live_selectable_method =
 			task && task->reward_method == METHODSELECT;
 		bool has_durable_occurrence = false;
-		if (task_info.was_rewarded && (!live_selectable_method || !active_task_complete)) {
+		bool has_durable_selection = false;
+		if (
+			(!live_selectable_method || !active_task_complete) &&
+			(task_info.was_rewarded || active_task_complete)
+		) {
 			const auto accepted_time = static_cast<uint32_t>(
 				std::max(task_info.accepted_time, 0)
 			);
-			auto durable_occurrence = database.QueryDatabase(fmt::format(
-				"SELECT occurrence_id FROM character_task_reward_instances "
-				"WHERE character_id = {} AND task_id = {} "
-				"AND accepted_time = {} LIMIT 1",
+			auto durable_evidence = database.QueryDatabase(fmt::format(
+				"SELECT instances.occurrence_id, selections.pending_reward_id "
+				"FROM character_task_reward_instances AS instances "
+				"LEFT JOIN character_task_reward_selections AS selections "
+				"ON selections.character_id = instances.character_id "
+				"AND selections.source_instance_id = instances.occurrence_id "
+				"WHERE instances.character_id = {} AND instances.task_id = {} "
+				"AND instances.accepted_time = {} LIMIT 1",
 				client->CharacterID(),
 				task_info.task_id,
 				accepted_time
 			));
-			if (!durable_occurrence.Success()) {
+			if (!durable_evidence.Success()) {
 				LogError(
-					"Failed to verify selectable reward occurrence for completed "
+					"Failed to verify durable selectable reward state for completed "
 					"task [{}], character [{}]",
 					task_info.task_id,
 					client->CharacterID()
 				);
 				return;
 			}
-			has_durable_occurrence = durable_occurrence.RowCount() == 1;
+			has_durable_occurrence = durable_evidence.RowCount() == 1;
+			if (has_durable_occurrence) {
+				has_durable_selection = durable_evidence.begin()[1] != nullptr;
+			}
 		}
 		if (!ShouldRecoverCompletedSelectableReward(
 			live_selectable_method,
 			task_info.was_rewarded,
 			active_task_complete,
-			has_durable_occurrence
+			has_durable_occurrence,
+			has_durable_selection
 		)) {
 			return;
+		}
+		if (has_durable_selection && !task_info.was_rewarded) {
+			// The pending selection proves RewardTask reached its durable gate
+			// before a process stop prevented the task marker from being saved.
+			task_info.was_rewarded = true;
+			task_info.updated = true;
 		}
 		if (task_info.was_rewarded) {
 			// A completed task can survive a failed delete. When its reward
