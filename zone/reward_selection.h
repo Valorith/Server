@@ -642,6 +642,11 @@ public:
 	// Copy the provider snapshot so content reloads cannot leave dangling state.
 	bool Open(const RewardSelectionSession &session);
 	bool Open(const std::vector<RewardSelectionSession> &sessions);
+	bool ReplaceSourceSessions(
+		RewardSelectionChannel channel,
+		RewardSelectionSource source,
+		const std::vector<RewardSelectionSession> &sessions
+	);
 	void Clear(RewardSelectionChannel channel, bool notify_client = true);
 	void ClearSource(
 		RewardSelectionChannel channel,

@@ -2243,13 +2243,20 @@ void ClientTaskState::RestorePendingRewardSelection(Client *client)
 		);
 	}
 
-	selection.ClearSource(
+	if (!selection.ReplaceSourceSessions(
 		RewardSelectionChannel::Claimable,
 		RewardSelectionSource::Task,
-		0,
-		true
-	);
-	if (!sessions.empty() && !selection.Open(sessions)) {
+		sessions
+	)) {
+		LogError(
+			"Pending task reward collection for character [{}] could not be "
+			"replaced atomically",
+			client->CharacterID()
+		);
+		selection.ClearSource(
+			RewardSelectionChannel::Claimable,
+			RewardSelectionSource::Task
+		);
 		for (const auto &session : sessions) {
 			if (!selection.Open(session)) {
 				LogError(

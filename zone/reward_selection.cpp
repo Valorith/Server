@@ -701,6 +701,34 @@ bool ClientRewardSelection::Open(
 	return OpenInternal(sessions, std::nullopt);
 }
 
+bool ClientRewardSelection::ReplaceSourceSessions(
+	RewardSelectionChannel channel,
+	RewardSelectionSource source,
+	const std::vector<RewardSelectionSession> &sessions
+)
+{
+	if (source == RewardSelectionSource::Unknown) {
+		return false;
+	}
+	if (sessions.empty()) {
+		ClearSource(channel, source, 0, true);
+		return true;
+	}
+	if (std::any_of(
+		sessions.begin(),
+		sessions.end(),
+		[channel, source](const RewardSelectionSession &session) {
+			return
+				session.channel != channel ||
+				session.source.source != source;
+		}
+	)) {
+		return false;
+	}
+
+	return OpenInternal(sessions, source);
+}
+
 bool ClientRewardSelection::OpenInternal(
     const std::vector<RewardSelectionSession> &sessions,
     std::optional<RewardSelectionSource> replace_source)
@@ -1328,13 +1356,19 @@ RewardSelectionDeliveryResult ClientRewardSelection::GrantBatch(
 	const RewardSelectionDeliveryPolicy &policy
 )
 {
+	uint32_t conflicting_lore_item_id = 0;
 	if (HasRewardSelectionInventoryLoreConflict(
 		rewards,
 		[](uint32_t item_id) { return database.GetItem(item_id); },
-		[&client](const EQ::ItemData *item) {
-			return client.CheckLoreConflict(item);
+		[&client, &conflicting_lore_item_id](const EQ::ItemData *item) {
+			if (!client.CheckLoreConflict(item)) {
+				return false;
+			}
+			conflicting_lore_item_id = item->ID;
+			return true;
 		}
 	)) {
+		client.DuplicateLoreMessage(conflicting_lore_item_id);
 		return RewardSelectionDeliveryResult::RetryableFailure;
 	}
 
