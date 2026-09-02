@@ -65,6 +65,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <set>
 
@@ -114,6 +115,7 @@ void MapOpcodes()
 	// connected opcode handler assignments:
 	ConnectedOpcodes[OP_0x0193] = &Client::Handle_0x0193;
 	ConnectedOpcodes[OP_AAAction] = &Client::Handle_OP_AAAction;
+	ConnectedOpcodes[OP_AchievementReward] = &Client::Handle_OP_AchievementReward;
 	ConnectedOpcodes[OP_AcceptNewTask] = &Client::Handle_OP_AcceptNewTask;
 	ConnectedOpcodes[OP_AdventureInfoRequest] = &Client::Handle_OP_AdventureInfoRequest;
 	ConnectedOpcodes[OP_AdventureLeaderboardRequest] = &Client::Handle_OP_AdventureLeaderboardRequest;
@@ -358,6 +360,7 @@ void MapOpcodes()
 	ConnectedOpcodes[OP_RemoveBlockedBuffs] = &Client::Handle_OP_RemoveBlockedBuffs;
 	ConnectedOpcodes[OP_RemoveTrap] = &Client::Handle_OP_RemoveTrap;
 	ConnectedOpcodes[OP_Report] = &Client::Handle_OP_Report;
+	ConnectedOpcodes[OP_RewardSelection] = &Client::Handle_OP_RewardSelection;
 	ConnectedOpcodes[OP_RequestDuel] = &Client::Handle_OP_RequestDuel;
 	ConnectedOpcodes[OP_RequestTitles] = &Client::Handle_OP_RequestTitles;
 	ConnectedOpcodes[OP_RespawnWindow] = &Client::Handle_OP_RespawnWindow;
@@ -1967,6 +1970,140 @@ void Client::Handle_OP_AAAction(const EQApplicationPacket *app)
 	}
 	else {
 		LogAA("Unknown AA action : [{}] [{}] [{}] [{}]", action->action, action->ability, action->target_id, action->exp_value);
+	}
+}
+
+void Client::Handle_OP_AchievementReward(const EQApplicationPacket *app)
+{
+	HandleRewardSelectionPacket(app, RewardSelectionChannel::Claimable);
+}
+
+void Client::Handle_OP_RewardSelection(const EQApplicationPacket *app)
+{
+	HandleRewardSelectionPacket(app, RewardSelectionChannel::Preview);
+}
+
+void Client::HandleRewardSelectionPacket(
+	const EQApplicationPacket *app,
+	RewardSelectionChannel channel
+)
+{
+	if (!app) {
+		return;
+	}
+
+	auto &selection = GetRewardSelection();
+	auto result = selection.HandlePacket(*app, channel);
+	switch (result.type) {
+	case RewardSelectionPacketResultType::ViewRequested:
+		if (
+			result.requested_source == RewardSelectionSource::Task &&
+			task_state
+		) {
+			task_state->SendRewardSelection(this, result.requested_id);
+		}
+		return;
+	case RewardSelectionPacketResultType::PendingRequested:
+		if (const auto active = selection.ActiveSession(
+			RewardSelectionChannel::Claimable
+		)) {
+			const auto session = *active;
+			selection.Open(session);
+		}
+		if (task_state) {
+			task_state->RestorePendingRewardSelection(this);
+		}
+		if (!selection.HasActiveSession(RewardSelectionChannel::Claimable)) {
+			selection.Clear(RewardSelectionChannel::Claimable);
+		}
+		return;
+	case RewardSelectionPacketResultType::ClaimRequested:
+		break;
+	default:
+		return;
+	}
+
+	if (!result.claim) {
+		return;
+	}
+
+	if (
+		result.claim->session.source.source ==
+		RewardSelectionSource::General
+	) {
+		const auto &claim = *result.claim;
+		const auto export_data = fmt::format("{}", claim.selected_option_id);
+		const auto origin_key = claim.session.source.source_instance_id;
+		const auto origin_entity_id = static_cast<uint16_t>(
+			origin_key & std::numeric_limits<uint16_t>::max()
+		);
+		const auto origin_npc_type_id = static_cast<uint32_t>(
+			origin_key >> 32
+		);
+
+		bool handler_found = false;
+		int handler_result = 0;
+		if (parse && origin_entity_id && origin_npc_type_id) {
+			auto origin = entity_list.GetMob(origin_entity_id);
+			if (
+				origin &&
+				origin->IsNPC() &&
+				origin->GetNPCTypeID() == origin_npc_type_id &&
+				parse->HasQuestSub(origin_npc_type_id, EVENT_REWARD_SELECT)
+			) {
+				handler_found = true;
+				handler_result = parse->EventBotMercNPC(
+					EVENT_REWARD_SELECT,
+					origin,
+					this,
+					[&export_data]() { return export_data; }
+				);
+			}
+		}
+		if (
+			parse &&
+			!handler_found &&
+			parse->PlayerHasQuestSub(EVENT_REWARD_SELECT)
+		) {
+			handler_found = true;
+			handler_result = parse->EventPlayer(
+				EVENT_REWARD_SELECT,
+				this,
+				export_data,
+				0
+			);
+		}
+
+		selection.CompleteScriptClaim(
+			claim,
+			ShouldAuthorizeScriptRewardSelection(
+				claim.session.requires_script_authorization,
+				handler_found,
+				handler_result
+			)
+		);
+		return;
+	}
+
+	if (
+		result.claim->session.source.source != RewardSelectionSource::Task ||
+		!task_state
+	) {
+		return;
+	}
+
+	const auto delivery_result = task_state->ClaimRewardSelection(
+		this,
+		*result.claim
+	);
+	selection.CompleteClaim(*result.claim, delivery_result);
+	if (delivery_result == RewardSelectionDeliveryResult::Ambiguous) {
+		return;
+	}
+
+	task_state->RestorePendingRewardSelection(this);
+	if (!selection.HasActiveSession(RewardSelectionChannel::Claimable)) {
+		selection.Clear(RewardSelectionChannel::Claimable);
 	}
 }
 

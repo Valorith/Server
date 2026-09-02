@@ -148,10 +148,14 @@ typedef enum {
 	EVENT_CHARM_START,
 	EVENT_CHARM_END,
 
-	// Add new events before these or Lua crashes
+	// These IDs are persisted by perl_event_export_settings. Keep them stable.
 	EVENT_SPELL_EFFECT_BOT,
 	EVENT_SPELL_EFFECT_BUFF_TIC_BOT,
+	EVENT_REWARD_SELECT,
 	_LargestEventID
 } QuestEventID;
+
+static_assert(EVENT_SPELL_EFFECT_BOT == 146);
+static_assert(EVENT_SPELL_EFFECT_BUFF_TIC_BOT == 147);
 
 extern const char *QuestEventSubroutines[_LargestEventID];

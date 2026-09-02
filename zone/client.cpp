@@ -60,6 +60,7 @@
 #include "zone/position.h"
 #include "zone/queryserv.h"
 #include "zone/quest_parser_collection.h"
+#include "zone/reward_selection.h"
 #include "zone/string_ids.h"
 #include "zone/water_map.h"
 #include "zone/worldserver.h"
@@ -2885,6 +2886,17 @@ void Client::AddPlatinum(uint32 platinum, bool update_client) {
 }
 
 void Client::AddMoneyToPP(uint64 copper, bool update_client){
+	AddMoneyToPP(copper, update_client, nullptr);
+}
+
+void Client::AddMoneyToPP(
+	uint64 copper,
+	bool update_client,
+	bool *persistence_succeeded
+) {
+	if (persistence_succeeded) {
+		*persistence_succeeded = false;
+	}
 	uint64 temporary_copper;
 	uint64 temporary_copper_two;
 	temporary_copper = copper;
@@ -2946,7 +2958,10 @@ void Client::AddMoneyToPP(uint64 copper, bool update_client){
 
 	RecalcWeight();
 
-	SaveCurrency();
+	const bool persisted = SaveCurrency();
+	if (persistence_succeeded) {
+		*persistence_succeeded = persisted;
+	}
 
 	m_external_handin_money_returned.return_source = "AddMoneyToPP";
 
@@ -6223,6 +6238,21 @@ void Client::SendRewards()
 	FastQueuePacket(&vetapp);
 }
 
+ClientRewardSelection &Client::GetRewardSelection()
+{
+	if (!m_reward_selection) {
+		m_reward_selection = std::make_unique<ClientRewardSelection>(*this);
+	}
+	return *m_reward_selection;
+}
+
+void Client::ClearRewardSelectionFromNPC(uint32 npc_type_id, uint16 entity_id)
+{
+	if (m_reward_selection) {
+		m_reward_selection->ClearScriptOfferForOrigin(npc_type_id, entity_id);
+	}
+}
+
 bool Client::TryReward(uint32 claim_id)
 {
 	// Make sure we have an open spot
@@ -7396,10 +7426,10 @@ void Client::SendAltCurrencies() {
 	}
 }
 
-void Client::SetAlternateCurrencyValue(uint32 currency_id, uint32 new_amount)
+bool Client::SetAlternateCurrencyValue(uint32 currency_id, uint32 new_amount)
 {
 	if (!zone->DoesAlternateCurrencyExist(currency_id)) {
-		return;
+		return false;
 	}
 
 	const uint32 current_amount = alternate_currency[currency_id];
@@ -7409,11 +7439,11 @@ void Client::SetAlternateCurrencyValue(uint32 currency_id, uint32 new_amount)
 	const uint32 change_amount = is_gain ? (new_amount - current_amount) : (current_amount - new_amount);
 
 	if (!change_amount) {
-		return;
+		return true;
 	}
 
 	alternate_currency[currency_id] = new_amount;
-	database.UpdateAltCurrencyValue(CharacterID(), currency_id, new_amount);
+	const auto persistence_succeeded = database.UpdateAltCurrencyValue(CharacterID(), currency_id, new_amount);
 	SendAlternateCurrencyValue(currency_id);
 
 	QuestEventID event_id = is_gain ? EVENT_ALT_CURRENCY_GAIN : EVENT_ALT_CURRENCY_LOSS;
@@ -7427,6 +7457,8 @@ void Client::SetAlternateCurrencyValue(uint32 currency_id, uint32 new_amount)
 
 		parse->EventPlayer(event_id, this, export_string, 0);
 	}
+
+	return persistence_succeeded;
 }
 
 bool Client::RemoveAlternateCurrencyValue(uint32 currency_id, uint32 amount)
@@ -7462,6 +7494,19 @@ bool Client::RemoveAlternateCurrencyValue(uint32 currency_id, uint32 amount)
 
 int Client::AddAlternateCurrencyValue(uint32 currency_id, int amount, bool is_scripted)
 {
+	return AddAlternateCurrencyValue(currency_id, amount, is_scripted, nullptr);
+}
+
+int Client::AddAlternateCurrencyValue(
+	uint32 currency_id,
+	int amount,
+	bool is_scripted,
+	bool *persistence_succeeded
+)
+{
+	if (persistence_succeeded) {
+		*persistence_succeeded = false;
+	}
 	if (!zone->DoesAlternateCurrencyExist(currency_id)) {
 		return 0;
 	}
@@ -7486,10 +7531,18 @@ int Client::AddAlternateCurrencyValue(uint32 currency_id, int amount, bool is_sc
 	if (new_value < 0) {
 		new_value = 0;
 		alternate_currency[currency_id] = 0;
-		database.UpdateAltCurrencyValue(CharacterID(), currency_id, 0);
+		const auto persisted =
+			database.UpdateAltCurrencyValue(CharacterID(), currency_id, 0);
+		if (persistence_succeeded) {
+			*persistence_succeeded = persisted;
+		}
 	} else {
 		alternate_currency[currency_id] = new_value;
-		database.UpdateAltCurrencyValue(CharacterID(), currency_id, new_value);
+		const auto persisted =
+			database.UpdateAltCurrencyValue(CharacterID(), currency_id, new_value);
+		if (persistence_succeeded) {
+			*persistence_succeeded = persisted;
+		}
 	}
 
 	SendAlternateCurrencyValue(currency_id);

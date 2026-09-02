@@ -8,9 +8,14 @@
 #include "zone/expedition_config.h"
 #include "zone/expedition_db.h"
 #include "zone/embperl.h"
+#include "zone/reward_selection.h"
 #include "zone/titles.h"
 
+#include <charconv>
+#include <fmt/format.h>
 #include <initializer_list>
+#include <limits>
+#include <unordered_set>
 
 void Perl_Client_SendSound(Client* self) // @categories Script Utility
 {
@@ -2753,6 +2758,351 @@ int Perl_Client_GetSpellDamage(Client* self)
 	return self->GetSpellDmg();
 }
 
+static const std::unordered_set<std::string> &PerlRewardSelectionRewardKeys()
+{
+	static const std::unordered_set<std::string> keys = {"item_id",
+	    "experience",
+	    "experience_no_aa",
+	    "aa_points",
+	    "money",
+	    "alternate_currency_id",
+	    "title_set_id",
+	    "quantity",
+	    "amount",
+	    "description"};
+	return keys;
+}
+
+static bool PerlRewardSelectionValidateKeys(const perl::hash &table,
+    bool allow_option_keys,
+    const std::string &path,
+    std::string &error)
+{
+	const auto &reward_keys = PerlRewardSelectionRewardKeys();
+	for (const auto &[raw_key, value] : table) {
+		const std::string key = raw_key;
+		if (reward_keys.count(key) ||
+		    (allow_option_keys &&
+		        (key == "label" || key == "rewards"))) {
+			continue;
+		}
+		error = fmt::format("{}.{} is not a supported field", path, key);
+		return false;
+	}
+	return true;
+}
+
+static bool PerlRewardSelectionReadUInt(perl::scalar value,
+	uint64_t &output,
+	const std::string &path,
+	std::string &error)
+{
+	if (value.is_null() || value.is_reference() || !value.is_integer()) {
+		error = fmt::format("{} must be an unsigned integer", path);
+		return false;
+	}
+
+	const std::string text = value.c_str();
+	const auto [end, parse_error] =
+	    std::from_chars(text.data(), text.data() + text.size(), output);
+	if (text.empty() || parse_error != std::errc{} ||
+	    end != text.data() + text.size()) {
+		error = fmt::format("{} must be an unsigned integer", path);
+		return false;
+	}
+	return true;
+}
+
+static bool PerlRewardSelectionReadUInt(perl::hash &table,
+	const char *key,
+	uint64_t &output,
+	const std::string &path,
+	std::string &error)
+{
+	perl::scalar value = table[key];
+	return PerlRewardSelectionReadUInt(
+		value,
+		output,
+		fmt::format("{}.{}", path, key),
+		error
+	);
+}
+
+static bool PerlRewardSelectionReadOptionalUInt(perl::hash &table,
+    const char *key,
+    std::optional<uint64_t> &output,
+    const std::string &path,
+    std::string &error)
+{
+	if (!table.exists(key)) {
+		return true;
+	}
+	uint64_t value = 0;
+	if (!PerlRewardSelectionReadUInt(table, key, value, path, error)) {
+		return false;
+	}
+	output = value;
+	return true;
+}
+
+static bool PerlRewardSelectionReadOptionalString(perl::hash &table,
+    const char *key,
+    std::string &output,
+    const std::string &path,
+    std::string &error)
+{
+	if (!table.exists(key)) {
+		return true;
+	}
+	perl::scalar value = table[key];
+	if (value.is_null() || value.is_reference() || !value.is_string()) {
+		error = fmt::format("{}.{} must be a string", path, key);
+		return false;
+	}
+	output = value.c_str();
+	return true;
+}
+
+static bool PerlRewardSelectionParseReward(perl::hash table,
+    bool allow_option_keys,
+    const std::string &path,
+    RewardSelectionReward &reward,
+    std::string &error)
+{
+	if (!PerlRewardSelectionValidateKeys(
+	        table, allow_option_keys, path, error)) {
+		return false;
+	}
+
+	ScriptRewardSelectionRewardConfig config;
+	if (!PerlRewardSelectionReadOptionalUInt(
+	        table, "item_id", config.item_id, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "experience", config.experience, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "experience_no_aa", config.experience_no_aa, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "aa_points", config.aa_points, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "money", config.money, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(table,
+	        "alternate_currency_id",
+	        config.alternate_currency_id,
+	        path,
+	        error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "title_set_id", config.title_set_id, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "quantity", config.quantity, path, error) ||
+	    !PerlRewardSelectionReadOptionalUInt(
+	        table, "amount", config.amount, path, error) ||
+	    !PerlRewardSelectionReadOptionalString(
+	        table, "description", config.description, path, error)) {
+		return false;
+	}
+
+	std::string reward_error;
+	const auto parsed = MakeScriptRewardSelectionReward(config, &reward_error);
+	if (!parsed) {
+		error = fmt::format("{}: {}", path, reward_error);
+		return false;
+	}
+	reward = *parsed;
+	return true;
+}
+
+static bool PerlRewardSelectionParseRewardArray(perl::scalar value,
+    const std::string &path,
+    bool require_nonempty,
+    std::vector<RewardSelectionReward> &rewards,
+    std::string &error)
+{
+	if (!value.is_array_ref()) {
+		error = fmt::format("{} must be an array reference", path);
+		return false;
+	}
+	perl::array values = value;
+	if (require_nonempty && values.size() == 0) {
+		error = fmt::format("{} must contain at least one reward", path);
+		return false;
+	}
+
+	rewards.reserve(values.size());
+	for (size_t index = 0; index < values.size(); ++index) {
+		perl::scalar entry = values[index];
+		const auto entry_path = fmt::format("{}[{}]", path, index + 1);
+		if (!entry.is_hash_ref()) {
+			error = fmt::format("{} must be a hash reference", entry_path);
+			return false;
+		}
+		RewardSelectionReward reward;
+		if (!PerlRewardSelectionParseReward(
+		        perl::hash(entry), false, entry_path, reward, error)) {
+			return false;
+		}
+		rewards.emplace_back(std::move(reward));
+	}
+	return true;
+}
+
+static bool PerlRewardSelectionParseOption(perl::scalar value,
+    const std::string &path,
+    RewardSelectionOption &option,
+    std::string &error)
+{
+	if (!value.is_hash_ref()) {
+		if (value.is_reference()) {
+			error = fmt::format(
+			    "{} must be an item ID or hash reference", path);
+			return false;
+		}
+
+		uint64_t item_id = 0;
+		if (!PerlRewardSelectionReadUInt(value, item_id, path, error)) {
+			return false;
+		}
+
+		std::string option_error;
+		auto parsed = MakeScriptItemRewardSelectionOption(
+		    item_id, &option_error);
+		if (!parsed) {
+			error = fmt::format("{}: {}", path, option_error);
+			return false;
+		}
+		option = std::move(*parsed);
+		return true;
+	}
+
+	perl::hash option_table = value;
+	if (!PerlRewardSelectionValidateKeys(
+	        option_table, true, path, error)) {
+		return false;
+	}
+	if (!PerlRewardSelectionReadOptionalString(
+	        option_table, "label", option.label, path, error)) {
+		return false;
+	}
+
+	if (option_table.exists("rewards")) {
+		for (const auto &key : PerlRewardSelectionRewardKeys()) {
+			if (option_table.exists(key)) {
+				error = fmt::format(
+				    "{} cannot mix rewards with flat reward fields", path);
+				return false;
+			}
+		}
+		return PerlRewardSelectionParseRewardArray(option_table["rewards"],
+		    path + ".rewards",
+		    true,
+		    option.rewards,
+		    error);
+	}
+
+	RewardSelectionReward reward;
+	if (!PerlRewardSelectionParseReward(
+	        option_table, true, path, reward, error)) {
+		return false;
+	}
+	option.rewards.emplace_back(std::move(reward));
+	return true;
+}
+
+bool Perl_Client_OfferRewardSelection(Client *self, perl::reference config_ref)
+{
+	std::string error;
+	ScriptRewardSelectionOffer offer;
+	if (config_ref.is_array_ref()) {
+		perl::array values = config_ref;
+		if (values.size() == 0) {
+			error = "options must contain at least one choice";
+		}
+		offer.options.reserve(values.size());
+		for (size_t index = 0; error.empty() && index < values.size();
+		     ++index) {
+			perl::scalar option_value = values[index];
+			RewardSelectionOption option;
+			if (!PerlRewardSelectionParseOption(option_value,
+			        fmt::format("options[{}]", index + 1),
+			        option,
+			        error)) {
+				break;
+			}
+			offer.options.emplace_back(std::move(option));
+		}
+	} else if (!config_ref.is_hash_ref()) {
+		error = "argument must be a config hash reference or option array reference";
+	} else {
+		perl::hash config = config_ref;
+		static const std::unordered_set<std::string> top_keys = {
+		    "title", "options", "common_rewards"};
+		for (const auto &[raw_key, value] : config) {
+			const std::string key = raw_key;
+			if (!top_keys.count(key)) {
+				error = fmt::format("config.{} is not a supported field", key);
+				break;
+			}
+		}
+
+		if (error.empty()) {
+			PerlRewardSelectionReadOptionalString(
+			    config, "title", offer.title, "config", error);
+		}
+		if (error.empty() && !config.exists("options")) {
+			error = "config.options is required";
+		} else if (error.empty()) {
+			perl::scalar options_value = config["options"];
+			if (!options_value.is_array_ref()) {
+				error = "config.options must be an array reference";
+			} else {
+				perl::array options = options_value;
+				if (options.size() == 0) {
+					error = "config.options must contain at least one choice";
+				}
+				for (size_t index = 0; error.empty() && index < options.size();
+				     ++index) {
+					perl::scalar option_value = options[index];
+					const auto path =
+					    fmt::format("config.options[{}]", index + 1);
+					RewardSelectionOption option;
+					if (!PerlRewardSelectionParseOption(
+					        option_value,
+					        path,
+					        option,
+					        error)) {
+						break;
+					}
+					offer.options.emplace_back(std::move(option));
+				}
+			}
+		}
+
+		if (error.empty() && config.exists("common_rewards")) {
+			PerlRewardSelectionParseRewardArray(config["common_rewards"],
+			    "config.common_rewards",
+			    false,
+			    offer.common_rewards,
+			    error);
+		}
+	}
+
+	if (error.empty() && self->GetRewardSelection().OfferScriptSelection(
+	                         std::move(offer), error)) {
+		return true;
+	}
+	LogError("OfferRewardSelection Perl error: {}", error);
+	return false;
+}
+
+void Perl_Client_ClearRewardSelection(Client* self)
+{
+	self->GetRewardSelection().ClearScriptOffer();
+}
+
+bool Perl_Client_HasRewardSelection(Client* self)
+{
+	return self->GetRewardSelection().HasScriptOffer();
+}
+
 void Perl_Client_TaskSelector(Client* self, perl::array task_ids)
 {
 	std::vector<int> tasks;
@@ -3731,6 +4081,7 @@ void perl_register_client()
 	package.add("ClearCompassMark", &Perl_Client_ClearCompassMark);
 	package.add("ClearAccountFlag", &Perl_Client_ClearAccountFlag);
 	package.add("ClearPEQZoneFlag", &Perl_Client_ClearPEQZoneFlag);
+	package.add("ClearRewardSelection", &Perl_Client_ClearRewardSelection);
 	package.add("ClearXTargets", &Perl_Client_ClearXTargets);
 	package.add("ClearZoneFlag", &Perl_Client_ClearZoneFlag);
 	package.add("CompleteTask", &Perl_Client_CompleteTask);
@@ -3962,6 +4313,7 @@ void perl_register_client()
 	package.add("HasItemOnCorpse", &Perl_Client_HasItemOnCorpse);
 	package.add("HasPEQZoneFlag", &Perl_Client_HasPEQZoneFlag);
 	package.add("HasRecipeLearned", &Perl_Client_HasRecipeLearned);
+	package.add("HasRewardSelection", &Perl_Client_HasRewardSelection);
 	package.add("HasSkill", &Perl_Client_HasSkill);
 	package.add("HasSpellScribed", &Perl_Client_HasSpellScribed);
 	package.add("HasZoneFlag", &Perl_Client_HasZoneFlag);
@@ -4045,6 +4397,7 @@ void perl_register_client()
 	package.add("NukeItem", (uint32_t(*)(Client*, uint32))&Perl_Client_NukeItem);
 	package.add("NukeItem", (uint32_t(*)(Client*, uint32, uint8))&Perl_Client_NukeItem);
 	package.add("OpenLFGuildWindow", &Perl_Client_OpenLFGuildWindow);
+	package.add("OfferRewardSelection", &Perl_Client_OfferRewardSelection);
 	package.add("PlayMP3", &Perl_Client_PlayMP3);
 	package.add("Popup2", (void(*)(Client*, const char*, const char*))&Perl_Client_Popup2);
 	package.add("Popup2", (void(*)(Client*, const char*, const char*, uint32))&Perl_Client_Popup2);

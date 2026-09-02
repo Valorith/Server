@@ -115,6 +115,7 @@ set(common_sources
     ptimer.cpp
     races.cpp
     rdtsc.cpp
+    reward_selection.cpp
     rulesys.cpp
     say_link.cpp
     serialize_buffer.cpp
@@ -703,6 +704,7 @@ set(common_headers
     rdtsc.h
     rulesys.h
     ruletypes.h
+    reward_selection.h
     say_link.h
     seperator.h
     serialize_buffer.h

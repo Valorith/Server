@@ -190,7 +190,10 @@ const char *LuaEvents[_LargestEventID] = {
 	"event_read_item",
 	"event_pet_command",
 	"event_charm_start",
-	"event_charm_end"
+	"event_charm_end",
+	"event_spell_effect",
+	"event_spell_buff_tic",
+	"event_reward_select"
 };
 
 extern Zone *zone;
@@ -267,6 +270,7 @@ LuaParser::LuaParser() {
 	NPCArgumentDispatch[EVENT_PET_COMMAND]            = handle_npc_pet_command;
 	NPCArgumentDispatch[EVENT_CHARM_START]            = handle_npc_single_mob;
 	NPCArgumentDispatch[EVENT_CHARM_END]              = handle_npc_single_mob;
+	NPCArgumentDispatch[EVENT_REWARD_SELECT]           = handle_npc_reward_select;
 
 	PlayerArgumentDispatch[EVENT_SAY]                        = handle_player_say;
 	PlayerArgumentDispatch[EVENT_ENVIRONMENTAL_DAMAGE]       = handle_player_environmental_damage;
@@ -360,6 +364,7 @@ LuaParser::LuaParser() {
 	PlayerArgumentDispatch[EVENT_DISCONNECT]                 = handle_player_disconnect;
 	PlayerArgumentDispatch[EVENT_CONNECT]                    = handle_player_connect;
 	PlayerArgumentDispatch[EVENT_PET_COMMAND]                = handle_player_pet_command;
+	PlayerArgumentDispatch[EVENT_REWARD_SELECT]               = handle_player_reward_select;
 
 	ItemArgumentDispatch[EVENT_ITEM_CLICK]      = handle_item_click;
 	ItemArgumentDispatch[EVENT_ITEM_CLICK_CAST] = handle_item_click;

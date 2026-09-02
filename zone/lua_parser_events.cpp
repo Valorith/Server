@@ -207,6 +207,28 @@ void handle_npc_popup(
 	lua_setfield(L, -2, "popup_id");
 }
 
+void handle_npc_reward_select(
+	QuestInterface *parse,
+	lua_State* L,
+	NPC* npc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	Seperator sep(data.c_str());
+
+	Lua_Client l_client(
+		init && init->IsClient() ? init->CastToClient() : nullptr
+	);
+	luabind::adl::object l_client_o = luabind::adl::object(L, l_client);
+	l_client_o.push(L);
+	lua_setfield(L, -2, "other");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
+	lua_setfield(L, -2, "option_index");
+}
+
 void handle_npc_waypoint(
 	QuestInterface *parse,
 	lua_State* L,
@@ -888,6 +910,20 @@ void handle_player_popup_response(
 ) {
 	lua_pushinteger(L, Strings::ToInt(data));
 	lua_setfield(L, -2, "popup_id");
+}
+
+void handle_player_reward_select(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	Seperator sep(data.c_str());
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
+	lua_setfield(L, -2, "option_index");
 }
 
 void handle_player_pick_up(

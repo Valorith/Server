@@ -2835,6 +2835,17 @@ bool EntityList::RemoveNPC(uint16 delete_id)
 	auto it = npc_list.find(delete_id);
 	if (it != npc_list.end()) {
 		NPC *npc = it->second;
+		if (npc) {
+			for (const auto &client_entry : client_list) {
+				const auto client = client_entry.second;
+				if (client) {
+					client->ClearRewardSelectionFromNPC(
+						npc->GetNPCTypeID(),
+						delete_id
+					);
+				}
+			}
+		}
 		RemoveProximity(delete_id);
 		npc_list.erase(it);
 

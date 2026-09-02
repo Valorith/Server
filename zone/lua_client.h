@@ -581,6 +581,9 @@ public:
 
 	void SetPrimaryWeaponOrnamentation(uint32 model_id);
 	void SetSecondaryWeaponOrnamentation(uint32 model_id);
+	bool OfferRewardSelection(luabind::object config);
+	void ClearRewardSelection();
+	bool HasRewardSelection();
 	void TaskSelector(luabind::adl::object table);
 	void TaskSelector(luabind::adl::object table, bool ignore_cooldown);
 

@@ -213,10 +213,9 @@ const char* QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_PET_COMMAND",
 	"EVENT_CHARM_START",
 	"EVENT_CHARM_END",
-
-	// Add new events before these or Lua crashes
 	"EVENT_SPELL_EFFECT_BOT",
-	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT"
+	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT",
+	"EVENT_REWARD_SELECT"
 };
 
 PerlembParser* PerlembParser::instance_ = nullptr;
@@ -2546,6 +2545,12 @@ void PerlembParser::ExportEventVariables(
 				ExportVar(package_name.c_str(), "player", "Client", std::any_cast<Client*>(extra_pointers->at(0)));
 			}
 
+			break;
+		}
+
+		case EVENT_REWARD_SELECT: {
+			Seperator sep(data);
+			ExportVar(package_name.c_str(), "reward_option_index", sep.arg[0]);
 			break;
 		}
 
