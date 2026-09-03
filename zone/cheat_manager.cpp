@@ -20,6 +20,9 @@ void CheatManager::SetExemptStatus(ExemptionType type, bool v)
 {
 	if (v) {
 		MovementCheck();
+		m_exemption_set_time[type] = Timer::GetCurrentTime();
+	} else {
+		m_exemption_set_time[type] = 0;
 	}
 	m_exemption[type] = v;
 }
@@ -65,7 +68,7 @@ void CheatManager::CheatDetected(CheatTypes type, glm::vec3 position1, glm::vec3
 			}
 			break;
 		case MQWarpAbsolute:
-			if (RuleB(Cheat, EnableMQWarpDetector) &&
+			if (m_time_since_last_warp_detection.GetRemainingTime() == 0 && RuleB(Cheat, EnableMQWarpDetector) &&
 				((m_target->Admin() < RuleI(Cheat, MQWarpExemptStatus) || (RuleI(Cheat, MQWarpExemptStatus)) == -1))) {
 				std::string message = fmt::format(
 					"/MQWarp (Absolute) with location from x [{:.2f}] y [{:.2f}] z [{:.2f}] to x [{:.2f}] y [{:.2f}] z [{:.2f}] Distance [{:.2f}]",
@@ -225,6 +228,9 @@ void CheatManager::MovementCheck(glm::vec3 updated_position)
 {
 	if (m_time_since_last_movement_history.GetRemainingTime() == 0) {
 		CheatDetected(MQGhost, updated_position);
+		// Restart so clients that never send this packet (reported on Linux) do not
+		// generate a hack event on every subsequent position update.
+		m_time_since_last_movement_history.Start(MovementHistoryTimeoutMS);
 	}
 
 	glm::vec3 current_position = glm::vec3(m_target->GetPosition());
@@ -233,7 +239,9 @@ void CheatManager::MovementCheck(glm::vec3 updated_position)
 	if (dist == 0) {
 		if (m_distance_since_last_position_check > 0.0f) {
 			m_current_position_check_location = updated_position;
-			MovementCheck(0);
+			// Use the normal interval so a stop packet after a short burst does not
+			// inflate estimated speed by evaluating over a near-zero window.
+			MovementCheck(PositionCheckIntervalMS);
 		}
 		else {
 			m_time_since_last_position_check = cur_time;
@@ -269,13 +277,36 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 							  RuleR(Cheat, MQWarpDetectionDistanceFactor),
 							  1.0f
 						  );
+		// Lapse movement exemptions that were already past their grace period
+		// when this window's movement began accumulating, before they are
+		// applied below. An exemption still valid at the window start covers
+		// the deferred evaluation of that movement; one granted mid-window
+		// (negative difference) is also kept. The signed comparison of the
+		// unsigned tick difference is safe across uint32 wrap.
+		for (ExemptionType type : {ShadowStep, KnockBack, Port}) {
+			if (m_exemption[type] &&
+				(int32)(m_time_since_last_position_check - m_exemption_set_time[type]) > (int32)ExemptionGracePeriodMS) {
+				SetExemptStatus(type, false);
+			}
+		}
 		if (estimated_speed > run_speed) {
 			bool using_gm_speed = m_target->GetGMSpeed();
 			bool is_immobile    = m_target->GetRunspeed() == 0; // this covers stuns, roots, mez, and pseudorooted.
 			const auto from      = m_last_position_check_location;
 			const auto to        = m_current_position_check_location;
 			if (!using_gm_speed && !is_immobile) {
-				if (GetExemptStatus(ShadowStep)) {
+				if (GetExemptStatus(Port)) {
+					// A port explains the displacement and supersedes any stale
+					// shadowstep/knockback exemption. Consume the exemption once
+					// the port-sized displacement itself has been observed so it
+					// cannot cover subsequent movement.
+					SetExemptStatus(ShadowStep, false);
+					SetExemptStatus(KnockBack, false);
+					if (estimated_speed > (run_speed * 1.5)) {
+						SetExemptStatus(Port, false);
+					}
+				}
+				else if (GetExemptStatus(ShadowStep)) {
 					if (m_distance_since_last_position_check > 800) {
 						CheatDetected(
 							MQWarpShadowStep,
@@ -283,13 +314,20 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 							to
 						);
 					}
+					// The displacement this exemption was granted for has now
+					// been evaluated; consume it so it cannot cover more moves.
+					// KnockBack may have been co-granted by the same spell
+					// (push + shadowstep), so consume it as well.
+					SetExemptStatus(ShadowStep, false);
+					SetExemptStatus(KnockBack, false);
 				}
 				else if (GetExemptStatus(KnockBack)) {
 					if (estimated_speed > 30.0f) {
 						CheatDetected(MQWarpKnockBack, from, to);
 					}
+					SetExemptStatus(KnockBack, false);
 				}
-				else if (!GetExemptStatus(Port)) {
+				else {
 					if (estimated_speed > (run_speed * 1.5)) {
 						CheatDetected(MQWarp, from, to);
 						m_time_since_last_position_check     = cur_time;
@@ -301,11 +339,6 @@ void CheatManager::MovementCheck(uint32 time_between_checks)
 					}
 				}
 			}
-		}
-		if (time_between_checks != DefaultMovementCheckIntervalMS) {
-			SetExemptStatus(ShadowStep, false);
-			SetExemptStatus(KnockBack, false);
-			SetExemptStatus(Port, false);
 		}
 		m_time_since_last_position_check     = cur_time;
 		m_last_position_check_location       = m_current_position_check_location;
@@ -348,12 +381,13 @@ void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 		return;
 	}
 
+	// Note: ZoneLine entries are client-supplied and are deliberately not
+	// honored as a Port exemption; every legitimate flow that snaps position
+	// within this zone process already sets the exemption server-side
+	// (SendZoneCancel, SendZoneError, ZonePC, and the underworld handler).
 	for (int index = 0; index < (app->size) / sizeof(UpdateMovementEntry); index++) {
 		glm::vec3 to = glm::vec3(m_MovementHistory[index].X, m_MovementHistory[index].Y, m_MovementHistory[index].Z);
 		switch (m_MovementHistory[index].type) {
-			case UpdateMovementType::ZoneLine:
-				SetExemptStatus(Port, true);
-				break;
 			case UpdateMovementType::TeleportA:
 				if (index != 0) {
 					glm::vec3 from = glm::vec3(
@@ -363,7 +397,6 @@ void CheatManager::ProcessMovementHistory(const EQApplicationPacket *app)
 					);
 					CheatDetected(MQWarpAbsolute, from, to);
 				}
-				SetExemptStatus(Port, false);
 				break;
 		}
 	}
@@ -380,5 +413,13 @@ void CheatManager::ClientProcess()
 {
 	if (!m_cheat_detect_moved) {
 		m_time_since_last_position_check = Timer::GetCurrentTime();
+	}
+	else if (m_distance_since_last_position_check > 0.0f) {
+		// Evaluate pending movement server-side so a client cannot avoid the
+		// speed check by going silent after a burst of movement.
+		MovementCheck(PositionCheckIntervalMS);
+		if (m_distance_since_last_position_check == 0.0f) {
+			m_cheat_detect_moved = false;
+		}
 	}
 }
