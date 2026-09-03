@@ -6,6 +6,9 @@
 
 #include <limits>
 #include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 Bazaar::PurchaseQuantityValidation Bazaar::ValidatePurchaseQuantity(
 	uint32 requested_quantity,
@@ -111,6 +114,195 @@ Bazaar::TransactionValueValidation Bazaar::ValidateTransactionValue(
 bool Bazaar::ValidatePurchasePrice(uint32 requested_price, uint32 listed_price)
 {
 	return listed_price > 0 && requested_price == listed_price;
+}
+
+bool Bazaar::ShouldPreserveOfflineListings(
+	uint32 offline_character_id,
+	uint32 offline_zone_id,
+	int32 offline_instance_id,
+	uint32 selected_character_id,
+	uint32 selected_zone_id,
+	int32 selected_instance_id
+)
+{
+	return
+		offline_character_id != 0 &&
+		offline_character_id == selected_character_id &&
+		offline_zone_id != 0 &&
+		offline_zone_id == selected_zone_id &&
+		offline_instance_id == selected_instance_id;
+}
+
+bool Bazaar::ShouldUseClientBuyerStartPayload(
+	size_t persisted_buy_line_count,
+	bool reject_stale_empty_restore
+)
+{
+	if (persisted_buy_line_count > 0) {
+		return false;
+	}
+
+	return !reject_stale_empty_restore;
+}
+
+bool Bazaar::ShouldOverlayBuyerStartPrices(
+	size_t persisted_buy_line_count,
+	bool has_explicit_price_update,
+	bool restored_persisted_buyer_mode
+)
+{
+	return persisted_buy_line_count > 0
+		&& !has_explicit_price_update
+		&& !restored_persisted_buyer_mode;
+}
+
+int Bazaar::FindBuyerLineIndex(
+	const std::vector<BuyerLinePrice> &lines,
+	uint32 slot,
+	uint32 item_id
+)
+{
+	int slot_match = -1;
+	int item_match = -1;
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (lines[i].slot == slot && (item_id == 0 || lines[i].item_id == item_id)) {
+			return static_cast<int>(i);
+		}
+		if (lines[i].slot == slot && slot_match < 0) {
+			slot_match = static_cast<int>(i);
+		}
+		if (item_id != 0 && lines[i].item_id == item_id && item_match < 0) {
+			item_match = static_cast<int>(i);
+		}
+	}
+
+	if (item_match >= 0) {
+		return item_match;
+	}
+
+	return item_id == 0 ? slot_match : -1;
+}
+
+bool Bazaar::ShouldKeepBuyerPriceWriteAfterTimestampNoOp()
+{
+	return true;
+}
+
+bool Bazaar::ShouldRestoreBuyerAfterRowUpdate(
+	int rows_affected,
+	bool row_already_matches
+)
+{
+	return rows_affected > 0 || row_already_matches;
+}
+
+uint32 Bazaar::ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price)
+{
+	(void) persisted_price;
+	return client_price;
+}
+
+uint32 Bazaar::ResolveBuyerStartPrice(
+	uint32 persisted_price,
+	uint32 client_price,
+	bool has_explicit_price_update
+)
+{
+	return has_explicit_price_update ? persisted_price : client_price;
+}
+
+std::vector<Bazaar::BuyerLinePrice> Bazaar::ApplyBuyerClientLinePrices(
+	const std::vector<BuyerLinePrice> &persisted,
+	const std::vector<BuyerLinePrice> &client,
+	bool client_is_update,
+	bool has_explicit_price_update,
+	bool restored_persisted_buyer_mode
+)
+{
+	auto result = persisted;
+	const bool apply_client = client_is_update ||
+		ShouldOverlayBuyerStartPrices(
+			persisted.size(),
+			has_explicit_price_update,
+			restored_persisted_buyer_mode
+		);
+	if (!apply_client) {
+		return result;
+	}
+
+	for (const auto &client_line : client) {
+		const int index = FindBuyerLineIndex(result, client_line.slot, client_line.item_id);
+		if (index < 0) {
+			continue;
+		}
+
+		result[index].price = client_is_update
+			? ResolveBuyerUpdatePrice(result[index].price, client_line.price)
+			: ResolveBuyerStartPrice(
+				result[index].price,
+				client_line.price,
+				has_explicit_price_update
+			);
+		if (client_line.item_id != 0) {
+			result[index].item_id = client_line.item_id;
+		}
+		result[index].slot = client_line.slot;
+	}
+
+	return result;
+}
+
+bool Bazaar::TraderListingSetsMatch(
+	const std::vector<std::string> &persisted_unique_ids,
+	const std::vector<std::string> &client_unique_ids
+)
+{
+	auto is_placeholder = [](const std::string &item_unique_id) {
+		return item_unique_id.empty() || item_unique_id == "0000000000000000";
+	};
+
+	std::set<std::string> persisted;
+	for (const auto &item_unique_id : persisted_unique_ids) {
+		if (!is_placeholder(item_unique_id)) {
+			persisted.insert(item_unique_id);
+		}
+	}
+
+	std::set<std::string> client;
+	for (const auto &item_unique_id : client_unique_ids) {
+		if (!is_placeholder(item_unique_id)) {
+			client.insert(item_unique_id);
+		}
+	}
+
+	return persisted == client;
+}
+
+uint32 Bazaar::ResolveTraderStartPrice(
+	bool has_persisted_price,
+	uint32 persisted_price,
+	uint32 client_price
+)
+{
+	return has_persisted_price ? persisted_price : client_price;
+}
+
+bool Bazaar::ShouldTeardownListingsOnMovement(
+	bool defer_after_persist_restore,
+	float restore_x,
+	float restore_y,
+	float current_x,
+	float current_y
+)
+{
+	if (!defer_after_persist_restore) {
+		return true;
+	}
+
+	const float dx = current_x - restore_x;
+	const float dy = current_y - restore_y;
+	const float settle = PersistRestoreSettleDistance;
+	return (dx * dx + dy * dy) >= (settle * settle);
 }
 
 void Bazaar::RecordAuditTrail(

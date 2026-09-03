@@ -98,13 +98,28 @@ public:
 
 	static int ModifyBuyLine(Database& db, const BuyerLineItems_Struct b, uint32 char_id)
 	{
-		auto b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}';", char_id, b.slot));
-		if (b_lines.empty() || b_lines.size() > 1){
+		auto b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, b.slot));
+		if (b_lines.empty() && b.item_id != 0) {
+			b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `item_id` = '{}'", char_id, b.item_id));
+			if (b_lines.size() > 1) {
+				for (auto &candidate : b_lines) {
+					if (candidate.buy_slot_id == static_cast<int32_t>(b.slot)) {
+						b_lines = {candidate};
+						break;
+					}
+				}
+				if (b_lines.size() > 1) {
+					b_lines = {b_lines.front()};
+				}
+			}
+		}
+		if (b_lines.empty()) {
 			return 0;
 		}
 
 		auto b_line = b_lines.front();
 
+		b_line.buy_slot_id = b.slot;
 		b_line.item_qty   = b.item_quantity;
 		b_line.item_price = b.item_cost;
 		b_line.item_icon  = b.item_icon;
@@ -131,6 +146,26 @@ public:
 			BuyerTradeItemsRepository::InsertMany(db, queue);
 		}
 
+		return 1;
+	}
+
+	static int ModifyBuyLinePrice(Database& db, uint32 char_id, uint32 slot, uint32 item_id, uint32 item_cost)
+	{
+		auto b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `buy_slot_id` = '{}'", char_id, slot));
+		if (b_lines.empty() && item_id != 0) {
+			b_lines = GetWhere(db, fmt::format("`char_id` = '{}' AND `item_id` = '{}'", char_id, item_id));
+		}
+		if (b_lines.empty()) {
+			return 0;
+		}
+
+		auto b_line = b_lines.front();
+		if (b_line.item_price == item_cost) {
+			return 1;
+		}
+
+		b_line.item_price = item_cost;
+		UpdateOne(db, b_line);
 		return 1;
 	}
 
@@ -205,9 +240,12 @@ public:
 			BuyerLineItems_Struct bli{};
 			bli.item_id       = l.item_id;
 			bli.item_cost     = l.item_price;
+			bli.item_icon     = l.item_icon;
 			bli.item_quantity = l.item_qty;
 			bli.slot          = l.buy_slot_id;
 			bli.item_name     = l.item_name;
+			bli.enabled       = 1;
+			bli.item_toggle   = 1;
 
 			for (auto const &i: GetSubIDs(buy_line_trade_items, l.id)) {
 				BuyerLineTradeItems_Struct blti{};
