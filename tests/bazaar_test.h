@@ -23,6 +23,8 @@
 #include "cppunit/cpptest.h"
 
 #include <limits>
+#include <string>
+#include <vector>
 
 class BazaarTest : public Test::Suite {
 public:
@@ -59,6 +61,29 @@ public:
 		TEST_ADD(BazaarTest::AcceptsMatchingListedPrice);
 		TEST_ADD(BazaarTest::FailureSubActionRewritesSuccess);
 		TEST_ADD(BazaarTest::FailureSubActionPreservesSpecificFailure);
+		TEST_ADD(BazaarTest::PreservesOfflineListingsForSameCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForAlternateCharacter);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsForDifferentDestination);
+		TEST_ADD(BazaarTest::DoesNotPreserveOfflineListingsWithoutValidIds);
+		TEST_ADD(BazaarTest::UsesClientBuyerStartPayloadOnFreshBarterOn);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadWhenPersistedLinesExist);
+		TEST_ADD(BazaarTest::RejectsStaleBuyerStartPayloadAfterEmptyRestore);
+		TEST_ADD(BazaarTest::BuyerUpdateWritesNewOfferingPrice);
+		TEST_ADD(BazaarTest::BuyerStartOverlaysWindowPricesWhenLinesExist);
+		TEST_ADD(BazaarTest::BuyerStartAfterUpdateDoesNotResurrectStaleIniPrices);
+		TEST_ADD(BazaarTest::BuyerReconnectShowsUpdatedPricesNotFirstSession);
+		TEST_ADD(BazaarTest::BuyerRestoreStartKeepsPersistedWhenIniIsStale);
+		TEST_ADD(BazaarTest::BuyerUpdateMatchesByItemIdWhenSlotsDiffer);
+		TEST_ADD(BazaarTest::BuyerLineMatchPrefersItemIdOverConflictingSlot);
+		TEST_ADD(BazaarTest::KeepsBuyerPriceWriteWhenTimestampIsNoOp);
+		TEST_ADD(BazaarTest::RestoresBuyerWhenRowUpdateIsNoOp);
+		TEST_ADD(BazaarTest::ChromelykeUpdateThenStartThenReconnectKeepsNewPrices);
+		TEST_ADD(BazaarTest::TraderListingSetsMatchIgnoringOrderAndPlaceholders);
+		TEST_ADD(BazaarTest::TraderListingSetsDifferOnAddOrRemove);
+		TEST_ADD(BazaarTest::PersistedTraderPriceWinsOverClientStartPrice);
+		TEST_ADD(BazaarTest::SpawnJitterAfterRestoreDoesNotTeardownListings);
+		TEST_ADD(BazaarTest::WalkingAwayAfterRestoreTeardownsListings);
+		TEST_ADD(BazaarTest::AnyMovementTeardownsListingsWithoutRestoreDeferral);
 	}
 
 	~BazaarTest()
@@ -360,5 +385,257 @@ private:
 	void FailureSubActionPreservesSpecificFailure()
 	{
 		TEST_ASSERT(Bazaar::ResolvePurchaseFailureSubAction(TooManyParcels) == TooManyParcels);
+	}
+
+	void PreservesOfflineListingsForSameCharacter()
+	{
+		TEST_ASSERT(Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 151, 0));
+	}
+
+	void DoesNotPreserveOfflineListingsForAlternateCharacter()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 456, 151, 0));
+	}
+
+	void DoesNotPreserveOfflineListingsForDifferentDestination()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 123, 202, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 1, 123, 151, 2));
+	}
+
+	void DoesNotPreserveOfflineListingsWithoutValidIds()
+	{
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(0, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 151, 0, 0, 151, 0));
+		TEST_ASSERT(!Bazaar::ShouldPreserveOfflineListings(123, 0, 0, 123, 0, 0));
+	}
+
+	void UsesClientBuyerStartPayloadOnFreshBarterOn()
+	{
+		TEST_ASSERT(Bazaar::ShouldUseClientBuyerStartPayload(0, false));
+	}
+
+	void RejectsStaleBuyerStartPayloadWhenPersistedLinesExist()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(2, false));
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(1, true));
+	}
+
+	void RejectsStaleBuyerStartPayloadAfterEmptyRestore()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(0, true));
+	}
+
+	void BuyerUpdateWritesNewOfferingPrice()
+	{
+		TEST_ASSERT(Bazaar::ResolveBuyerUpdatePrice(40, 30) == 30);
+		TEST_ASSERT(Bazaar::ResolveBuyerUpdatePrice(10, 20) == 20);
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> updates = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto after_update = Bazaar::ApplyBuyerClientLinePrices(persisted, updates, true, false);
+		TEST_ASSERT(after_update.size() == 2);
+		TEST_ASSERT(after_update[0].price == 30);
+		TEST_ASSERT(after_update[1].price == 20);
+	}
+
+	void BuyerStartOverlaysWindowPricesWhenLinesExist()
+	{
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(2, true));
+		TEST_ASSERT(Bazaar::ShouldOverlayBuyerStartPrices(2, false, false));
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, false, true));
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> window = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto after_start = Bazaar::ApplyBuyerClientLinePrices(persisted, window, false, false);
+		TEST_ASSERT(after_start[0].price == 30);
+		TEST_ASSERT(after_start[1].price == 20);
+	}
+
+	void BuyerStartAfterUpdateDoesNotResurrectStaleIniPrices()
+	{
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, true, false));
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, true, true));
+		TEST_ASSERT(Bazaar::ResolveBuyerStartPrice(30, 40, true) == 30);
+		TEST_ASSERT(Bazaar::ResolveBuyerStartPrice(20, 10, true) == 20);
+
+		const std::vector<Bazaar::BuyerLinePrice> after_update = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> stale_ini = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const auto after_start = Bazaar::ApplyBuyerClientLinePrices(after_update, stale_ini, false, true);
+		TEST_ASSERT(after_start[0].price == 30);
+		TEST_ASSERT(after_start[1].price == 20);
+	}
+
+	void BuyerReconnectShowsUpdatedPricesNotFirstSession()
+	{
+		const std::vector<Bazaar::BuyerLinePrice> first_session = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> window_update = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto persisted_after_update = Bazaar::ApplyBuyerClientLinePrices(
+			first_session,
+			window_update,
+			true,
+			false
+		);
+		const auto after_start_barter = Bazaar::ApplyBuyerClientLinePrices(
+			persisted_after_update,
+			first_session,
+			false,
+			true
+		);
+		const auto reconnect_visible = after_start_barter;
+
+		TEST_ASSERT(reconnect_visible.size() == 2);
+		TEST_ASSERT(reconnect_visible[0].price == 30);
+		TEST_ASSERT(reconnect_visible[1].price == 20);
+		TEST_ASSERT(reconnect_visible[0].price != 40);
+		TEST_ASSERT(reconnect_visible[1].price != 10);
+	}
+
+	void BuyerRestoreStartKeepsPersistedWhenIniIsStale()
+	{
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(2, false, true));
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> stale_ini = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const auto after_restore_start = Bazaar::ApplyBuyerClientLinePrices(
+			persisted,
+			stale_ini,
+			false,
+			false,
+			true
+		);
+		TEST_ASSERT(after_restore_start[0].price == 30);
+		TEST_ASSERT(after_restore_start[1].price == 20);
+	}
+
+	void BuyerUpdateMatchesByItemIdWhenSlotsDiffer()
+	{
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex({{0, 22503, 40}, {1, 10029, 10}}, 99, 22503) == 0);
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex({{0, 22503, 40}, {1, 10029, 10}}, 99, 10029) == 1);
+
+		const std::vector<Bazaar::BuyerLinePrice> persisted = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> updates = {
+			{7, 22503, 30},
+			{8, 10029, 20}
+		};
+		const auto after_update = Bazaar::ApplyBuyerClientLinePrices(persisted, updates, true, false);
+		TEST_ASSERT(after_update[0].price == 30);
+		TEST_ASSERT(after_update[1].price == 20);
+	}
+
+	void BuyerLineMatchPrefersItemIdOverConflictingSlot()
+	{
+		TEST_ASSERT(Bazaar::FindBuyerLineIndex({{0, 22503, 40}, {1, 10029, 10}}, 0, 10029) == 1);
+	}
+
+	void KeepsBuyerPriceWriteWhenTimestampIsNoOp()
+	{
+		TEST_ASSERT(Bazaar::ShouldKeepBuyerPriceWriteAfterTimestampNoOp());
+	}
+
+	void RestoresBuyerWhenRowUpdateIsNoOp()
+	{
+		TEST_ASSERT(Bazaar::ShouldRestoreBuyerAfterRowUpdate(0, true));
+		TEST_ASSERT(Bazaar::ShouldRestoreBuyerAfterRowUpdate(1, false));
+		TEST_ASSERT(!Bazaar::ShouldRestoreBuyerAfterRowUpdate(0, false));
+	}
+
+	void ChromelykeUpdateThenStartThenReconnectKeepsNewPrices()
+	{
+		const std::vector<Bazaar::BuyerLinePrice> first_session = {
+			{0, 22503, 40},
+			{1, 10029, 10}
+		};
+		const std::vector<Bazaar::BuyerLinePrice> updates = {
+			{0, 22503, 30},
+			{1, 10029, 20}
+		};
+		const auto after_update = Bazaar::ApplyBuyerClientLinePrices(first_session, updates, true, false);
+		TEST_ASSERT(after_update[0].price == 30);
+		TEST_ASSERT(after_update[1].price == 20);
+		TEST_ASSERT(!Bazaar::ShouldOverlayBuyerStartPrices(after_update.size(), true, true));
+		TEST_ASSERT(!Bazaar::ShouldUseClientBuyerStartPayload(after_update.size(), true));
+		TEST_ASSERT(Bazaar::ShouldKeepBuyerPriceWriteAfterTimestampNoOp());
+
+		const auto after_start = Bazaar::ApplyBuyerClientLinePrices(
+			after_update,
+			first_session,
+			false,
+			true,
+			true
+		);
+		TEST_ASSERT(after_start[0].price == 30);
+		TEST_ASSERT(after_start[1].price == 20);
+		TEST_ASSERT(Bazaar::ShouldRestoreBuyerAfterRowUpdate(0, true));
+	}
+
+	void TraderListingSetsMatchIgnoringOrderAndPlaceholders()
+	{
+		TEST_ASSERT(Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"bbb", "aaa"}));
+		TEST_ASSERT(Bazaar::TraderListingSetsMatch({"aaa", ""}, {"aaa", "0000000000000000"}));
+	}
+
+	void TraderListingSetsDifferOnAddOrRemove()
+	{
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"aaa", "ccc"}));
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa"}, {"aaa", "bbb"}));
+		TEST_ASSERT(!Bazaar::TraderListingSetsMatch({"aaa", "bbb"}, {"aaa"}));
+	}
+
+	void PersistedTraderPriceWinsOverClientStartPrice()
+	{
+		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(true, 500, 100) == 500);
+		TEST_ASSERT(Bazaar::ResolveTraderStartPrice(false, 500, 100) == 100);
+	}
+
+	void SpawnJitterAfterRestoreDoesNotTeardownListings()
+	{
+		TEST_ASSERT(!Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 100.4f, 200.3f));
+		TEST_ASSERT(!Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 104.0f, 200.0f));
+	}
+
+	void WalkingAwayAfterRestoreTeardownsListings()
+	{
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 106.0f, 200.0f));
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(true, 100.0f, 200.0f, 100.0f, 220.0f));
+	}
+
+	void AnyMovementTeardownsListingsWithoutRestoreDeferral()
+	{
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.01f, 200.0f));
+		TEST_ASSERT(Bazaar::ShouldTeardownListingsOnMovement(false, 100.0f, 200.0f, 100.0f, 200.0f));
 	}
 };

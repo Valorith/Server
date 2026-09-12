@@ -386,6 +386,28 @@ enum : uint8 {
 	OfflineSessionModeBuyer  = 2
 };
 
+// OfflineSessionReclaim_Struct is #pragma pack(1) and must stay 26 bytes.
+// Encode preserve in the high bit of `mode` so world/zone cannot skew size.
+constexpr uint8 OfflineSessionModeValueMask         = 0x7F;
+constexpr uint8 OfflineSessionPreserveListingsBit   = 0x80;
+
+inline uint8 OfflineSessionModeValue(uint8 mode)
+{
+	return static_cast<uint8>(mode & OfflineSessionModeValueMask);
+}
+
+inline bool OfflineSessionPreserveListings(uint8 mode)
+{
+	return (mode & OfflineSessionPreserveListingsBit) != 0;
+}
+
+inline uint8 EncodeOfflineSessionMode(uint8 mode, bool preserve_listings)
+{
+	return preserve_listings
+		? static_cast<uint8>(mode | OfflineSessionPreserveListingsBit)
+		: static_cast<uint8>(mode & OfflineSessionModeValueMask);
+}
+
 enum : int8 {
 	OfflineSessionReclaimFailed = 0,
 	OfflineSessionReclaimSuccess = 1,
@@ -871,6 +893,11 @@ struct OfflineSessionReclaim_Struct {
 	uint8  mode;
 	int8   response;
 };
+
+static_assert(
+	sizeof(OfflineSessionReclaim_Struct) == 26,
+	"OfflineSessionReclaim_Struct must stay 26 bytes; encode preserve in mode, do not add fields"
+);
 
 struct WorldShutDown_Struct {
 	uint32	time;
