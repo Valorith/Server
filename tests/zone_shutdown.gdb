@@ -18,10 +18,12 @@ import os
 
 phase = os.environ.get("EQEMU_SHUTDOWN_PHASE", "process")
 signal = os.environ.get("EQEMU_SHUTDOWN_SIGNAL", "SIGTERM")
-repeat = os.environ.get("EQEMU_SHUTDOWN_REPEAT", "0") == "1"
+repeat = os.environ.get("EQEMU_SHUTDOWN_REPEAT", "0")
 recipient = os.environ.get("EQEMU_SHUTDOWN_THREAD", "main")
 assert phase in ("process", "startup", "sleeping")
 assert signal in ("SIGTERM", "SIGINT", "request")
+assert repeat in ("0", "1"), "EQEMU_SHUTDOWN_REPEAT must be 0 or 1"
+repeat = repeat == "1"
 assert not (repeat and phase == "sleeping")
 assert recipient in ("main", "worker")
 assert recipient != "worker" or (phase == "process" and signal != "request" and not repeat)
