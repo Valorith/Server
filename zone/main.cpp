@@ -61,6 +61,7 @@
 #include "zone/zone.h"
 #include "zone/zonedb.h"
 
+#include <atomic>
 #include <chrono>
 #include <csignal>
 
@@ -70,6 +71,12 @@
 #endif
 
 volatile bool RunLoops = true;
+
+namespace {
+// atomic_flag is always lock-free, including when a signal arrives on a worker thread.
+std::atomic_flag shutdown_requested = ATOMIC_FLAG_INIT;
+}
+
 #ifdef __FreeBSD__
 #include <pthread_np.h>
 #endif
@@ -514,6 +521,11 @@ int main(int argc, char **argv)
 	std::unique_ptr<EQ::Net::WebsocketServer>          ws_server;
 
 	auto loop_fn = [&](EQ::Timer *t) {
+		if (shutdown_requested.test(std::memory_order_relaxed)) {
+			EQ::EventLoop::Get().Shutdown();
+			return;
+		}
+
 		//Advance the timer to our current point in time
 		Timer::SetCurrentTime();
 
@@ -641,6 +653,12 @@ int main(int argc, char **argv)
 
 	EQ::EventLoop::Get().Run();
 
+	// Save and destroy the zone after callbacks finish, while its dependencies are alive.
+	if (zone) {
+		zone->Shutdown(true);
+	}
+	LogInfo("Shutting down...");
+
 	entity_list.Clear();
 	entity_list.RemoveAllEncounters(); // gotta do it manually or rewrite lots of shit :P
 
@@ -652,10 +670,6 @@ int main(int argc, char **argv)
 
 	safe_delete(Config);
 
-	if (zone != 0) {
-		zone->SetSaveZoneState(false);
-		zone->Shutdown(true);
-	}
 	//Fix for Linux world server problem.
 	safe_delete(npc_scale_manager);
 	command_deinit();
@@ -672,17 +686,12 @@ int main(int argc, char **argv)
 
 void Shutdown()
 {
-	zone->Shutdown(true);
-	LogInfo("Shutting down...");
-	EQEmuLogSys::Instance()->CloseFileLogs();
-	EQ::EventLoop::Get().Shutdown();
+	// A signal can interrupt gameplay or teardown. Never destroy objects in the handler.
+	shutdown_requested.test_and_set(std::memory_order_relaxed);
 }
 
 void CatchSignal(int sig_num)
 {
-#ifdef _WINDOWS
-	LogInfo("Recieved signal: [{}]", sig_num);
-#endif
 	Shutdown();
 }
 
