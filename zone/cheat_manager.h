@@ -51,6 +51,7 @@ private:
 	static constexpr uint32 PositionCheckIntervalMS = 2500;
 	static constexpr uint32 DefaultMovementCheckIntervalMS = 1000;
 	static constexpr uint32 FastMemorizationWindowMS = 1;
+	static constexpr uint32 ExemptionGracePeriodMS = 5000;
 
 public:
 	CheatManager()
@@ -82,6 +83,7 @@ public:
 	void ClientProcess();
 private:
 	bool  m_exemption[ExemptionType::MAX_EXEMPTIONS]{};
+	uint32 m_exemption_set_time[ExemptionType::MAX_EXEMPTIONS]{};
 	float m_distance_since_last_position_check;
 	glm::vec3 m_last_position_check_location;
 	glm::vec3 m_current_position_check_location;

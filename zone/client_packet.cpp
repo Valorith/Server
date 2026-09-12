@@ -5080,6 +5080,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	// position is actually an offset from the boat he is inside.
 
 	bool	on_boat = (ppu->vehicle_id != 0);
+	Mob	*boat = nullptr;
 
 	// From this point forward, we need to use a new set of variables for client
 	// position.  If the client is in a boat, we need to add the boat pos and
@@ -5091,8 +5092,9 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 	float 	new_heading = EQ12toFloat(ppu->heading);
 
 	if (on_boat) {
-		Mob *boat = entity_list.GetMob(ppu->vehicle_id);
-		if (boat == 0) {
+		boat = entity_list.GetMob(ppu->vehicle_id);
+		if (boat == nullptr || !(boat->GetIsBoat() || boat->IsControllableBoat())) {
+			boat = nullptr;
 			LogError("Can't find boat for client position offset.");
 		}
 		else {
@@ -5119,7 +5121,21 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 		}
 	}
 
-	cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
+	// Boat motion is folded into the world coordinates above and is not player
+	// movement. vehicle_id is client-controlled, so the movement check is only
+	// skipped for server-driven passenger ships (GetIsBoat), and only when the
+	// server-side position corroborates that the client is aboard AND the
+	// transformed position stays on the vessel. Controllable boats are
+	// excluded because their position is client-writable (GMMove above), which
+	// would let a hacked client drag the corroboration along in hops; their
+	// riders keep going through the normal movement check as before this
+	// change. Anything else also goes through the normal movement check.
+	bool is_aboard_boat = boat && boat->GetIsBoat() &&
+						  DistanceNoZ(GetPosition(), boat->GetPosition()) <= 350.0f &&
+						  DistanceNoZ(glm::vec3(cx, cy, cz), glm::vec3(boat->GetPosition())) <= 350.0f;
+	if (!is_aboard_boat) {
+		cheat_manager.MovementCheck(glm::vec3(cx, cy, cz));
+	}
 
 	if (IsDraggingCorpse())
 		DragCorpses();
@@ -16666,10 +16682,16 @@ void Client::Handle_OP_UnderWorld(const EQApplicationPacket *app)
 	auto dist = Distance(
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, zone->newzone_data.underworld),
 		glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
-	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
-	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0) {
+	// The packet's coordinates are client-supplied, so only grant the Port
+	// exemption when the server-observed position corroborates the report both
+	// vertically (at or below the underworld plane) and horizontally; a forged
+	// report gets no exemption and falls through to the movement check below.
+	if (m_UnderWorld->spawn_id == GetID() && dist <= 5.0f && zone->newzone_data.underworld_teleport_index != 0 &&
+		GetPosition().z <= zone->newzone_data.underworld + 200.0f &&
+		DistanceNoZ(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, 0.0f), glm::vec3(GetPosition())) <= 200.0f) {
 		cheat_manager.SetExemptStatus(Port, true);
 	}
+	cheat_manager.MovementCheck(glm::vec3(m_UnderWorld->x, m_UnderWorld->y, m_UnderWorld->z));
 }
 
 void Client::Handle_OP_SharedTaskRemovePlayer(const EQApplicationPacket *app)
