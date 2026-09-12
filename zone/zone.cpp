@@ -1690,11 +1690,19 @@ bool Zone::Process() {
 
 	const bool has_timer_event = parse->ZoneHasQuestSub(EVENT_TIMER);
 
-	for (auto e : zone_timers) {
+	std::vector<std::string> elapsed_zone_timers;
+	elapsed_zone_timers.reserve(zone_timers.size());
+
+	// Timer quest events may add, stop, or pause zone timers, invalidating this vector's iterators.
+	for (auto &e : zone_timers) {
 		if (e.timer_.Enabled() && e.timer_.Check()) {
-			if (has_timer_event) {
-				parse->EventZone(EVENT_TIMER, this, e.name);
-			}
+			elapsed_zone_timers.emplace_back(e.name);
+		}
+	}
+
+	if (has_timer_event) {
+		for (const auto &timer_name : elapsed_zone_timers) {
+			parse->EventZone(EVENT_TIMER, this, timer_name);
 		}
 	}
 
