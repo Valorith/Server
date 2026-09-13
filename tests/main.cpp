@@ -16,6 +16,7 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
+#include "tests/achievements_test.h"
 #include "tests/atobool_test.h"
 #include "tests/autoskill_util_test.h"
 #include "tests/bazaar_test.h"
@@ -56,6 +57,7 @@ int main()
 	try {
 		std::unique_ptr<Test::Output> output(new Test::TextOutput(Test::TextOutput::Verbose));
 		Test::Suite                   tests;
+		tests.add(new AchievementsTest());
 		tests.add(new RewardSelectionTest());
 		tests.add(new MemoryMappedFileTest());
 		tests.add(new IPCMutexTest());

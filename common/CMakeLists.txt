@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.0)
 
 set(common_sources
     auto_skill.cpp
+    achievements.cpp
     base_packet.cpp
     bazaar.cpp
     bodytypes.cpp
@@ -544,6 +545,8 @@ set(repositories
 set(common_headers
     StackWalker/StackWalker.h
     additive_lagged_fibonacci_engine.h
+    achievement_mutations.h
+    achievements.h
     base_packet.h
     bazaar.h
     bodytypes.h
