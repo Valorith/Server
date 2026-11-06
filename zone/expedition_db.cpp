@@ -864,14 +864,6 @@ namespace {
 		expedition.AddLockout(DzLockout::ReplayTimer, seconds);
 	}
 
-	bool HasCurrentExpeditionLockout(DynamicZone& expedition, const std::string& event_name)
-	{
-		const auto& lockouts = expedition.GetLockouts();
-		return std::ranges::any_of(lockouts, [&](const DzLockout& lockout) {
-			return lockout.IsEvent(event_name) && lockout.IsUUID(expedition.GetUUID()) && !lockout.IsExpired();
-		});
-	}
-
 	void ExecuteActions(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name)
 	{
 		for (const auto& action : event_data.actions) {
@@ -911,7 +903,7 @@ namespace {
 
 	bool CompleteRuntimeEvent(DynamicZone& expedition, const Event& event_data, const std::string& runtime_event_name, Client* notifier)
 	{
-		if (HasCurrentExpeditionLockout(expedition, runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
+		if (HasActiveExpeditionLockout(expedition, runtime_event_name) || !TryMarkRuntimeEventComplete(expedition, runtime_event_name)) {
 			return false;
 		}
 
@@ -977,7 +969,7 @@ bool IsBossSpawnBlockedByActiveLockout(uint32_t npc_type_id, uint32_t spawn2_id)
 				continue;
 			}
 
-			if (HasCurrentExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))) {
+			if (HasActiveExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))) {
 				return true;
 			}
 		}
@@ -2182,7 +2174,7 @@ bool HandleNpcSpawn(NPC& npc)
 			if (
 				IsGroupedBossCompletionMode(event_data) &&
 				BossEventNpcMatchesSpawn(event_npc, npc.GetNPCTypeID(), npc.GetSpawnPointID()) &&
-				HasCurrentExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))
+				HasActiveExpeditionLockout(*expedition, RuntimeEventName(event_data, event_npc))
 			) {
 				npc.Depop(false);
 				handled = true;
