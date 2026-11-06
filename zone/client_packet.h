@@ -24,6 +24,9 @@
 	void Handle_0x0193(const EQApplicationPacket *app);
 	void Handle_0x01e7(const EQApplicationPacket *app);
 	void Handle_OP_AAAction(const EQApplicationPacket *app);
+	void Handle_OP_AchievementCompareRequest(const EQApplicationPacket *app);
+	void Handle_OP_AchievementLinkRequest(const EQApplicationPacket *app);
+	void Handle_OP_AchievementRequest(const EQApplicationPacket *app);
 	void Handle_OP_AchievementReward(const EQApplicationPacket *app);
 	void Handle_OP_RewardSelection(const EQApplicationPacket *app);
 	void HandleRewardSelectionPacket(

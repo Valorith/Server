@@ -7,6 +7,7 @@ set(tests_sources
 )
 
 set(tests_headers
+	achievements_test.h
 	atobool_test.h
 	autoskill_util_test.h
 	bazaar_test.h
