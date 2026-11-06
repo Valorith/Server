@@ -14,6 +14,7 @@ set(tests_headers
 	crash_report_endpoint_test.h
 	data_verification_test.h
 	eq_limits_test.h
+	expedition_lockout_test.h
 	expedition_schema_test.h
 	fixed_memory_test.h
 	fixed_memory_variable_test.h

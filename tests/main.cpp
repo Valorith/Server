@@ -23,6 +23,7 @@
 #include "tests/crash_report_endpoint_test.h"
 #include "tests/data_verification_test.h"
 #include "tests/eq_limits_test.h"
+#include "tests/expedition_lockout_test.h"
 #include "tests/fixed_memory_test.h"
 #include "tests/fixed_memory_variable_test.h"
 #include "tests/expedition_schema_test.h"
@@ -61,6 +62,7 @@ int main()
 		tests.add(new IPCMutexTest());
 		tests.add(new FixedMemoryHashTest());
 		tests.add(new FixedMemoryVariableHashTest());
+		tests.add(new ExpeditionLockoutTest());
 		tests.add(new ExpeditionSchemaTest());
 		tests.add(new atoboolTest());
 		tests.add(new AutoSkillUtilTest());

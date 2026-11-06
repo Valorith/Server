@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/dynamic_zone_base.h"
 #include "common/repositories/dynamic_zone_templates_repository.h"
 #include "common/strings.h"
 
@@ -40,6 +41,13 @@ inline constexpr const char* kBaseZoneBossUnavailableNote = "while associated bo
 inline constexpr const char* kBaseZoneBossUnavailableMessage = "Unavailable while associated bosses are spawned in the base zone.";
 inline constexpr const char* kBaseZoneBossUnavailableFailure = "unavailable while associated bosses are spawned in the base zone";
 inline constexpr uint32_t kBossLockoutSpawnRetryMilliseconds = 60000;
+
+inline bool HasActiveExpeditionLockout(DynamicZoneBase& expedition, const std::string& event_name)
+{
+	// Inherited event lockouts retain their original expedition UUID. They must
+	// still prevent boss spawns and repeat completion until the timer expires.
+	return expedition.HasLockout(event_name);
+}
 
 struct RequestNpc {
 	uint32_t id = 0;
