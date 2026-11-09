@@ -11927,48 +11927,50 @@ void Client::Handle_OP_Petition(const EQApplicationPacket *app)
 {
 	if (app->size <= 1)
 		return;
-	if (!worldserver.Connected())
+	const auto *text = reinterpret_cast<const char *>(app->pBuffer);
+	FilePetition(std::string(text, strnlen(text, app->size)));
+}
+
+// /guidehelp and #petition share this path so both create the same petition.
+bool Client::FilePetition(const std::string &text)
+{
+	if (!worldserver.Connected()) {
 		Message(Chat::Red, "Error: World server disconnected");
-	/*else if(petition_list.FindPetitionByAccountName(AccountName()))
-	{
-	Message(Chat::White,"You already have a petition in queue, you cannot petition again until this one has been responded to or you have deleted the petition.");
-	return;
-	}*/
-	else
-	{
-		if (PetitionList::Instance()->FindPetitionByAccountName(AccountName()))
-		{
-			Message(Chat::White, "You already have a petition in the queue, you must wait for it to be answered or use /deletepetition to delete it.");
-			return;
-		}
-		auto pet = new Petition(CharacterID());
-		pet->SetAName(AccountName());
-		pet->SetClass(GetClass());
-		pet->SetLevel(GetLevel());
-		pet->SetCName(GetName());
-		pet->SetRace(GetRace());
-		pet->SetLastGM("");
-		pet->SetCName(GetName());
-		pet->SetPetitionText((char*)app->pBuffer);
-		pet->SetZone(zone->GetZoneID());
-		pet->SetUrgency(0);
-		PetitionList::Instance()->AddPetition(pet);
-		database.InsertPetitionToDB(pet);
-		PetitionList::Instance()->UpdateGMQueue();
-		PetitionList::Instance()->UpdateZoneListQueue();
-		worldserver.SendEmoteMessage(
-			0,
-			0,
-			AccountStatus::QuestTroupe,
-			Chat::Yellow,
-			fmt::format(
-				"{} has made a petition. ID: {}",
-				GetCleanName(),
-				pet->GetID()
-			).c_str()
-		);
+		return false;
 	}
-	return;
+	if (PetitionList::Instance()->FindPetitionByAccountName(AccountName()))
+	{
+		Message(Chat::White, "You already have a petition in the queue, you must wait for it to be answered or use /deletepetition to delete it.");
+		return false;
+	}
+	std::string petition_text = text;
+	auto pet = new Petition(CharacterID());
+	pet->SetAName(AccountName());
+	pet->SetClass(GetClass());
+	pet->SetLevel(GetLevel());
+	pet->SetCName(GetName());
+	pet->SetRace(GetRace());
+	pet->SetLastGM("");
+	pet->SetCName(GetName());
+	pet->SetPetitionText(petition_text.data());
+	pet->SetZone(zone->GetZoneID());
+	pet->SetUrgency(0);
+	PetitionList::Instance()->AddPetition(pet);
+	database.InsertPetitionToDB(pet);
+	PetitionList::Instance()->UpdateGMQueue();
+	PetitionList::Instance()->UpdateZoneListQueue();
+	worldserver.SendEmoteMessage(
+		0,
+		0,
+		AccountStatus::QuestTroupe,
+		Chat::Yellow,
+		fmt::format(
+			"{} has made a petition. ID: {}",
+			GetCleanName(),
+			pet->GetID()
+		).c_str()
+	);
+	return true;
 }
 
 void Client::Handle_OP_PetitionBug(const EQApplicationPacket *app)

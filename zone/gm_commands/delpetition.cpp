@@ -18,3 +18,35 @@ void command_delpetition(Client *c, const Seperator *sep)
 
 }
 
+#include "zone/petitions.h"
+#include "zone/worldserver.h"
+
+extern WorldServer worldserver;
+
+// Players can file a petition without the /guidehelp window. While one is
+// open, the text goes to Game Master as a tell so Player Support can add it
+// to the case or tell the player why it cannot.
+void command_petition(Client *c, const Seperator *sep)
+{
+	std::string text = sep->argplus[1] ? sep->argplus[1] : "";
+	Strings::Trim(text);
+	const bool has_petition = PetitionList::Instance()->FindPetitionByAccountName(c->AccountName());
+	if (text.empty()) {
+		c->Message(
+			Chat::White,
+			has_petition ? "Your petition is in the queue. Use #petition [message] to add to it, or /deletepetition to withdraw it."
+			     : "Usage: #petition [message] - Describe your problem and a Game Master will respond."
+		);
+		return;
+	}
+	if (!has_petition) {
+		if (c->FilePetition(text)) {
+			c->Message(Chat::Yellow, "Your petition has been submitted. A Game Master will respond as soon as possible.");
+		}
+		return;
+	}
+	// Common Tongue at full skill, matching an ordinary tell.
+	if (!worldserver.SendChannelMessageRaw(c, "GameMaster", ChatChannel_Tell, 0, 0, 100, text.c_str())) {
+		c->Message(Chat::Red, "Error: World server disconnected");
+	}
+}
