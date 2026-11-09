@@ -592,7 +592,7 @@ public:
 	/* Petitions   */
 	void	DeletePetitionFromDB(Petition* wpet);
 	void	UpdatePetitionToDB(Petition* wpet);
-	void	InsertPetitionToDB(Petition* wpet);
+	bool	InsertPetitionToDB(Petition* wpet);
 	void	RefreshPetitionsFromDB();
 
 	/* Merchants  */

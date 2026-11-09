@@ -11955,8 +11955,14 @@ bool Client::FilePetition(const std::string &text)
 	pet->SetPetitionText(petition_text.data());
 	pet->SetZone(zone->GetZoneID());
 	pet->SetUrgency(0);
+	// Save first, so the player is never told a petition was filed when it
+	// was not.
+	if (!database.InsertPetitionToDB(pet)) {
+		safe_delete(pet);
+		Message(Chat::Red, "Your petition could not be saved. Please try again.");
+		return false;
+	}
 	PetitionList::Instance()->AddPetition(pet);
-	database.InsertPetitionToDB(pet);
 	PetitionList::Instance()->UpdateGMQueue();
 	PetitionList::Instance()->UpdateZoneListQueue();
 	worldserver.SendEmoteMessage(

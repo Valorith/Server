@@ -392,7 +392,12 @@ struct PendingPlayerSupportTell {
 	uint32 character_id;
 	std::unique_ptr<ServerPacket> packet;
 	SupportChatClock::time_point expires;
+	// Spire's answer, or "timeout". It waits here while the sender is zoning.
+	std::string decision;
 };
+
+// How long an answer waits for a sender who is zoning.
+constexpr auto SupportTellZoningGrace = std::chrono::seconds(60);
 
 std::unordered_map<std::string, PendingPlayerSupportTell> pending_support_tells;
 
@@ -426,15 +431,20 @@ void RejectPlayerSupportTell(ClientListEntry &sender, const std::string &decisio
 	ZSList::Instance()->SendChannelMessageRaw(from.c_str(), sender.name(), ChatChannel_Tell, 0, message);
 }
 
-void FinishPlayerSupportTell(const PendingPlayerSupportTell &tell, const std::string &decision)
+// Delivers the answer to the sender. Returns false while the sender is
+// zoning, so the answer can wait for them instead of being lost. Statuses
+// past InZone (such as offline trading on some servers) count as gone.
+bool FinishPlayerSupportTell(const PendingPlayerSupportTell &tell)
 {
 	auto *sender = ClientList::Instance()->FindCLEByCharacterID(tell.character_id);
-	if (!sender || sender->AccountID() != tell.account_id || sender->Online() != CLE_Status::InZone || !sender->Server()) {
-		return;
+	if (!sender || sender->AccountID() != tell.account_id || sender->Online() < CLE_Status::Zoning ||
+		sender->Online() > CLE_Status::InZone) {
+		return true;
 	}
-	if (tell.expires <= SupportChatClock::now()) {
-		RejectPlayerSupportTell(*sender, "timeout");
-	} else if (decision == "accepted") {
+	if (sender->Online() != CLE_Status::InZone || !sender->Server()) {
+		return false;
+	}
+	if (tell.decision == "accepted") {
 		const auto *original = reinterpret_cast<const ServerChannelMessage_Struct *>(tell.packet->pBuffer);
 		const auto text = EscapeChannelText(original->message);
 		ServerPacket echo(ServerOP_ChannelMessage, sizeof(ServerChannelMessage_Struct) + text.size() + 1);
@@ -446,8 +456,9 @@ void FinishPlayerSupportTell(const PendingPlayerSupportTell &tell, const std::st
 		message->noreply = true;
 		sender->Server()->SendPacket(&echo);
 	} else {
-		RejectPlayerSupportTell(*sender, decision);
+		RejectPlayerSupportTell(*sender, tell.decision);
 	}
+	return true;
 }
 
 }
@@ -512,8 +523,11 @@ void ProcessPlayerSupportTells()
 	}
 	next_check = now + std::chrono::seconds(1);
 	for (auto it = pending_support_tells.begin(); it != pending_support_tells.end();) {
-		if (it->second.expires <= now) {
-			FinishPlayerSupportTell(it->second, "timeout");
+		auto &tell = it->second;
+		if (tell.decision.empty() && tell.expires <= now) {
+			tell.decision = "timeout";
+		}
+		if (!tell.decision.empty() && (FinishPlayerSupportTell(tell) || tell.expires + SupportTellZoningGrace <= now)) {
 			it = pending_support_tells.erase(it);
 		} else {
 			++it;
@@ -535,9 +549,12 @@ static void ConsoleSupportChat(
 		return;
 	} else if (args.size() == 3 && args[0] == "decision") {
 		auto it = pending_support_tells.find(args[1]);
-		if (it != pending_support_tells.end() && it->second.console_id == connection->GetUUID()) {
-			FinishPlayerSupportTell(it->second, args[2]);
-			pending_support_tells.erase(it);
+		// The first answer stands; a late one cannot replace a timeout.
+		if (it != pending_support_tells.end() && it->second.console_id == connection->GetUUID() && it->second.decision.empty()) {
+			it->second.decision = args[2];
+			if (FinishPlayerSupportTell(it->second)) {
+				pending_support_tells.erase(it);
+			}
 		}
 		return;
 	} else if (args.size() == 1 && args[0] == "ping") {
