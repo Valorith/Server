@@ -911,6 +911,23 @@ static Client *GetSupportClient(const Json::Value &params)
 	return client && client->AccountID() == params["account_id"].asUInt() && client->Connected() ? client : nullptr;
 }
 
+// Corpse moves name the character and its account; both must match.
+static bool SupportCharacterOnAccount(uint32 character_id, uint32 account_id)
+{
+	if (!character_id || !account_id) {
+		return false;
+	}
+	if (auto *client = entity_list.GetClientByCharID(character_id)) {
+		return client->AccountID() == account_id;
+	}
+	const auto results = database.QueryDatabase(fmt::format(
+		"SELECT id FROM character_data WHERE id = {} AND account_id = {} LIMIT 1",
+		character_id,
+		account_id
+	));
+	return results.Success() && results.RowCount() == 1;
+}
+
 static Json::Value ApiGetSupportLocation(EQ::Net::WebsocketServerConnection *connection, Json::Value params)
 {
 	Json::Value response;
@@ -937,7 +954,7 @@ static Json::Value ApiFinishSupportCorpseMove(EQ::Net::WebsocketServerConnection
 	Json::Value response;
 	response["status"] = "stale";
 	if (!IsLocalSupportRequest(connection) || !params.isObject() || !params["corpse_id"].isUInt() ||
-		!params["character_id"].isUInt() || !params["player_position"].isObject()) {
+		!params["character_id"].isUInt() || !params["account_id"].isUInt() || !params["player_position"].isObject()) {
 		return response;
 	}
 	const auto &location = params["player_position"];
@@ -947,7 +964,7 @@ static Json::Value ApiFinishSupportCorpseMove(EQ::Net::WebsocketServerConnection
 	}
 	const auto corpse_id = params["corpse_id"].asUInt();
 	const auto character_id = params["character_id"].asUInt();
-	if (!corpse_id || !character_id) {
+	if (!corpse_id || !SupportCharacterOnAccount(character_id, params["account_id"].asUInt())) {
 		return response;
 	}
 	auto *corpse = entity_list.GetCorpseByDBID(corpse_id);
@@ -1002,7 +1019,7 @@ static Json::Value ApiMoveSupportTarget(EQ::Net::WebsocketServerConnection *conn
 
 	if (corpse_id) {
 		auto *corpse = entity_list.GetCorpseByDBID(corpse_id);
-		if (!corpse || corpse->GetCharID() != character_id) {
+		if (!corpse || corpse->GetCharID() != character_id || !SupportCharacterOnAccount(character_id, account_id)) {
 			return response;
 		}
 		if (corpse->IsBeingLooted()) {

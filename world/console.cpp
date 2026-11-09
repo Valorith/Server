@@ -396,6 +396,20 @@ struct PendingPlayerSupportTell {
 
 std::unordered_map<std::string, PendingPlayerSupportTell> pending_support_tells;
 
+// Zones print channel messages through printf, so a literal % must be doubled.
+std::string EscapeChannelText(const std::string &text)
+{
+	std::string escaped;
+	escaped.reserve(text.size());
+	for (const auto c : text) {
+		escaped.push_back(c);
+		if (c == '%') {
+			escaped.push_back('%');
+		}
+	}
+	return escaped;
+}
+
 void RejectPlayerSupportTell(ClientListEntry &sender, const std::string &decision)
 {
 	const char *message = "Game Master messaging is unavailable right now. Please try again.";
@@ -421,11 +435,16 @@ void FinishPlayerSupportTell(const PendingPlayerSupportTell &tell, const std::st
 	if (tell.expires <= SupportChatClock::now()) {
 		RejectPlayerSupportTell(*sender, "timeout");
 	} else if (decision == "accepted") {
-		auto *message = reinterpret_cast<ServerChannelMessage_Struct *>(tell.packet->pBuffer);
+		const auto *original = reinterpret_cast<const ServerChannelMessage_Struct *>(tell.packet->pBuffer);
+		const auto text = EscapeChannelText(original->message);
+		ServerPacket echo(ServerOP_ChannelMessage, sizeof(ServerChannelMessage_Struct) + text.size() + 1);
+		auto *message = reinterpret_cast<ServerChannelMessage_Struct *>(echo.pBuffer);
+		memcpy(message, original, sizeof(ServerChannelMessage_Struct));
+		memcpy(message->message, text.c_str(), text.size() + 1);
 		strn0cpy(message->deliverto, sender->name(), sizeof(message->deliverto));
 		message->chan_num = ChatChannel_TellEcho;
 		message->noreply = true;
-		sender->Server()->SendPacket(tell.packet.get());
+		sender->Server()->SendPacket(&echo);
 	} else {
 		RejectPlayerSupportTell(*sender, decision);
 	}
@@ -454,7 +473,12 @@ void QueuePlayerSupportTell(EQ::Net::ConsoleServerConnection *connection, Client
 		RejectPlayerSupportTell(sender, "invalid");
 		return;
 	}
-	if (pending_support_tells.size() >= 128) {
+	// A few unanswered messages per character, so one player cannot fill the queue.
+	const auto character_pending = std::count_if(
+		pending_support_tells.begin(), pending_support_tells.end(),
+		[&sender](const auto &pending) { return pending.second.character_id == sender.CharID(); }
+	);
+	if (pending_support_tells.size() >= 128 || character_pending >= 3) {
 		RejectPlayerSupportTell(sender, "unavailable");
 		return;
 	}
@@ -541,7 +565,7 @@ static void ConsoleSupportChat(
 		if (!message.empty() && recipient && account_id && recipient->AccountID() == account_id &&
 			recipient->Online() == CLE_Status::InZone && recipient->Server() && !recipient->TellsOff()) {
 			const auto from = fmt::format("*{}", EQ::Net::PlayerSupportConsoleName);
-			ZSList::Instance()->SendChannelMessageRaw(from.c_str(), recipient->name(), ChatChannel_Tell, 0, message.c_str());
+			ZSList::Instance()->SendChannelMessageRaw(from.c_str(), recipient->name(), ChatChannel_Tell, 0, EscapeChannelText(message).c_str());
 			response["kind"] = "sent";
 		}
 	} else {
@@ -696,8 +720,9 @@ static void ConsoleSupportMove(
 	}
 	auto result = corpse_id ? database.QueryDatabase(fmt::format(
 		"UPDATE character_corpses SET {}, instance_id = {} WHERE id = {} AND charid = {} "
-		"AND zone_id = {} AND instance_id = {} AND is_buried = 0",
-		position, destination_instance, corpse_id, character_id, source_zone, source_instance
+		"AND zone_id = {} AND instance_id = {} AND is_buried = 0 "
+		"AND EXISTS (SELECT 1 FROM character_data cd WHERE cd.id = {} AND cd.account_id = {})",
+		position, destination_instance, corpse_id, character_id, source_zone, source_instance, character_id, account_id
 	)) : database.QueryDatabase(fmt::format(
 		"UPDATE character_data SET {}, zone_instance = 0 WHERE id = {} AND account_id = {} "
 		"AND zone_id = {} AND zone_instance = {} AND deleted_at IS NULL",

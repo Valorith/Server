@@ -29,6 +29,12 @@ extern WorldServer worldserver;
 
 namespace {
 
+// Client::Message is printf-style, so text that may hold % goes through "%s".
+void Show(Client *c, uint32 type, const std::string &text)
+{
+	c->Message(type, "%s", text.c_str());
+}
+
 struct AccountPetition {
 	uint32      id = 0;
 	uint32      dib = 0;
@@ -41,9 +47,12 @@ struct AccountPetition {
 
 // Petitions are one per account today, but list every open one so the menu
 // stays correct if a server allows more.
-std::vector<AccountPetition> LoadAccountPetitions(Client *c)
+std::vector<AccountPetition> LoadAccountPetitions(Client *c, bool *loaded = nullptr)
 {
 	std::vector<AccountPetition> petitions;
+	if (loaded) {
+		*loaded = false;
+	}
 	auto results = database.QueryDatabase(fmt::format(
 		"SELECT `petid`, `dib`, `senttime`, `ischeckedout`, `charname`, `lastgm`, `petitiontext` "
 		"FROM `petitions` WHERE `accountname` = '{}' ORDER BY `dib`",
@@ -51,6 +60,9 @@ std::vector<AccountPetition> LoadAccountPetitions(Client *c)
 	));
 	if (!results.Success()) {
 		return petitions;
+	}
+	if (loaded) {
+		*loaded = true;
 	}
 	auto row = results.begin();
 	for (uint32 i = 0; i < results.RowCount(); ++i, ++row) {
@@ -133,7 +145,7 @@ void ShowPetitionMenu(Client *c)
 	const auto divider = "------------------------------------------------";
 	const auto petitions = LoadAccountPetitions(c);
 	c->Message(Chat::White, divider);
-	c->Message(Chat::White, fmt::format("Petitions | {}", Saylink::Silent("#petition", "Refresh")).c_str());
+	Show(c, Chat::White, fmt::format("Petitions | {}", Saylink::Silent("#petition", "Refresh")));
 	c->Message(Chat::White, divider);
 	if (petitions.empty()) {
 		c->Message(Chat::White, "You have no open petitions.");
@@ -150,28 +162,26 @@ void ShowPetitionMenu(Client *c)
 		if (preview.size() > 120) {
 			preview = preview.substr(0, 117) + "...";
 		}
-		c->Message(
+		Show(
+			c,
 			Chat::White,
-			fmt::format("Petition #{} | Filed by {} | {}", petition.id, petition.character, PetitionAge(petition.sent)).c_str()
+			fmt::format("Petition #{} | Filed by {} | {}", petition.id, petition.character, PetitionAge(petition.sent))
 		);
-		c->Message(Chat::White, fmt::format("Status | {}", status).c_str());
+		Show(c, Chat::White, fmt::format("Status | {}", status));
 		if (!messages.empty()) {
-			c->Message(Chat::White, fmt::format("Messages | {}", messages).c_str());
+			Show(c, Chat::White, fmt::format("Messages | {}", messages));
 		}
-		c->Message(Chat::White, fmt::format("Request | {}", preview).c_str());
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Actions | {} | {}",
-				Saylink::Silent("#petition reply", "Add a message"),
-				Saylink::Silent(fmt::format("#petition withdraw {}", petition.id), "Withdraw")
-			).c_str()
-		);
+		Show(c, Chat::White, fmt::format("Request | {}", preview));
+		Show(c, Chat::White, fmt::format(
+			"Actions | {} | {}",
+			Saylink::Silent("#petition reply", "Add a message"),
+			Saylink::Silent(fmt::format("#petition withdraw {}", petition.id), "Withdraw")
+		));
 		c->Message(Chat::White, divider);
 	}
 }
 
-// Withdrawing goes through the same list and database calls as /deletepetition.
+// Withdrawing reloads the queue the same way /deletepetition does.
 void WithdrawPetition(Client *c, uint32 id, bool confirmed)
 {
 	const auto petitions = LoadAccountPetitions(c);
@@ -181,26 +191,31 @@ void WithdrawPetition(Client *c, uint32 id, bool confirmed)
 		return;
 	}
 	if (!confirmed) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Withdraw petition #{}? It is removed from the queue. {} | {}",
-				id,
-				Saylink::Silent(fmt::format("#petition withdraw {} confirm", id), "Yes, withdraw it"),
-				Saylink::Silent("#petition", "Cancel")
-			).c_str()
-		);
+		Show(c, Chat::White, fmt::format(
+			"Withdraw petition #{}? It is removed from the queue. {} | {}",
+			id,
+			Saylink::Silent(fmt::format("#petition withdraw {} confirm", id), "Yes, withdraw it"),
+			Saylink::Silent("#petition", "Cancel")
+		));
 		return;
 	}
+	// This zone's queue can lag the database, so fall back to deleting the row.
 	if (PetitionList::Instance()->DeletePetition(id) == -1) {
-		c->Message(Chat::Red, "The petition could not be withdrawn. Please try again.");
-		return;
+		const auto deleted = database.QueryDatabase(fmt::format(
+			"DELETE FROM `petitions` WHERE `petid` = {} AND `accountname` = '{}'",
+			id,
+			Strings::Escape(c->AccountName())
+		));
+		if (!deleted.Success() || deleted.RowsAffected() != 1) {
+			c->Message(Chat::Red, "The petition could not be withdrawn. Please try again.");
+			return;
+		}
 	}
 	PetitionList::Instance()->ClearPetitions();
 	PetitionList::Instance()->UpdateGMQueue();
 	PetitionList::Instance()->ReadDatabase();
 	PetitionList::Instance()->UpdateZoneListQueue();
-	c->Message(Chat::Yellow, fmt::format("Petition #{} has been withdrawn.", id).c_str());
+	Show(c, Chat::Yellow, fmt::format("Petition #{} has been withdrawn.", id));
 }
 
 }
@@ -228,7 +243,18 @@ void command_petition(Client *c, const Seperator *sep)
 		c->Message(Chat::White, "Type #petition followed by your message to add it to your petition, for example: #petition I am still stuck.");
 		return;
 	}
-	if (!PetitionList::Instance()->FindPetitionByAccountName(c->AccountName())) {
+	// Decide from the database, like the menu, since this zone's queue can lag it.
+	bool loaded = false;
+	const bool has_petition = !LoadAccountPetitions(c, &loaded).empty();
+	if (!loaded) {
+		c->Message(Chat::Red, "Your petitions could not be loaded. Please try again.");
+		return;
+	}
+	if (!has_petition) {
+		if (PetitionList::Instance()->FindPetitionByAccountName(c->AccountName())) {
+			PetitionList::Instance()->ClearPetitions();
+			PetitionList::Instance()->ReadDatabase();
+		}
 		if (c->FilePetition(text)) {
 			c->Message(Chat::Yellow, "Your petition has been submitted. A Game Master will respond as soon as possible.");
 		}
