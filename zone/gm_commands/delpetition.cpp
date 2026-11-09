@@ -199,17 +199,16 @@ void WithdrawPetition(Client *c, uint32 id, bool confirmed)
 		));
 		return;
 	}
-	// This zone's queue can lag the database, so fall back to deleting the row.
-	if (PetitionList::Instance()->DeletePetition(id) == -1) {
-		const auto deleted = database.QueryDatabase(fmt::format(
-			"DELETE FROM `petitions` WHERE `petid` = {} AND `accountname` = '{}'",
-			id,
-			Strings::Escape(c->AccountName())
-		));
-		if (!deleted.Success() || deleted.RowsAffected() != 1) {
-			c->Message(Chat::Red, "The petition could not be withdrawn. Please try again.");
-			return;
-		}
+	// Delete the row first and check it, then rebuild this zone's queue from
+	// the database, so the player is only told it worked when it did.
+	const auto deleted = database.QueryDatabase(fmt::format(
+		"DELETE FROM `petitions` WHERE `petid` = {} AND `accountname` = '{}'",
+		id,
+		Strings::Escape(c->AccountName())
+	));
+	if (!deleted.Success() || deleted.RowsAffected() != 1) {
+		c->Message(Chat::Red, "The petition could not be withdrawn. Please try again.");
+		return;
 	}
 	PetitionList::Instance()->ClearPetitions();
 	PetitionList::Instance()->UpdateGMQueue();
