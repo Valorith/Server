@@ -31,15 +31,39 @@ void command_petition(Client *c, const Seperator *sep)
 	std::string text = sep->argplus[1] ? sep->argplus[1] : "";
 	Strings::Trim(text);
 	const bool has_petition = PetitionList::Instance()->FindPetitionByAccountName(c->AccountName());
-	if (text.empty()) {
+
+	// Petitions are one per account, but Player Support only accepts
+	// follow-ups from the character that filed it.
+	std::string petitioner;
+	if (has_petition) {
+		auto results = database.QueryDatabase(fmt::format(
+			"SELECT `charname` FROM `petitions` WHERE `accountname` = '{}' ORDER BY `dib` DESC LIMIT 1",
+			Strings::Escape(c->AccountName())
+		));
+		if (results.Success() && results.RowCount() > 0) {
+			auto row = results.begin();
+			petitioner = row[0] ? row[0] : "";
+		}
+	}
+	const bool own_petition = has_petition && strcasecmp(petitioner.c_str(), c->GetName()) == 0;
+	if (has_petition && !own_petition) {
 		c->Message(
 			Chat::White,
-			has_petition ? "Your petition is in the queue. Use #petition [message] to add to it, or /deletepetition to withdraw it."
-			     : "Usage: #petition [message] - Describe your problem and a Game Master will respond."
+			petitioner.empty()
+				? "Your account already has a petition in the queue. Log in as the character who filed it to add to it or withdraw it."
+				: fmt::format("Your account's petition was filed by {}. Log in as {} to add to it or withdraw it.", petitioner, petitioner).c_str()
 		);
 		return;
 	}
-	if (!has_petition) {
+	if (text.empty()) {
+		c->Message(
+			Chat::White,
+			own_petition ? "Your petition is in the queue. Use #petition [message] to add to it, or /deletepetition to withdraw it."
+			             : "Usage: #petition [message] - Describe your problem and a Game Master will respond."
+		);
+		return;
+	}
+	if (!own_petition) {
 		if (c->FilePetition(text)) {
 			c->Message(Chat::Yellow, "Your petition has been submitted. A Game Master will respond as soon as possible.");
 		}

@@ -400,7 +400,7 @@ void RejectPlayerSupportTell(ClientListEntry &sender, const std::string &decisio
 {
 	const char *message = "Game Master messaging is unavailable right now. Please try again.";
 	if (decision == "no_petition") {
-		message = "This character has no active petition. Use #petition [message] or /guidehelp to file one.";
+		message = "This character has no active petition. File one with #petition [message] or /guidehelp, or reply from the character that filed it.";
 	} else if (decision == "messages_off") {
 		message = "Your petition is in the queue. A Game Master will turn on messages when they are ready to reply.";
 	} else if (decision == "invalid") {
