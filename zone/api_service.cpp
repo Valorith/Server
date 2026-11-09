@@ -1038,10 +1038,25 @@ static Json::Value ApiMoveSupportTarget(EQ::Net::WebsocketServerConnection *conn
 			response["status"] = "moved";
 		}
 	} else {
+		glm::vec4 position(target->safe_x, target->safe_y, target->safe_z, target->safe_heading);
+		const auto &location = params["player_position"];
+		if (!location.isNull()) {
+			// GM coordinates always target the base zone.
+			if (!location.isObject() || !location["zone_id"].isUInt() || location["zone_id"].asUInt() != destination ||
+				!location["instance_id"].isUInt() || location["instance_id"].asUInt() != 0) {
+				return response;
+			}
+			for (const auto *field : {"x", "y", "z", "heading"}) {
+				if (!location[field].isNumeric() || !std::isfinite(location[field].asFloat())) {
+					return response;
+				}
+			}
+			position = glm::vec4(location["x"].asFloat(), location["y"].asFloat(), location["z"].asFloat(), location["heading"].asFloat());
+		}
 		if (auto *client = GetSupportClient(params)) {
 			const bool same_zone = destination == zone->GetZoneID() && zone->GetInstanceID() == 0;
 			client->Message(Chat::Yellow, "You have been moved by a Game Master");
-			client->MovePC(destination, 0, target->safe_x, target->safe_y, target->safe_z, target->safe_heading, 3,
+			client->MovePC(destination, 0, position.x, position.y, position.z, position.w, 3,
 				same_zone ? SummonPC : ZoneSolicited);
 			response["status"] = same_zone ? "moved" : "requested";
 		}

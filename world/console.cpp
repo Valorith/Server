@@ -634,12 +634,22 @@ static void ConsoleSupportMove(
 				return false;
 			}
 		};
-		auto *owner = ClientList::Instance()->FindCLEByCharacterID(character_id);
-		if (!corpse_id || destination_instance > UINT16_MAX || (destination_instance == 0 && args[6] != "0") ||
-			!read_float(args[7], x) || !read_float(args[8], y) || !read_float(args[9], z) || !read_float(args[10], heading) ||
-			!owner || owner->AccountID() != account_id || owner->Online() != CLE_Status::InZone ||
-			owner->zone() != destination || owner->instance() != destination_instance || !SupportZonePort(owner->Server())) {
-			reply("busy");
+		if (destination_instance > UINT16_MAX || (destination_instance == 0 && args[6] != "0") ||
+			!read_float(args[7], x) || !read_float(args[8], y) || !read_float(args[9], z) || !read_float(args[10], heading)) {
+			reply("stale");
+			return;
+		}
+		if (corpse_id) {
+			// A corpse moved to its owner follows the owner's live position.
+			auto *owner = ClientList::Instance()->FindCLEByCharacterID(character_id);
+			if (!owner || owner->AccountID() != account_id || owner->Online() != CLE_Status::InZone ||
+				owner->zone() != destination || owner->instance() != destination_instance || !SupportZonePort(owner->Server())) {
+				reply("busy");
+				return;
+			}
+		} else if (destination_instance != 0) {
+			// Character moves use GM coordinates in the base zone only.
+			reply("stale");
 			return;
 		}
 	}
@@ -1791,7 +1801,7 @@ void RegisterConsoleFunctions(std::unique_ptr<EQ::Net::ConsoleServer>& console)
 	console->RegisterCall("setpass", 200, "setpass [account_name] [new_password]", std::bind(ConsoleSetPass, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("signalcharbyname", 50, "signalcharbyname charname ID", std::bind(ConsoleSignalCharByName, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("supportchat", 200, "supportchat", ConsoleSupportChat);
-	console->RegisterCall("supportmove", 200, "supportmove [character] [account] [corpse or 0] [source zone] [source instance] [destination]", ConsoleSupportMove);
+	console->RegisterCall("supportmove", 200, "supportmove [character] [account] [corpse or 0] [source zone] [source instance] [destination] [instance x y z heading]", ConsoleSupportMove);
 	console->RegisterCall("supportlocation", 200, "supportlocation [character] [account]", ConsoleSupportLocation);
 	console->RegisterCall("tell", 50, "tell [name] [message]", std::bind(ConsoleTell, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("unlock", 150, "unlock", std::bind(ConsoleUnlock, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
