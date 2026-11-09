@@ -22,6 +22,7 @@
 
 #include "common/md5.h"
 #include "common/repositories/character_parcels_repository.h"
+#include "common/rulesys.h"
 #include "common/strings.h"
 #include "common/util/uuid.h"
 #include "common/zone_store.h"
@@ -697,8 +698,25 @@ static void ConsoleSupportMove(
 
 	ZoneServer *source = nullptr;
 	if (corpse_id) {
-		source = source_instance ? ZSList::Instance()->FindByInstanceID(source_instance)
-		                         : ZSList::Instance()->FindByZoneID(source_zone);
+		auto corpse = database.QueryDatabase(fmt::format(
+			"SELECT is_buried FROM character_corpses WHERE id = {} AND charid = {}",
+			corpse_id, character_id
+		));
+		if (!corpse.Success()) {
+			reply("unavailable");
+			return;
+		}
+		if (corpse.RowCount() != 1) {
+			reply("stale");
+			return;
+		}
+		auto row = corpse.begin();
+		// Zones never load a corpse buried in Shadowrest, so only the database can move it.
+		const bool in_shadowrest = row[0] && Strings::ToInt(row[0]) != 0 && RuleB(Zone, EnableShadowrest);
+		if (!in_shadowrest) {
+			source = source_instance ? ZSList::Instance()->FindByInstanceID(source_instance)
+			                         : ZSList::Instance()->FindByZoneID(source_zone);
+		}
 	} else {
 		auto *client = ClientList::Instance()->FindCLEByCharacterID(character_id);
 		if (client && client->Online() >= CLE_Status::Zoning) {
@@ -736,8 +754,8 @@ static void ConsoleSupportMove(
 		return;
 	}
 	auto result = corpse_id ? database.QueryDatabase(fmt::format(
-		"UPDATE character_corpses SET {}, instance_id = {} WHERE id = {} AND charid = {} "
-		"AND zone_id = {} AND instance_id = {} AND is_buried = 0 "
+		"UPDATE character_corpses SET {}, instance_id = {}, is_buried = 0 WHERE id = {} AND charid = {} "
+		"AND zone_id = {} AND instance_id = {} "
 		"AND EXISTS (SELECT 1 FROM character_data cd WHERE cd.id = {} AND cd.account_id = {})",
 		position, destination_instance, corpse_id, character_id, source_zone, source_instance, character_id, account_id
 	)) : database.QueryDatabase(fmt::format(
@@ -780,6 +798,84 @@ static void ConsoleSupportMove(
 		}
 	}
 	reply("saved");
+}
+
+static void ConsoleSupportFeatures(
+	EQ::Net::ConsoleServerConnection *connection,
+	const std::string &,
+	const std::vector<std::string> &
+)
+{
+	if (!connection->IsLocalAdmin()) {
+		connection->SendLine("{\"status\":\"stale\",\"patch\":0,\"features\":[]}");
+		return;
+	}
+	connection->SendLine(
+		"{\"status\":\"ok\",\"patch\":3,"
+		"\"features\":[\"close_petition\",\"lockouts\",\"tasks\",\"revoke\",\"corpse_exp\",\"unbury\"]}"
+	);
+}
+
+// All digits, at most max_digits long, and no larger than max.
+static bool ParseSupportNumber(const std::string &value, size_t max_digits, uint64 max, uint64 &number)
+{
+	if (value.empty() || value.size() > max_digits || value.find_first_not_of("0123456789") != std::string::npos) {
+		return false;
+	}
+	number = Strings::ToUnsignedBigInt(value);
+	return number <= max;
+}
+
+static void ConsoleSupportPetition(
+	EQ::Net::ConsoleServerConnection *connection,
+	const std::string &,
+	const std::vector<std::string> &args
+)
+{
+	auto reply = [connection](const char *status) {
+		connection->SendLine(fmt::format("{{\"status\":\"{}\"}}", status));
+	};
+	uint64 dib = 0;
+	uint64 sent_time = 0;
+	uint64 account_id = 0;
+	if (!connection->IsLocalAdmin() || args.size() != 4 || args[0] != "close" ||
+		!ParseSupportNumber(args[1], 10, UINT32_MAX, dib) || !dib ||
+		!ParseSupportNumber(args[2], 18, INT64_MAX, sent_time) ||
+		!ParseSupportNumber(args[3], 10, UINT32_MAX, account_id) || !account_id) {
+		reply("stale");
+		return;
+	}
+
+	const auto match = fmt::format(
+		"FROM petitions p JOIN account a ON a.name = p.accountname "
+		"WHERE p.dib = {} AND p.senttime = {} AND a.id = {}",
+		dib, sent_time, account_id
+	);
+	const auto deleted = database.QueryDatabase(fmt::format("DELETE p {} AND p.ischeckedout = 0", match));
+	if (!deleted.Success()) {
+		reply("unavailable");
+		return;
+	}
+	if (deleted.RowsAffected() > 0) {
+		ServerPacket packet(ServerOP_Petition, sizeof(ServerPetitionUpdate_Struct));
+		auto *update = reinterpret_cast<ServerPetitionUpdate_Struct *>(packet.pBuffer);
+		update->petid = 0;
+		update->status = 0;
+		ZSList::Instance()->SendPacket(&packet);
+		reply("closed");
+		return;
+	}
+
+	auto remaining = database.QueryDatabase(fmt::format("SELECT p.ischeckedout {} LIMIT 1", match));
+	if (!remaining.Success()) {
+		reply("unavailable");
+	} else if (remaining.RowCount() == 0) {
+		reply("gone");
+	} else {
+		auto row = remaining.begin();
+		// A row that is no longer checked out changed between the two queries; Spire asks the GM to check.
+		reply(row[0] && Strings::ToInt(row[0]) != 0 ? "checked_out" : "unavailable");
+	}
 }
 
 static void ConsoleParcelNotify(
@@ -1844,8 +1940,10 @@ void RegisterConsoleFunctions(std::unique_ptr<EQ::Net::ConsoleServer>& console)
 	console->RegisterCall("setpass", 200, "setpass [account_name] [new_password]", std::bind(ConsoleSetPass, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("signalcharbyname", 50, "signalcharbyname charname ID", std::bind(ConsoleSignalCharByName, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("supportchat", 200, "supportchat", ConsoleSupportChat);
+	console->RegisterCall("supportfeatures", 200, "supportfeatures", ConsoleSupportFeatures);
 	console->RegisterCall("supportmove", 200, "supportmove [character] [account] [corpse or 0] [source zone] [source instance] [destination] [instance x y z heading]", ConsoleSupportMove);
 	console->RegisterCall("supportlocation", 200, "supportlocation [character] [account]", ConsoleSupportLocation);
+	console->RegisterCall("supportpetition", 200, "supportpetition close [petition row] [sent time] [account]", ConsoleSupportPetition);
 	console->RegisterCall("tell", 50, "tell [name] [message]", std::bind(ConsoleTell, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("unlock", 150, "unlock", std::bind(ConsoleUnlock, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	console->RegisterCall("uptime", 50, "uptime [zone_server_id]", std::bind(ConsoleUptime, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
