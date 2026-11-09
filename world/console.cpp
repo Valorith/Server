@@ -400,7 +400,7 @@ void RejectPlayerSupportTell(ClientListEntry &sender, const std::string &decisio
 {
 	const char *message = "Game Master messaging is unavailable right now. Please try again.";
 	if (decision == "no_petition") {
-		message = "This character has no active petition. File one with #petition [message] or /guidehelp, or reply from the character that filed it.";
+		message = "Your account has no active petition. Use #petition [message] or /guidehelp to file one.";
 	} else if (decision == "messages_off") {
 		message = "Your petition is in the queue. A Game Master will turn on messages when they are ready to reply.";
 	} else if (decision == "invalid") {
@@ -436,12 +436,12 @@ void FinishPlayerSupportTell(const PendingPlayerSupportTell &tell, const std::st
 void QueuePlayerSupportTell(EQ::Net::ConsoleServerConnection *connection, ClientListEntry &sender, ServerPacket &packet)
 {
 	if (!connection || !connection->IsSupportChat()) {
+		// Petitions are one per account, and any of its characters may reply.
 		const auto result = database.QueryDatabase(fmt::format(
 			"SELECT p.dib FROM petitions p "
-			"JOIN character_data ch ON ch.id = p.petid AND ch.name = p.charname "
-			"JOIN account acct ON acct.id = ch.account_id AND acct.name = p.accountname "
-			"WHERE ch.id = {} AND ch.account_id = {} AND ch.deleted_at IS NULL LIMIT 1",
-			sender.CharID(), sender.AccountID()
+			"JOIN account acct ON acct.name = p.accountname "
+			"WHERE acct.id = {} LIMIT 1",
+			sender.AccountID()
 		));
 		RejectPlayerSupportTell(sender, result.Success() && result.RowCount() == 0 ? "no_petition" : "unavailable");
 		return;
