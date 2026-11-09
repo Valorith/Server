@@ -547,6 +547,13 @@ void Client::CompleteConnect()
 	UpdateWho();
 	client_state = CLIENT_CONNECTED;
 	SendAllPackets();
+	const auto support_notice = database.QueryDatabase(fmt::format(
+		"DELETE FROM data_buckets WHERE `key` = 'spire:character-move-notice' AND character_id = {}",
+		CharacterID()
+	));
+	if (support_notice.Success() && support_notice.RowsAffected() > 0) {
+		Message(Chat::Yellow, "You have been moved by a Game Master");
+	}
 	hpupdate_timer.Start();
 	autosave_timer.Start();
 	SetDuelTarget(0);

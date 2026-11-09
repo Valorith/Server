@@ -21,6 +21,7 @@ namespace EQ
 
 		const int MaxConsoleLineLength = 512;
 		const int ConsoleLoginStatus = 50;
+		constexpr char PlayerSupportConsoleName[] = "GameMaster";
 		class ConsoleServer;
 		class ConsoleServerConnection
 		{
@@ -41,8 +42,11 @@ namespace EQ
 			std::string UserName() const { return m_user; }
 			int UserId() const { return m_user_id; }
 			int Admin() const { return m_admin; }
+			bool IsLocalAdmin() const;
 
 			bool AcceptMessages() const { return m_accept_messages; }
+			bool IsSupportChat() const { return m_support_chat; }
+			bool EnableSupportChat();
 			void SetAcceptMessages(bool v) { m_accept_messages = v; }
 			void QueueMessage(const std::string &msg);
 			bool SendChannelMessage(const ServerChannelMessage_Struct* scm, std::function<void(void)> onTell);
@@ -59,6 +63,7 @@ namespace EQ
 			int m_user_id;
 			int m_admin;
 			bool m_accept_messages;
+			bool m_support_chat = false;
 
 			size_t m_cursor;
 			char m_line[MaxConsoleLineLength];
