@@ -689,7 +689,8 @@ static void ConsoleSupportMove(
 		"zone_id = {}, x = {}, y = {}, z = {}, heading = {}",
 		destination, x, y, z, heading
 	);
-	if (!corpse_id && !database.TransactionBegin().Success()) {
+	// Upstream EQEmu's TransactionBegin() returns void, so check the query itself.
+	if (!corpse_id && !database.QueryDatabase("START TRANSACTION").Success()) {
 		reply("unavailable");
 		return;
 	}
