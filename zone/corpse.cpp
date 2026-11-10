@@ -377,12 +377,21 @@ Corpse::Corpse(Client *c, int32 rez_exp, KilledByTypes in_killed_by) : Mob(
 		database.SaveCursor(c->CharacterID(), start, finish);
 
 		c->CalcBonuses();
-		c->Save();
+		const auto character_saved = c->Save(0, false);
 
 		IsRezzed(false);
 		Save();
 
-		database.TransactionCommit();
+		const bool inventory_committed = database.TransactionCommit().Success();
+		// Reconcile from durable rows after the complete death relocation.
+		// Queue this before level/AA facts so a mixed achievement cannot use
+		// pre-death ownership while evaluating its other criteria.
+		c->UpdateAchievementForOwnItem(0);
+		if (inventory_committed) {
+			if (character_saved) {
+				c->UpdateAchievementForLevel(c->GetLevel());
+			}
+		}
 
 		UpdateEquipmentLight();
 		UpdateActiveLight();
@@ -1671,18 +1680,42 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 		}
 
 		/* First add it to the looter - this will do the bag contents too */
+		bool loot_persisted = false;
 		if (lootitem->auto_loot > 0) {
-			if (!c->AutoPutLootInInventory(*inst, true, true, bag_item_data)) {
-				c->PutLootInInventory(EQ::invslot::slotCursor, *inst, bag_item_data);
+			bool auto_loot_persisted = true;
+			if (!c->AutoPutLootInInventory(
+				*inst,
+				true,
+				true,
+				bag_item_data,
+				&auto_loot_persisted
+			)) {
+				const auto cursor_persisted = c->PutLootInInventory(
+					EQ::invslot::slotCursor,
+					*inst,
+					bag_item_data
+				);
+				loot_persisted =
+					auto_loot_persisted && cursor_persisted;
+			}
+			else {
+				loot_persisted = auto_loot_persisted;
 			}
 		}
 		else {
-			c->PutLootInInventory(EQ::invslot::slotCursor, *inst, bag_item_data);
+			loot_persisted = c->PutLootInInventory(
+				EQ::invslot::slotCursor,
+				*inst,
+				bag_item_data
+			);
 		}
 
 		/* Update any tasks that have an activity to loot this item */
 		if (RuleB(TaskSystem, EnableTaskSystem) && IsNPCCorpse()) {
 			c->UpdateTasksOnLoot(this, item->ID, count);
+		}
+		if (IsNPCCorpse() && loot_persisted) {
+			c->UpdateAchievementForLoot(item->ID, count);
 		}
 
 		/* Remove it from Corpse */

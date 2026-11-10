@@ -1,3 +1,4 @@
+#include "zone/bot.h"
 #include "zone/client.h"
 #include "zone/command.h"
 #include "zone/corpse.h"
