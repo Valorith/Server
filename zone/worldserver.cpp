@@ -314,7 +314,11 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						client->ChannelMessageSend(scm->from, scm->to, scm->chan_num, Language::CommonTongue, Language::MaxValue, scm->message);
 				}
 				else if (scm->chan_num == ChatChannel_Tell) {
-					client->ChannelMessageSend(scm->from, scm->to, scm->chan_num, scm->language, scm->lang_skill, scm->message);
+					// The sending zone marks tells from a GM with #gm on.
+					const auto from = scm->guilddbid == ServerTellFromGM && scm->from[0] != '*'
+						? fmt::format("*(GM) {}", scm->from)
+						: std::string(scm->from);
+					client->ChannelMessageSend(from.c_str(), scm->to, scm->chan_num, scm->language, scm->lang_skill, scm->message);
 					if (scm->queued == 0) { // this is not a queued tell
 						// if it's a tell, echo back to acknowledge it and make it show on the sender's client
 						scm->chan_num = ChatChannel_TellEcho;

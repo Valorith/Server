@@ -130,7 +130,7 @@ void DescribePetition(const AccountPetition &petition, std::string &status, std:
 			status = "Waiting for a Game Master";
 		}
 		messages = spire.substr(first + 1, second - first - 1) == "1"
-			? "On - reply with #petition [message]"
+			? "On - reply with #petition [message] or answer a Game Master mail"
 			: "Off - a Game Master will open them when they need your answer";
 	}
 	if (petition.checked_out) {

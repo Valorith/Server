@@ -58,6 +58,13 @@ WorldServer::~WorldServer()
 {
 }
 
+void WorldServer::SendPacket(ServerPacket *pack)
+{
+	if (m_connection) {
+		m_connection->SendPacket(pack);
+	}
+}
+
 void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 {
 	ServerPacket tpack(opcode, p);

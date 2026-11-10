@@ -560,9 +560,20 @@ void Clientlist::CheckForStaleConnectionsAll()
 {
 	LogDebug("Checking for stale connections");
 
+	// The keepalive reaches the client only as a protocol message, and clients
+	// close the chat connection after about five minutes without application
+	// data. Every third run (about three minutes) mail connections get their
+	// mail headers again, which is application data and also lists mail added
+	// to the database since login.
+	static uint32 runs = 0;
+	const bool send_headers = ++runs % 3 == 0;
+
 	auto it = ClientChatConnections.begin();
 	while (it != ClientChatConnections.end()) {
 		(*it)->SendKeepAlive();
+		if (send_headers && (*it)->IsMailConnection()) {
+			database.SendHeaders(*it);
+		}
 		++it;
 	}
 }
