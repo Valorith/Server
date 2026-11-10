@@ -1392,6 +1392,12 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		break;
 	}
 	case ChatChannel_Shout: { /* Shout */
+		if(GetRevoked())
+		{
+			Message(0, "You have been revoked. You may not talk on Shout.");
+			return;
+		}
+
 		Mob *sender = this;
 		if (GetPet() && GetTarget() == GetPet() && GetPet()->FindType(SpellEffect::VoiceGraft))
 			sender = GetPet();
@@ -1400,6 +1406,12 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		break;
 	}
 	case ChatChannel_Auction: { /* Auction */
+		if(GetRevoked())
+		{
+			Message(0, "You have been revoked. You may not talk on Auction.");
+			return;
+		}
+
 		if(RuleB(Chat, ServerWideAuction))
 		{
 			if(!global_channel_timer.Check())
@@ -1408,12 +1420,6 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 					ChannelMessageReceived(chan_num, language, lang_skill, message, "discard"); //Fast typer or spammer??
 				else
 					return;
-			}
-
-			if(GetRevoked())
-			{
-				Message(0, "You have been revoked. You may not talk on Auction.");
-				return;
 			}
 
 			if(TotalKarma < RuleI(Chat, KarmaGlobalChatLimit))
@@ -1439,6 +1445,12 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		break;
 	}
 	case ChatChannel_OOC: { /* OOC */
+		if(GetRevoked())
+		{
+			Message(0, "You have been revoked. You may not talk on OOC.");
+			return;
+		}
+
 		if(RuleB(Chat, ServerWideOOC))
 		{
 			if(!global_channel_timer.Check())
@@ -1451,12 +1463,6 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 			if(worldserver.IsOOCMuted() && admin < AccountStatus::GMAdmin)
 			{
 				Message(0,"OOC has been muted. Try again later.");
-				return;
-			}
-
-			if(GetRevoked())
-			{
-				Message(0, "You have been revoked. You may not talk on OOC.");
 				return;
 			}
 
@@ -1500,12 +1506,6 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 					ChannelMessageReceived(ChatChannel_Tell, language, lang_skill, message, "discard"); //Fast typer or spammer??
 				else
 					return;
-			}
-
-			if(GetRevoked())
-			{
-				Message(0, "You have been revoked. You may not send tells.");
-				return;
 			}
 
 			if(TotalKarma < RuleI(Chat, KarmaGlobalChatLimit))

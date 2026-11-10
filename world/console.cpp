@@ -416,13 +416,38 @@ std::string EscapeChannelText(const std::string &text)
 	return escaped;
 }
 
+// Shows a Game Master message as a marquee too, through the stock cross-zone
+// marquee packet sent only to the recipient's zone. The tell keeps the full text.
+void SendPlayerSupportMarquee(ClientListEntry &recipient, const std::string &text)
+{
+	constexpr size_t max_length = 120;
+	auto marquee = "Game Master: " + text;
+	if (marquee.size() > max_length) {
+		marquee.resize(max_length - 3);
+		marquee.erase(marquee.find_last_not_of(' ') + 1);
+		marquee += "...";
+	}
+	ServerPacket packet(ServerOP_CZMarquee, sizeof(CZMarquee_Struct));
+	auto *m = reinterpret_cast<CZMarquee_Struct *>(packet.pBuffer);
+	m->update_type = CZUpdateType_Character;
+	m->update_identifier = static_cast<int>(recipient.CharID());
+	m->type = Chat::Yellow;
+	m->priority = 510;
+	m->fade_in = 0;
+	m->fade_out = 3000;
+	// About 70 ms a character, from 6 to 15 seconds.
+	m->duration = static_cast<uint32>(std::clamp<size_t>(marquee.size() * 70, 6000, 15000));
+	strn0cpy(m->message, marquee.c_str(), sizeof(m->message));
+	recipient.Server()->SendPacket(&packet);
+}
+
 void RejectPlayerSupportTell(ClientListEntry &sender, const std::string &decision)
 {
 	const char *message = "Game Master messaging is unavailable right now. Please try again.";
 	if (decision == "no_petition") {
-		message = "Your account has no active petition. Use #petition [message] or /guidehelp to file one.";
+		message = "Your account has no active petition. Use #petition [message] to file one.";
 	} else if (decision == "messages_off") {
-		message = "Your petition is in the queue. A Game Master will turn on messages when they are ready to reply.";
+		message = "Your message was not sent. Replies to Game Master are not open on your petition right now; a Game Master will open them when they need your answer.";
 	} else if (decision == "invalid") {
 		message = "Your message was empty or too long. Please shorten it and try again.";
 	} else if (decision == "timeout") {
@@ -585,6 +610,7 @@ static void ConsoleSupportChat(
 			const auto from = fmt::format("*{}", EQ::Net::PlayerSupportConsoleName);
 			ZSList::Instance()->SendChannelMessageRaw(from.c_str(), recipient->name(), ChatChannel_Tell, 0, EscapeChannelText(message).c_str());
 			response["kind"] = "sent";
+			SendPlayerSupportMarquee(*recipient, message);
 		}
 	} else {
 		return;
@@ -753,8 +779,13 @@ static void ConsoleSupportMove(
 		reply("unavailable");
 		return;
 	}
+	// A buried corpse is past its decay time, so unbury it the way CharacterCorpsesRepository::UnburyCorpse
+	// does: restart the decay clock. Both are set before is_buried so they read its old value.
 	auto result = corpse_id ? database.QueryDatabase(fmt::format(
-		"UPDATE character_corpses SET {}, instance_id = {}, is_buried = 0 WHERE id = {} AND charid = {} "
+		"UPDATE character_corpses SET {}, instance_id = {}, "
+		"time_of_death = IF(is_buried = 0, time_of_death, NOW()), "
+		"was_at_graveyard = IF(is_buried = 0, was_at_graveyard, 0), "
+		"is_buried = 0 WHERE id = {} AND charid = {} "
 		"AND zone_id = {} AND instance_id = {} "
 		"AND EXISTS (SELECT 1 FROM character_data cd WHERE cd.id = {} AND cd.account_id = {})",
 		position, destination_instance, corpse_id, character_id, source_zone, source_instance, character_id, account_id
@@ -812,7 +843,7 @@ static void ConsoleSupportFeatures(
 	}
 	connection->SendLine(
 		"{\"status\":\"ok\",\"patch\":3,"
-		"\"features\":[\"close_petition\",\"lockouts\",\"tasks\",\"revoke\",\"corpse_exp\",\"unbury\"]}"
+		"\"features\":[\"close_petition\",\"lockouts\",\"tasks\",\"revoke\",\"corpse_exp\",\"unbury\",\"marquee\"]}"
 	);
 }
 

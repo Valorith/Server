@@ -1174,6 +1174,12 @@ static Json::Value ApiRestoreSupportCorpseExp(EQ::Net::WebsocketServerConnection
 		client->GetAAXP(),
 		true
 	);
+	// The claim above is already saved, so save the award now rather than at the next character save.
+	// The award stays in memory if this fails and is saved later; the claim is kept so it cannot pay twice.
+	if (!database.SaveCharacterData(client, &client->GetPP(), &client->GetEPP())) {
+		response["status"] = "unconfirmed";
+		return response;
+	}
 	client->Message(Chat::Yellow, "A Game Master restored the experience from your corpse.");
 	response["status"] = "restored";
 	response["exp"] = static_cast<Json::Int64>(exp);
@@ -1295,8 +1301,23 @@ static Json::Value ApiUpdateSupportTask(EQ::Net::WebsocketServerConnection *conn
 	} else {
 		client->RemoveTaskByTaskID(task_id);
 	}
-	client->SaveTaskState();
+	bool saved = client->SaveTaskState();
+	if (remove && saved) {
+		// Removing a task clears it in memory even when deleting its rows failed, and the save skips it.
+		auto left = database.QueryDatabase(fmt::format(
+			"SELECT (SELECT COUNT(*) FROM character_tasks WHERE charid = {0} AND taskid = {1}) + "
+			"(SELECT COUNT(*) FROM character_activities WHERE charid = {0} AND taskid = {1})",
+			client->CharacterID(), task_id
+		));
+		auto row = left.begin();
+		saved = left.Success() && left.RowCount() == 1 && row[0] && Strings::ToInt(row[0]) == 0;
+	}
+	// The change already shows in the player's task window, so tell them even if it was not saved.
 	client->Message(Chat::Yellow, "A Game Master updated your tasks.");
+	if (!saved) {
+		response["status"] = "unavailable";
+		return response;
+	}
 
 	const bool active = client->IsTaskActive(task_id);
 	response["status"] = "updated";
@@ -1340,7 +1361,7 @@ static Json::Value ApiSetSupportRevoked(EQ::Net::WebsocketServerConnection *conn
 	client->SetRevoked(revoked);
 	client->Message(
 		Chat::Yellow,
-		revoked ? "A Game Master has blocked your OOC, auction and shout channels."
+		revoked ? "A Game Master has blocked your OOC, auction and shout channels. You can still send tells."
 		        : "A Game Master has restored your OOC, auction and shout channels."
 	);
 	response["status"] = "applied";

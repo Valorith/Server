@@ -131,7 +131,7 @@ void DescribePetition(const AccountPetition &petition, std::string &status, std:
 		}
 		messages = spire.substr(first + 1, second - first - 1) == "1"
 			? "On - reply with #petition [message]"
-			: "Off - a Game Master will turn them on to talk with you";
+			: "Off - a Game Master will open them when they need your answer";
 	}
 	if (petition.checked_out) {
 		status = petition.last_gm.empty()
@@ -149,7 +149,7 @@ void ShowPetitionMenu(Client *c)
 	c->Message(Chat::White, divider);
 	if (petitions.empty()) {
 		c->Message(Chat::White, "You have no open petitions.");
-		c->Message(Chat::White, "File one with #petition [message] or /guidehelp.");
+		c->Message(Chat::White, "File one with #petition [message].");
 		c->Message(Chat::White, divider);
 		return;
 	}
@@ -169,7 +169,7 @@ void ShowPetitionMenu(Client *c)
 		);
 		Show(c, Chat::White, fmt::format("Status | {}", status));
 		if (!messages.empty()) {
-			Show(c, Chat::White, fmt::format("Messages | {}", messages));
+			Show(c, Chat::White, fmt::format("Replies | {}", messages));
 		}
 		Show(c, Chat::White, fmt::format("Request | {}", preview));
 		Show(c, Chat::White, fmt::format(
