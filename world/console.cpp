@@ -686,13 +686,18 @@ void ResolveGMAddressedTell(ServerChannelMessage_Struct &message)
 	if (message.deliverto[4] == ' ') {
 		name = message.deliverto + 5;
 	} else {
-		// The longest persona that leads the text as whole words, so "John Smith" beats "John".
+		// The longest of the default name and the personas shown that leads the
+		// text as whole words (or is the whole text), so "John Smith" beats "John".
+		std::vector<std::string> candidates{EQ::Net::PlayerSupportDisplayName};
 		for (size_t i = 0; shown && i < shown->size(); ++i) {
-			const auto &persona = (*shown)[i].name;
-			if (persona.size() > name.size() && text.size() > persona.size() && text[persona.size()] == ' ' &&
+			candidates.push_back((*shown)[i].name);
+		}
+		for (const auto &persona : candidates) {
+			if (persona.size() > name.size() && text.size() >= persona.size() &&
+				(text.size() == persona.size() || text[persona.size()] == ' ') &&
 				strncasecmp(text.c_str(), persona.c_str(), persona.size()) == 0) {
 				name = persona;
-				taken = persona.size() + 1;
+				taken = std::min(text.size(), persona.size() + 1);
 			}
 		}
 		if (name.empty()) {

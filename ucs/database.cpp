@@ -589,10 +589,10 @@ bool UCSDatabase::SendMail(
 		characterName[i] = tolower(characterName[i]);
 
 	// Mail to GameMaster (Player Support in Spire, the console name World uses)
-	// is stored with charid 0 for Spire to collect and delete, so no character
-	// with that name can receive it. Only characters may send it, and only a
-	// few may wait at a time.
-	if (characterName == "Gamemaster") {
+	// is stored with charid 0 for Spire to collect and delete. A character
+	// already named GameMaster (any case; new ones are refused) still gets its
+	// mail. Only characters may send it, and only a few may wait at a time.
+	if (characterName == "Gamemaster" && FindCharacter(characterName.c_str()) <= 0) {
 		const auto sender  = Escape(from);
 		auto       pending = QueryDatabase(fmt::format(
 			"SELECT COUNT(*) FROM `mail` WHERE `charid` = 0 AND `from` = '{}'",

@@ -1550,20 +1550,22 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 			// be named (GM). Other "(GM)" tells go to World as tells to a player,
 			// and World sends them on to the persona's Player Support or to the
 			// character. A tell to "Game" with "Master" leading the text goes to
-			// GameMaster unless a character named Game exists.
+			// GameMaster unless a character named Game exists. A text that is only
+			// the name goes to GameMaster empty and gets its usual answer.
 			const char *tell_text = message;
 			if (!console_target) {
 				if (strcasecmp(recipient, "(GM)") == 0 &&
-					(strncasecmp(message, "Game Master ", 12) == 0 || strncasecmp(message, "Game_Master ", 12) == 0)) {
+					(strncasecmp(message, "Game Master", 11) == 0 || strncasecmp(message, "Game_Master", 11) == 0) &&
+					(message[11] == '\0' || message[11] == ' ')) {
 					strn0cpy(target_name, "GameMaster", sizeof(target_name));
-					tell_text = message + 12;
+					tell_text = message[11] ? message + 12 : message + 11;
 				} else if (strcasecmp(recipient, "(GM) Game Master") == 0 || strcasecmp(recipient, "Game Master") == 0 ||
 					strcasecmp(recipient, "Game_Master") == 0) {
 					strn0cpy(target_name, "GameMaster", sizeof(target_name));
-				} else if (strcasecmp(recipient, "Game") == 0 && strncasecmp(message, "Master ", 7) == 0 &&
-					!database.IsNameUsed("Game")) {
+				} else if (strcasecmp(recipient, "Game") == 0 && strncasecmp(message, "Master", 6) == 0 &&
+					(message[6] == '\0' || message[6] == ' ') && !database.IsNameUsed("Game")) {
 					strn0cpy(target_name, "GameMaster", sizeof(target_name));
-					tell_text = message + 7;
+					tell_text = message[6] ? message + 7 : message + 6;
 				}
 			}
 			const bool literal = console_target || strcasecmp(recipient, "GameMaster") == 0;
