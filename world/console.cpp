@@ -686,9 +686,10 @@ void ResolveGMAddressedTell(ServerChannelMessage_Struct &message)
 	if (message.deliverto[4] == ' ') {
 		name = message.deliverto + 5;
 	} else {
-		for (size_t i = 0; shown && name.empty() && i < shown->size(); ++i) {
+		// The longest persona that leads the text as whole words, so "John Smith" beats "John".
+		for (size_t i = 0; shown && i < shown->size(); ++i) {
 			const auto &persona = (*shown)[i].name;
-			if (text.size() > persona.size() && text[persona.size()] == ' ' &&
+			if (persona.size() > name.size() && text.size() > persona.size() && text[persona.size()] == ' ' &&
 				strncasecmp(text.c_str(), persona.c_str(), persona.size()) == 0) {
 				name = persona;
 				taken = persona.size() + 1;
@@ -717,6 +718,11 @@ void ResolveGMAddressedTell(ServerChannelMessage_Struct &message)
 		if (strcasecmp((*shown)[i].name.c_str(), name.c_str()) == 0) {
 			persona = (*shown)[i].name;
 		}
+	}
+	// An empty tell to Player Support gets its usual "empty or too long" answer;
+	// a name with nothing after it is not a tell to that character.
+	if (persona.empty() && text.empty()) {
+		return;
 	}
 	if (!persona.empty()) {
 		strn0cpy(message.deliverto, EQ::Net::PlayerSupportConsoleName, sizeof(message.deliverto));
@@ -1032,10 +1038,11 @@ static void ConsoleSupportMove(
 		return;
 	}
 	// A buried corpse is past its decay time, so unbury it the way CharacterCorpsesRepository::UnburyCorpse
-	// does: restart the decay clock. Both are set before is_buried so they read its old value.
+	// does: restart the decay clock. Both are set before is_buried so they read its old value. The clock
+	// starts a second back because a zone that loads the corpse at age 0 gives it only a 2 second timer.
 	auto result = corpse_id ? database.QueryDatabase(fmt::format(
 		"UPDATE character_corpses SET {}, instance_id = {}, "
-		"time_of_death = IF(is_buried = 0, time_of_death, NOW()), "
+		"time_of_death = IF(is_buried = 0, time_of_death, NOW() - INTERVAL 1 SECOND), "
 		"was_at_graveyard = IF(is_buried = 0, was_at_graveyard, 0), "
 		"is_buried = 0 WHERE id = {} AND charid = {} "
 		"AND zone_id = {} AND instance_id = {} "

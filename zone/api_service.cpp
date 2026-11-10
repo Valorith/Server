@@ -1302,8 +1302,9 @@ static Json::Value ApiUpdateSupportTask(EQ::Net::WebsocketServerConnection *conn
 		client->RemoveTaskByTaskID(task_id);
 	}
 	bool saved = client->SaveTaskState();
-	if (remove && saved) {
-		// Removing a task clears it in memory even when deleting its rows failed, and the save skips it.
+	if (saved && !client->IsTaskActive(task_id)) {
+		// Removing a task, or an update that completes it, clears it in memory even when deleting its
+		// rows failed, and the save skips it. A completed task is recorded in completed_tasks, not here.
 		auto left = database.QueryDatabase(fmt::format(
 			"SELECT (SELECT COUNT(*) FROM character_tasks WHERE charid = {0} AND taskid = {1}) + "
 			"(SELECT COUNT(*) FROM character_activities WHERE charid = {0} AND taskid = {1})",

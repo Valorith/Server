@@ -2106,11 +2106,15 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 	{
 		auto ucsss = (UCSServerStatus_Struct *) pack->pBuffer;
 		if (zone) {
-			zone->SetUCSServerAvailable((ucsss->available != 0), ucsss->timestamp);
+			const bool became_available = zone->SetUCSServerAvailable((ucsss->available != 0), ucsss->timestamp);
 			LogInfo("UCS Server is now [{}]", (ucsss->available == 1 ? "online" : "offline"));
 
-			for (auto &e : entity_list.GetClientList()) {
-				e.second->ReconnectUCS();
+			// A client that is still connected to UCS drops that connection when it
+			// is sent the chat server again, so only do it when UCS came back.
+			if (became_available) {
+				for (auto &e : entity_list.GetClientList()) {
+					e.second->ReconnectUCS();
+				}
 			}
 		}
 		break;
