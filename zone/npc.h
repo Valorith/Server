@@ -32,6 +32,7 @@
 
 #include <deque>
 #include <list>
+#include <memory>
 
 typedef struct {
 	float	min_x;
@@ -636,6 +637,7 @@ protected:
 
 	void HandleRoambox();
 
+	std::shared_ptr<const NPCType> m_cached_npc_type;
 	const NPCType*	NPCTypedata;
 	NPCType*	NPCTypedata_ours;	//special case for npcs with uniquely created data.
 

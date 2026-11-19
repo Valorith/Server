@@ -1375,7 +1375,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 	/* If there is a cached NPC entry, load it */
 	auto itr = zone->npctable.find(npc_type_id);
 	if (itr != zone->npctable.end()) {
-		return itr->second;
+		return itr->second.get();
 	}
 
 	std::string filter = fmt::format("id = {}", npc_type_id);
@@ -1401,9 +1401,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 	std::vector<uint32> loottable_ids;
 
 	for (NpcTypesRepository::NpcTypes &n : NpcTypesRepository::GetWhere((Database &) content_db, filter)) {
-		NPCType *t;
-		t = new NPCType;
-		memset(t, 0, sizeof *t);
+		auto t = std::make_shared<NPCType>();
 
 		t->npc_id = n.id;
 
@@ -1623,16 +1621,12 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		t->keeps_sold_items       = n.keeps_sold_items;
 		t->multiquest_enabled     = n.multiquest_enabled != 0;
 
-		// If NPC with duplicate NPC id already in table,
-		// free item we attempted to add.
-		if (zone->npctable.find(t->npc_id) != zone->npctable.end()) {
+		if (!zone->npctable.emplace(t->npc_id, t).second) {
 			std::cerr << "Error loading duplicate NPC " << t->npc_id << std::endl;
-			delete t;
 			return nullptr;
 		}
 
-		zone->npctable[t->npc_id] = t;
-		npc = t;
+		npc = t.get();
 
 		// If NPC ID is not in npc_ids, add to vector
 		if (!std::count(npc_ids.begin(), npc_ids.end(), t->npc_id)) {
