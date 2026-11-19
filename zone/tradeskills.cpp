@@ -1174,6 +1174,7 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 
 			++itr;
 		}
+		UpdateAchievementForTradeskill(spec->recipe_id);
 		return(true);
 	}
 	/* Tradeskill Fail */

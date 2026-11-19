@@ -961,6 +961,7 @@ void ZSList::SendServerReload(ServerReload::Type type, uchar *packet)
 		ServerReload::Type::DataBucketsCache,
 		ServerReload::Type::Quests,
 		ServerReload::Type::QuestsTimerReset,
+		ServerReload::Type::Achievements,
 		ServerReload::Type::WorldRepop,
 		ServerReload::Type::WorldWithRespawn
 	};

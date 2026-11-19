@@ -105,6 +105,8 @@ bool Client::Process() {
 			SendAllPackets();
 		}
 
+		ProcessAchievementRewards();
+
 		if (adventure_request_timer) {
 			if (adventure_request_timer->Check()) {
 				safe_delete(adventure_request_timer);
@@ -841,6 +843,10 @@ void Client::OnDisconnect(bool hard_disconnect, const char* reason) {
 	RecordPlayerEventLog(PlayerEvent::WENT_OFFLINE, PlayerEvent::EmptyEvent{});
 
 	RecordStats();
+	// Finish any ownership-gated achievement mutations while the client state
+	// still exists. Completions are durable; reward delivery remains recoverable
+	// from the ledger on the next login.
+	FlushAchievementInventoryUpdate();
 
 	Disconnect();
 }
