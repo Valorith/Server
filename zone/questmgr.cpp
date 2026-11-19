@@ -234,8 +234,7 @@ Mob* QuestManager::spawn2(int npc_id, int grid, int unused, const glm::vec4& pos
 		}
 	}
 
-	const NPCType* t = 0;
-	if (t = content_db.LoadNPCTypesData(npc_id)) {
+	if (const auto t = content_db.LoadNPCTypesData(npc_id)) {
 		auto npc = new NPC(t, nullptr, position, GravityBehavior::Water);
 		npc->AddLootTable();
 		if (npc->DropsGlobalLoot()) {
@@ -268,8 +267,7 @@ Mob* QuestManager::unique_spawn(int npc_type, int grid, int unused, const glm::v
 		return other;
 	}
 
-	const NPCType* tmp = 0;
-	if (tmp = content_db.LoadNPCTypesData(npc_type))
+	if (const auto tmp = content_db.LoadNPCTypesData(npc_type))
 	{
 		auto npc = new NPC(tmp, nullptr, position, GravityBehavior::Water);
 		npc->AddLootTable();
@@ -324,7 +322,7 @@ Mob *QuestManager::spawn_from_spawn2(uint32 spawn2_id)
 			return nullptr;
 		}
 
-		const NPCType *tmp = content_db.LoadNPCTypesData(npcid);
+		const auto tmp = content_db.LoadNPCTypesData(npcid);
 		if (!tmp) {
 			return nullptr;
 		}
@@ -2098,8 +2096,7 @@ void QuestManager::respawn(int npcTypeID, int grid) {
 	m_running_quests.pop();
 	m_running_quests.push(e);
 
-	const NPCType* npcType = nullptr;
-	if ((npcType = content_db.LoadNPCTypesData(npcTypeID)))
+	if (const auto npcType = content_db.LoadNPCTypesData(npcTypeID))
 	{
 		owner = new NPC(npcType, nullptr, owner->GetPosition(), GravityBehavior::Water);
 		owner->CastToNPC()->AddLootTable();
@@ -4600,7 +4597,7 @@ bool QuestManager::SetAutoLoginCharacterNameByAccountID(uint32 account_id, const
 
 void QuestManager::SpawnCircle(uint32 npc_id, glm::vec4 position, float radius, uint32 points)
 {
-	const NPCType* t = content_db.LoadNPCTypesData(npc_id);
+	const auto t = content_db.LoadNPCTypesData(npc_id);
 	if (!t) {
 		return;
 	}
@@ -4629,7 +4626,7 @@ void QuestManager::SpawnCircle(uint32 npc_id, glm::vec4 position, float radius, 
 
 void QuestManager::SpawnGrid(uint32 npc_id, glm::vec4 position, float spacing, uint32 spawn_count)
 {
-	const NPCType* t = content_db.LoadNPCTypesData(npc_id);
+	const auto t = content_db.LoadNPCTypesData(npc_id);
 	if (!t) {
 		return;
 	}

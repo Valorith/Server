@@ -13,6 +13,7 @@
 #include "zone/event_codes.h"
 #include "zone/position.h"
 
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -573,7 +574,7 @@ public:
 	DBnpcspells_Struct*				GetNPCSpells(uint32 npc_spells_id);
 	DBnpcspellseffects_Struct*		GetNPCSpellsEffects(uint32 iDBSpellsEffectsID);
 	void ClearNPCSpells() { npc_spells_cache.clear(); npc_spells_loadtried.clear(); }
-	const NPCType* LoadNPCTypesData(uint32 id, bool bulk_load = false);
+	std::shared_ptr<const NPCType> LoadNPCTypesData(uint32 id, bool bulk_load = false);
 
 	/*Bots	*/
 	DBbotspells_Struct*	GetBotSpells(uint32 bot_spell_id);

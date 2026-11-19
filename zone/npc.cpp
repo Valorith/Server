@@ -57,6 +57,17 @@ extern QueryServ* QServ;
 extern volatile bool is_zone_loaded;
 extern EntityList entity_list;
 
+NPC::NPC(
+	std::shared_ptr<const NPCType> npc_type_data,
+	Spawn2* in_respawn,
+	const glm::vec4& position,
+	GravityBehavior iflymode,
+	bool IsCorpse
+) : NPC(npc_type_data.get(), in_respawn, position, iflymode, IsCorpse)
+{
+	m_cached_npc_type = std::move(npc_type_data);
+}
+
 NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &position, GravityBehavior iflymode, bool IsCorpse)
 	: Mob(
 		  npc_type_data->name,
@@ -133,14 +144,6 @@ NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &posi
 	  m_GuardPoint(-1, -1, -1, 0),
 	  m_GuardPointSaved(0, 0, 0, 0)
 {
-	// Keep the cached template alive across repop and targeted cache clears.
-	if (zone) {
-		const auto cached = zone->npctable.find(npc_type_data->npc_id);
-		if (cached != zone->npctable.end() && cached->second.get() == npc_type_data) {
-			m_cached_npc_type = cached->second;
-		}
-	}
-
 	//What is the point of this, since the names get mangled..
 	Mob *mob = entity_list.GetMob(name);
 	if (mob != nullptr) {

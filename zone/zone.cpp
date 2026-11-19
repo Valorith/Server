@@ -1534,10 +1534,12 @@ bool Zone::Process() {
 
 		iterator.Reset();
 		while (iterator.MoreElements()) {
-			if (iterator.GetData()->Process()) {
+			auto spawn = iterator.GetData();
+			if (spawn->Process()) {
 				iterator.Advance();
 			}
 			else {
+				entity_list.DetachNPCSpawnPoints(spawn);
 				iterator.RemoveCurrent();
 			}
 		}
@@ -1908,12 +1910,9 @@ void Zone::Repop(bool is_forced)
 		ClearSpawnTimers();
 	}
 
-	LinkedListIterator<Spawn2 *> iterator(spawn2_list);
-
-	iterator.Reset();
-	while (iterator.MoreElements()) {
-		iterator.RemoveCurrent();
-	}
+	// Charmed NPCs and NPCs awaiting removal can outlive the old spawn list.
+	entity_list.DetachNPCSpawnPoints();
+	spawn2_list.Clear();
 
 	npc_scale_manager->LoadScaleData();
 
@@ -2555,7 +2554,7 @@ void Zone::DoAdventureActions()
 		did_adventure_actions = true;
 	} else if (ds->type == Adventure_Assassinate) {
 		if (ds->assa_count >= RuleI(Adventure, NumberKillsForBossSpawn)) {
-			const auto* d = content_db.LoadNPCTypesData(ds->data_id);
+			const auto d = content_db.LoadNPCTypesData(ds->data_id);
 			if (d) {
 				NPC* npc = new NPC(
 					d,

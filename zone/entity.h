@@ -576,6 +576,7 @@ public:
 	bool IsTrapGroupSpawned(uint32 trap_id, uint8 group);
 	void UpdateAllTraps(bool respawn, bool repopnow = false);
 	void ClearTrapPointers();
+	void DetachNPCSpawnPoints(const Spawn2* spawn = nullptr);
 
 	int MovePlayerCorpsesToGraveyard(bool force_move_from_instance = false);
 

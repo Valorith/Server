@@ -235,7 +235,7 @@ bool Spawn2::Process() {
 		}
 
 		//try to find our NPC type.
-		const NPCType *tmp = content_db.LoadNPCTypesData(npcid);
+		const auto tmp = content_db.LoadNPCTypesData(npcid);
 		if (tmp == nullptr) {
 			LogSpawns("Spawn2 [{}]: Spawn group [{}] yeilded an invalid NPC type [{}]", spawn2_id, spawngroup_id_, npcid);
 			Reset();    //try again later

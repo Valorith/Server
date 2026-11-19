@@ -901,7 +901,7 @@ void Mob::MakeAura(uint16 spell_id)
 	}
 
 	auto npc_type = new NPCType;
-	memcpy(npc_type, base, sizeof(NPCType));
+	memcpy(npc_type, base.get(), sizeof(NPCType));
 
 	strn0cpy(npc_type->name, record.name, 64);
 

@@ -1249,6 +1249,7 @@ void lua_remove_spawn_point(uint32 spawn2_id) {
 			Spawn2* cur = iter.GetData();
 			if(cur->GetID() == spawn2_id) {
 				cur->ForceDespawn();
+				entity_list.DetachNPCSpawnPoints(cur);
 				iter.RemoveCurrent(true);
 				return;
 			}

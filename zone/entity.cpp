@@ -3188,6 +3188,15 @@ void EntityList::Process()
 	CheckSpawnQueue();
 }
 
+void EntityList::DetachNPCSpawnPoints(const Spawn2* spawn)
+{
+	for (const auto& [id, npc] : npc_list) {
+		if (npc && (!spawn || npc->respawn2 == spawn)) {
+			npc->respawn2 = nullptr;
+		}
+	}
+}
+
 void EntityList::Depop(bool StartSpawnTimer)
 {
 	for (auto it = npc_list.begin(); it != npc_list.end(); ++it) {

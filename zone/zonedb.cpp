@@ -1368,14 +1368,13 @@ bool ZoneDatabase::RestoreCharacterInvSnapshot(uint32 character_id, uint32 times
 	return InventorySnapshotsRepository::RestoreCharacterInvSnapshot(database, character_id, timestamp);
 }
 
-const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load /*= false*/)
+std::shared_ptr<const NPCType> ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load)
 {
-	const NPCType *npc = nullptr;
-
-	/* If there is a cached NPC entry, load it */
-	auto itr = zone->npctable.find(npc_type_id);
-	if (itr != zone->npctable.end()) {
-		return itr->second.get();
+	// Only acquire the result once when bulk loading.
+	const std::shared_ptr<const NPCType>* last_loaded = nullptr;
+	const auto cached = zone->npctable.find(npc_type_id);
+	if (cached != zone->npctable.end()) {
+		return cached->second;
 	}
 
 	std::string filter = fmt::format("id = {}", npc_type_id);
@@ -1621,18 +1620,22 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		t->keeps_sold_items       = n.keeps_sold_items;
 		t->multiquest_enabled     = n.multiquest_enabled != 0;
 
-		if (!zone->npctable.emplace(t->npc_id, t).second) {
-			std::cerr << "Error loading duplicate NPC " << t->npc_id << std::endl;
+		const auto npc_id = t->npc_id;
+		const auto [entry, inserted] = zone->npctable.try_emplace(npc_id, std::move(t));
+		if (!inserted) {
+			std::cerr << "Error loading duplicate NPC " << npc_id << std::endl;
 			return nullptr;
 		}
 
-		npc = t.get();
+		last_loaded = &entry->second;
 
 		// If NPC ID is not in npc_ids, add to vector
-		if (!std::count(npc_ids.begin(), npc_ids.end(), t->npc_id)) {
-			npc_ids.emplace_back(t->npc_id);
+		if (!std::count(npc_ids.begin(), npc_ids.end(), npc_id)) {
+			npc_ids.emplace_back(npc_id);
 		}
 	}
+
+	auto result = last_loaded ? *last_loaded : nullptr;
 
 	if (!npc_faction_ids.empty()) {
 		zone->LoadNPCFactions(npc_faction_ids);
@@ -1641,7 +1644,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 
 	zone->LoadLootTables(loottable_ids);
 
-	return npc;
+	return result;
 }
 
 const NPCType* ZoneDatabase::GetMercenaryType(uint32 merc_npc_type_id, uint16 race_id, uint32 owner_level)

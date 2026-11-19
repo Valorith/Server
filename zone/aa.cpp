@@ -93,7 +93,7 @@ void Mob::TemporaryPets(uint16 spell_id, Mob *targ, const char *name_override, u
 
 	NPCType *made_npc = nullptr;
 
-	const NPCType *npc_type = content_db.LoadNPCTypesData(pet.npc_id);
+	const auto npc_type = content_db.LoadNPCTypesData(pet.npc_id);
 	if (npc_type == nullptr) {
 		//log write
 		LogError("Unknown npc type for swarm pet spell id: [{}]", spell_id);
@@ -104,9 +104,8 @@ void Mob::TemporaryPets(uint16 spell_id, Mob *targ, const char *name_override, u
 	if (name_override != nullptr) {
 		//we have to make a custom NPC type for this name change
 		made_npc = new NPCType;
-		memcpy(made_npc, npc_type, sizeof(NPCType));
+		memcpy(made_npc, npc_type.get(), sizeof(NPCType));
 		strcpy(made_npc->name, name_override);
-		npc_type = made_npc;
 	}
 
 	int summon_count = 0;
@@ -136,11 +135,10 @@ void Mob::TemporaryPets(uint16 spell_id, Mob *targ, const char *name_override, u
 			memcpy(npc_dup, made_npc, sizeof(NPCType));
 		}
 
-		swarm_pet_npc = new NPC(
-			(npc_dup != nullptr) ? npc_dup : npc_type,	//make sure we give the NPC the correct data pointer
-			0,
-			GetPosition() + glm::vec4(swarmPetLocations[summon_count], 0.0f, 0.0f),
-			GravityBehavior::Water);
+		const auto position = GetPosition() + glm::vec4(swarmPetLocations[summon_count], 0.0f, 0.0f);
+		swarm_pet_npc = npc_dup
+			? new NPC(npc_dup, nullptr, position, GravityBehavior::Water)
+			: new NPC(npc_type, nullptr, position, GravityBehavior::Water);
 
 		if (followme)
 			swarm_pet_npc->SetFollowID(GetID());
@@ -202,7 +200,7 @@ void Mob::TypesTemporaryPets(uint32 typesid, Mob *targ, const char *name_overrid
 
 	NPCType *made_npc = nullptr;
 
-	const NPCType *npc_type = content_db.LoadNPCTypesData(typesid);
+	const auto npc_type = content_db.LoadNPCTypesData(typesid);
 	if(npc_type == nullptr) {
 		//log write
 		LogError("Unknown npc type for swarm pet type id: [{}]", typesid);
@@ -213,9 +211,8 @@ void Mob::TypesTemporaryPets(uint32 typesid, Mob *targ, const char *name_overrid
 	if(name_override != nullptr) {
 		//we have to make a custom NPC type for this name change
 		made_npc = new NPCType;
-		memcpy(made_npc, npc_type, sizeof(NPCType));
+		memcpy(made_npc, npc_type.get(), sizeof(NPCType));
 		strcpy(made_npc->name, name_override);
-		npc_type = made_npc;
 	}
 
 	int summon_count = 0;
@@ -240,11 +237,10 @@ void Mob::TypesTemporaryPets(uint32 typesid, Mob *targ, const char *name_overrid
 			memcpy(npc_dup, made_npc, sizeof(NPCType));
 		}
 
-		NPC* swarm_pet_npc = new NPC(
-				(npc_dup!=nullptr)?npc_dup:npc_type,	//make sure we give the NPC the correct data pointer
-				0,
-				GetPosition() + glm::vec4(swarmPetLocations[summon_count], 0.0f, 0.0f),
-				GravityBehavior::Water);
+		const auto position = GetPosition() + glm::vec4(swarmPetLocations[summon_count], 0.0f, 0.0f);
+		auto* swarm_pet_npc = npc_dup
+			? new NPC(npc_dup, nullptr, position, GravityBehavior::Water)
+			: new NPC(npc_type, nullptr, position, GravityBehavior::Water);
 
 		if (followme)
 			swarm_pet_npc->SetFollowID(GetID());
@@ -312,7 +308,7 @@ void Mob::WakeTheDead(uint16 spell_id, Corpse *corpse_to_use, Mob *tar, uint32 d
 
 	NPCType *made_npc = nullptr;
 
-	const NPCType *npc_type = content_db.LoadNPCTypesData(WAKE_THE_DEAD_NPCTYPEID);
+	const auto npc_type = content_db.LoadNPCTypesData(WAKE_THE_DEAD_NPCTYPEID);
 	if (npc_type == nullptr) {
 		//log write
 		LogError("Unknown npc type for 'Wake the Dead' swarm pet spell id: [{}]", spell_id);
@@ -321,12 +317,11 @@ void Mob::WakeTheDead(uint16 spell_id, Corpse *corpse_to_use, Mob *tar, uint32 d
 	}
 
 	made_npc = new NPCType;
-	memcpy(made_npc, npc_type, sizeof(NPCType));
+	memcpy(made_npc, npc_type.get(), sizeof(NPCType));
 
 	char NewName[64];
 	sprintf(NewName, "%s`s Animated Corpse", GetCleanName());
 	strcpy(made_npc->name, NewName);
-	npc_type = made_npc;
 
 	//combat stats
 	made_npc->AC = ((GetLevel() * 7) + 550);
@@ -472,9 +467,10 @@ void Mob::WakeTheDead(uint16 spell_id, Corpse *corpse_to_use, Mob *tar, uint32 d
 			memcpy(npc_dup, made_npc, sizeof(NPCType));
 		}
 
-		swarm_pet_npc = new NPC(
-			(npc_dup != nullptr) ? npc_dup : npc_type,
-			0, corpse_to_use->GetPosition(),GravityBehavior::Water);
+		const auto position = corpse_to_use->GetPosition();
+		swarm_pet_npc = npc_dup
+			? new NPC(npc_dup, nullptr, position, GravityBehavior::Water)
+			: new NPC(npc_type, nullptr, position, GravityBehavior::Water);
 
 		swarm_pet_npc->SetFollowID(GetID());
 

@@ -7320,7 +7320,7 @@ void Client::Doppelganger(uint16 spell_id, Mob *target, const char *name_overrid
 
 	NPCType *made_npc = nullptr;
 
-	const NPCType *npc_type = content_db.LoadNPCTypesData(pet.npc_id);
+	const auto npc_type = content_db.LoadNPCTypesData(pet.npc_id);
 	if(npc_type == nullptr) {
 		LogError("Unknown npc type for doppelganger spell id: [{}]", spell_id);
 		Message(0,"Unable to find pet!");
@@ -7328,7 +7328,7 @@ void Client::Doppelganger(uint16 spell_id, Mob *target, const char *name_overrid
 	}
 	// make a custom NPC type for this
 	made_npc = new NPCType;
-	memcpy(made_npc, npc_type, sizeof(NPCType));
+	memcpy(made_npc, npc_type.get(), sizeof(NPCType));
 
 	strcpy(made_npc->name, name_override);
 	made_npc->level = GetLevel();
