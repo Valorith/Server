@@ -32,6 +32,7 @@
 
 #include <deque>
 #include <list>
+#include <memory>
 
 typedef struct {
 	float	min_x;
@@ -115,6 +116,7 @@ public:
 	const std::vector<uint32> &GetRolledItems() const;
 	int GetRolledItemCount(uint32 item_id);
 
+	NPC(std::shared_ptr<const NPCType> npc_type_data, Spawn2* respawn, const glm::vec4& position, GravityBehavior iflymode, bool IsCorpse = false);
 	NPC(const NPCType* npc_type_data, Spawn2* respawn, const glm::vec4& position, GravityBehavior iflymode, bool IsCorpse = false);
 
 	virtual ~NPC();
@@ -636,6 +638,7 @@ protected:
 
 	void HandleRoambox();
 
+	std::shared_ptr<const NPCType> m_cached_npc_type;
 	const NPCType*	NPCTypedata;
 	NPCType*	NPCTypedata_ours;	//special case for npcs with uniquely created data.
 

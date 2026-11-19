@@ -3188,6 +3188,15 @@ void EntityList::Process()
 	CheckSpawnQueue();
 }
 
+void EntityList::DetachNPCSpawnPoints(const Spawn2* spawn)
+{
+	for (const auto& [id, npc] : npc_list) {
+		if (npc && (!spawn || npc->respawn2 == spawn)) {
+			npc->respawn2 = nullptr;
+		}
+	}
+}
+
 void EntityList::Depop(bool StartSpawnTimer)
 {
 	for (auto it = npc_list.begin(); it != npc_list.end(); ++it) {
@@ -4353,7 +4362,7 @@ bool EntityList::LimitCheckName(const char *npc_name)
 	auto it = npc_list.begin();
 	while (it != npc_list.end()) {
 		NPC *npc = it->second;
-		if (npc) {
+		if (npc && !npc->GetDepop()) {
 			if (strcasecmp(npc_name, npc->GetRawNPCTypeName()) == 0) {
 				return false;
 			}

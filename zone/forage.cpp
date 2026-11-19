@@ -313,7 +313,7 @@ void Client::GoFish(bool guarantee, bool use_bait)
 			if (npc_chance > 0 && npc_id) {
 				if (zone->random.Roll(npc_chance)) {
 					if (zone->CanDoCombat()) {
-						const NPCType *tmp = content_db.LoadNPCTypesData(npc_id);
+						const auto tmp = content_db.LoadNPCTypesData(npc_id);
 						if (tmp != nullptr) {
 							auto positionNPC = GetPosition();
 							positionNPC.x = positionNPC.x + 3;

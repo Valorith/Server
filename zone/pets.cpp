@@ -109,7 +109,7 @@ void Mob::MakePoweredPet(uint16 spell_id, const char* pettype, int16 petpower,
 	}
 
 	//find the NPC data for the specified NPC type
-	const NPCType *base = content_db.LoadNPCTypesData(record.npc_type);
+	const auto base = content_db.LoadNPCTypesData(record.npc_type);
 	if(base == nullptr) {
 		Message(Chat::Red, "Unable to load NPC data for pet %s", pettype);
 		LogError("Unable to load NPC data for pet [{}] (NPC ID [{}]), check pets and npc_types tables", pettype, record.npc_type);
@@ -118,7 +118,7 @@ void Mob::MakePoweredPet(uint16 spell_id, const char* pettype, int16 petpower,
 
 	//we copy the npc_type data because we need to edit it a bit
 	auto npc_type = new NPCType;
-	memcpy(npc_type, base, sizeof(NPCType));
+	memcpy(npc_type, base.get(), sizeof(NPCType));
 
 	// If pet power is set to -1 in the DB, use stat scaling
 	if ((IsClient() || IsBot()) && record.petpower == -1)
@@ -242,7 +242,7 @@ void Mob::MakePoweredPet(uint16 spell_id, const char* pettype, int16 petpower,
 			monsterid = 567;
 
 		// give the summoned pet the attributes of the monster we found
-		const NPCType* monster = content_db.LoadNPCTypesData(monsterid);
+		const auto monster = content_db.LoadNPCTypesData(monsterid);
 		if(monster) {
 			npc_type->race = monster->race;
 			npc_type->size = monster->size;

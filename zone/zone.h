@@ -51,6 +51,8 @@
 #include "zone/spawngroup.h"
 #include "zone/zonedb.h"
 
+#include <memory>
+
 struct EXPModifier
 {
 	float aa_modifier;
@@ -228,7 +230,7 @@ public:
 	std::map<uint32, LDoNTrapTemplate *>             ldon_trap_list;
 	std::map<uint32, MercTemplate>                   merc_templates;
 	std::map<uint32, NPCType *>                      merctable;
-	std::map<uint32, NPCType *>                      npctable;
+	std::map<uint32, std::shared_ptr<const NPCType>> npctable;
 	std::map<uint32, std::list<LDoNTrapTemplate *> > ldon_trap_entry_list;
 	std::map<uint32, std::list<MerchantList> >       merchanttable;
 	std::map<uint32, std::list<MercSpellEntry> >     merc_spells_list;

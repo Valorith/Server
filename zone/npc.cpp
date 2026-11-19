@@ -57,6 +57,17 @@ extern QueryServ* QServ;
 extern volatile bool is_zone_loaded;
 extern EntityList entity_list;
 
+NPC::NPC(
+	std::shared_ptr<const NPCType> npc_type_data,
+	Spawn2* in_respawn,
+	const glm::vec4& position,
+	GravityBehavior iflymode,
+	bool IsCorpse
+) : NPC(npc_type_data.get(), in_respawn, position, iflymode, IsCorpse)
+{
+	m_cached_npc_type = std::move(npc_type_data);
+}
+
 NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &position, GravityBehavior iflymode, bool IsCorpse)
 	: Mob(
 		  npc_type_data->name,

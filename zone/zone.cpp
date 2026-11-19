@@ -885,16 +885,10 @@ void Zone::Shutdown(bool quiet)
 
 	entity_list.StopMobAI();
 
-	std::map<uint32, NPCType *>::iterator itr;
-	while (!npctable.empty()) {
-		itr = npctable.begin();
-		delete itr->second;
-		itr->second = nullptr;
-		npctable.erase(itr);
-	}
+	npctable.clear();
 
 	while (!merctable.empty()) {
-		itr = merctable.begin();
+		auto itr = merctable.begin();
 		delete itr->second;
 		itr->second = nullptr;
 		merctable.erase(itr);
@@ -1540,10 +1534,12 @@ bool Zone::Process() {
 
 		iterator.Reset();
 		while (iterator.MoreElements()) {
-			if (iterator.GetData()->Process()) {
+			auto spawn = iterator.GetData();
+			if (spawn->Process()) {
 				iterator.Advance();
 			}
 			else {
+				entity_list.DetachNPCSpawnPoints(spawn);
 				iterator.RemoveCurrent();
 			}
 		}
@@ -1881,17 +1877,10 @@ void Zone::StopShutdownTimer() {
 }
 
 bool Zone::Depop(bool StartSpawnTimer) {
-	std::map<uint32,NPCType *>::iterator itr;
 	entity_list.Depop(StartSpawnTimer);
 	entity_list.ClearTrapPointers();
 	entity_list.UpdateAllTraps(false);
-	/* Refresh npctable (cache), getting current info from database. */
-	while(!npctable.empty()) {
-		itr = npctable.begin();
-		delete itr->second;
-		itr->second = nullptr;
-		npctable.erase(itr);
-	}
+	ClearNPCTypeCache(0);
 
 	// clear spell cache
 	database.ClearNPCSpells();
@@ -1902,27 +1891,12 @@ bool Zone::Depop(bool StartSpawnTimer) {
 	return true;
 }
 
-void Zone::ClearNPCTypeCache(int id) {
+void Zone::ClearNPCTypeCache(int id)
+{
 	if (id <= 0) {
-		auto iter = npctable.begin();
-		while (iter != npctable.end()) {
-			delete iter->second;
-			iter->second = nullptr;
-			++iter;
-		}
 		npctable.clear();
-	}
-	else {
-		auto iter = npctable.begin();
-		while (iter != npctable.end()) {
-			if (iter->first == (uint32)id) {
-				delete iter->second;
-				iter->second = nullptr;
-				npctable.erase(iter);
-				return;
-			}
-			++iter;
-		}
+	} else {
+		npctable.erase(static_cast<uint32>(id));
 	}
 }
 
@@ -1936,12 +1910,9 @@ void Zone::Repop(bool is_forced)
 		ClearSpawnTimers();
 	}
 
-	LinkedListIterator<Spawn2 *> iterator(spawn2_list);
-
-	iterator.Reset();
-	while (iterator.MoreElements()) {
-		iterator.RemoveCurrent();
-	}
+	// Charmed NPCs and NPCs awaiting removal can outlive the old spawn list.
+	entity_list.DetachNPCSpawnPoints();
+	spawn2_list.Clear();
 
 	npc_scale_manager->LoadScaleData();
 
@@ -2583,7 +2554,7 @@ void Zone::DoAdventureActions()
 		did_adventure_actions = true;
 	} else if (ds->type == Adventure_Assassinate) {
 		if (ds->assa_count >= RuleI(Adventure, NumberKillsForBossSpawn)) {
-			const auto* d = content_db.LoadNPCTypesData(ds->data_id);
+			const auto d = content_db.LoadNPCTypesData(ds->data_id);
 			if (d) {
 				NPC* npc = new NPC(
 					d,
