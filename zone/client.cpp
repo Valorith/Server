@@ -383,6 +383,11 @@ Client::Client() : Mob(
 	m_parcels.clear();
 
 	m_buyer_id = 0;
+	m_restored_persisted_buyer_mode = false;
+	m_buyer_explicit_price_update = false;
+	m_defer_listing_teardown_after_restore = false;
+	m_listing_restore_x = 0.0f;
+	m_listing_restore_y = 0.0f;
 
 	SetBotPulling(false);
 	SetBotPrecombat(false);
@@ -697,6 +702,11 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	m_parcels.clear();
 
 	m_buyer_id = 0;
+	m_restored_persisted_buyer_mode = false;
+	m_buyer_explicit_price_update = false;
+	m_defer_listing_teardown_after_restore = false;
+	m_listing_restore_x = 0.0f;
+	m_listing_restore_y = 0.0f;
 	m_offline  = false;
 
 	SetBotPulling(false);

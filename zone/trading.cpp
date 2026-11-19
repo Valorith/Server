@@ -35,6 +35,7 @@
 #include "zone/quest_parser_collection.h"
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <unordered_map>
@@ -1057,6 +1058,92 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return;
 	}
 
+	auto persisted_listings = TraderRepository::GetWhere(
+		database,
+		fmt::format(
+			"`character_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {}",
+			CharacterID(),
+			GetZoneID(),
+			GetInstanceID()
+		)
+	);
+	if (!persisted_listings.empty()) {
+		std::vector<std::string> persisted_unique_ids;
+		std::unordered_map<std::string, uint32> persisted_prices;
+		persisted_unique_ids.reserve(persisted_listings.size());
+		for (const auto &entry : persisted_listings) {
+			persisted_unique_ids.push_back(entry.item_unique_id);
+			if (!is_placeholder_unique_id(entry.item_unique_id)) {
+				persisted_prices[entry.item_unique_id] = entry.item_cost;
+			}
+		}
+
+		std::vector<std::string> client_unique_ids;
+		client_unique_ids.reserve(trader_items.size());
+		for (const auto &entry : trader_items) {
+			client_unique_ids.push_back(entry.item_unique_id);
+		}
+
+		if (Bazaar::TraderListingSetsMatch(persisted_unique_ids, client_unique_ids)) {
+			LogTrading(
+				"Keeping persisted trader listing prices for client [{}] character [{}]; start-mode item set is unchanged. listings [{}] already_trader [{}]",
+				GetCleanName(),
+				CharacterID(),
+				persisted_listings.size(),
+				IsTrader()
+			);
+			for (auto &entry : trader_items) {
+				const auto price_it = persisted_prices.find(entry.item_unique_id);
+				const auto cost = Bazaar::ResolveTraderStartPrice(
+					price_it != persisted_prices.end(),
+					price_it != persisted_prices.end() ? price_it->second : 0,
+					entry.item_cost
+				);
+				auto *inst = FindTraderItemByUniqueID(entry.item_unique_id);
+				if (inst) {
+					inst->SetPrice(cost);
+				}
+			}
+
+			if (IsTrader()) {
+				TraderShowItems();
+				return;
+			}
+
+			if (RestorePersistedTraderMode()) {
+				return;
+			}
+
+			LogError(
+				"Failed restoring persisted trader listings for client [{}] character [{}]; rebuilding with persisted prices",
+				GetCleanName(),
+				CharacterID()
+			);
+		}
+		else {
+			LogTrading(
+				"Applying client trader item set for client [{}] character [{}] and keeping persisted prices for matching unique ids. persisted [{}] client [{}]",
+				GetCleanName(),
+				CharacterID(),
+				persisted_listings.size(),
+				trader_items.size()
+			);
+		}
+
+		for (auto &entry : trader_items) {
+			const auto price_it = persisted_prices.find(entry.item_unique_id);
+			entry.item_cost = Bazaar::ResolveTraderStartPrice(
+				price_it != persisted_prices.end(),
+				price_it != persisted_prices.end() ? price_it->second : 0,
+				entry.item_cost
+			);
+			auto *inst = FindTraderItemByUniqueID(entry.item_unique_id);
+			if (inst) {
+				inst->SetPrice(entry.item_cost);
+			}
+		}
+	}
+
 	const auto begin_result = database.TransactionBegin();
 	if (!begin_result.Success()) {
 		LogError(
@@ -1127,12 +1214,117 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		safe_delete(outapp);
 	}
 
+	const bool already_trader = IsTrader();
 	MessageString(Chat::Yellow, TRADER_MODE_ON);
 	SetTrader(true);
 	SendTraderMode(TraderOn);
-	SendBecomeTraderToWorld(this, TraderOn);
+	if (!already_trader) {
+		SendBecomeTraderToWorld(this, TraderOn);
+	}
 	UpdateWho();
 	LogTrading("Trader Mode ON for Player [{}] with client version {}.", GetCleanName(), (uint32) ClientVersion());
+}
+
+bool Client::RestorePersistedTraderMode()
+{
+	auto trader_items = TraderRepository::GetWhere(
+		database,
+		fmt::format(
+			"`character_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {}",
+			CharacterID(),
+			GetZoneID(),
+			GetInstanceID()
+		)
+	);
+
+	if (trader_items.empty()) {
+		return false;
+	}
+
+	const auto previous_entity_id = trader_items.front().char_entity_id;
+	for (auto &entry : trader_items) {
+		entry.char_entity_id        = GetID();
+		entry.char_zone_id          = GetZoneID();
+		entry.char_zone_instance_id = GetInstanceID();
+	}
+
+	const bool trader_rows_refreshed = TraderRepository::ReplaceMany(database, trader_items);
+	LogTrading(
+		"Restoring trader mode for client [{}] account [{}] character [{}] zone [{}] instance [{}]. trader_rows [{}] previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		GetZoneID(),
+		GetInstanceID(),
+		trader_items.size(),
+		previous_entity_id,
+		GetID(),
+		trader_rows_refreshed
+	);
+
+	if (!trader_rows_refreshed) {
+		return false;
+	}
+
+	for (auto &entry : trader_items) {
+		auto *inst = FindTraderItemByUniqueID(entry.item_unique_id.c_str());
+		if (inst) {
+			inst->SetPrice(entry.item_cost);
+		}
+	}
+
+	if (IsTrader()) {
+		LogTrading(
+			"Skipping trader restore broadcast for client [{}] character [{}]; already the live trader. previous_entity_id [{}] entity [{}]",
+			GetCleanName(),
+			CharacterID(),
+			previous_entity_id,
+			GetID()
+		);
+		TraderShowItems();
+		MarkPersistedListingRestorePosition();
+		return true;
+	}
+
+	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
+		auto outapp = new EQApplicationPacket(OP_Trader, sizeof(TraderStatus_Struct));
+		auto data   = (TraderStatus_Struct *) outapp->pBuffer;
+		data->Code  = TraderAck2;
+		QueuePacket(outapp);
+		safe_delete(outapp);
+	}
+
+	SetTrader(true);
+	SendTraderMode(TraderOn);
+	SendBecomeTrader(TraderOn, GetID());
+	SendBecomeTraderToWorld(this, TraderOn);
+	TraderShowItems();
+	UpdateWho();
+	MarkPersistedListingRestorePosition();
+	return true;
+}
+
+void Client::MarkPersistedListingRestorePosition()
+{
+	m_defer_listing_teardown_after_restore = true;
+	m_listing_restore_x = GetX();
+	m_listing_restore_y = GetY();
+}
+
+void Client::ClearPersistedListingRestoreDeferral()
+{
+	m_defer_listing_teardown_after_restore = false;
+}
+
+bool Client::ShouldTeardownListingsForCurrentMove(float x, float y) const
+{
+	return Bazaar::ShouldTeardownListingsOnMovement(
+		m_defer_listing_teardown_after_restore,
+		m_listing_restore_x,
+		m_listing_restore_y,
+		x,
+		y
+	);
 }
 
 void Client::TraderEndTrader()
@@ -1148,6 +1340,12 @@ void Client::TraderEndTrader()
 
 	TraderRepository::DeleteWhere(database, fmt::format("`character_id` = {}", CharacterID()));
 
+	ClearPersistedListingRestoreDeferral();
+	BroadcastTraderOffWithoutDeletingListings();
+}
+
+void Client::BroadcastTraderOffWithoutDeletingListings()
+{
 	SendBecomeTraderToWorld(this, TraderOff);
 	SendTraderMode(TraderOff);
 
@@ -2564,16 +2762,24 @@ void Client::ToggleBuyerMode(bool status)
 	if (status && IsInBuyerSpace()) {
 		SetBuyerID(CharacterID());
 
-		BuyerRepository::Buyer b{};
-		b.id                    = 0;
+		auto existing = BuyerRepository::GetWhere(
+			database,
+			fmt::format("`char_id` = '{}' LIMIT 1", CharacterID())
+		);
+		BuyerRepository::Buyer b = existing.empty() ? BuyerRepository::NewEntity() : existing.front();
 		b.char_id               = GetBuyerID();
 		b.char_entity_id        = GetID();
 		b.char_zone_id          = GetZoneID();
 		b.char_zone_instance_id = GetInstanceID();
 		b.char_name             = GetCleanName();
 		b.transaction_date      = time(nullptr);
-		BuyerRepository::DeleteBuyer(database, GetBuyerID());
-		BuyerRepository::InsertOne(database, b);
+		if (existing.empty()) {
+			b.id = 0;
+			BuyerRepository::InsertOne(database, b);
+		}
+		else {
+			BuyerRepository::UpdateOne(database, b);
+		}
 
 		data->status = BuyerBarter::On;
 		SetCustomerID(0);
@@ -2593,11 +2799,120 @@ void Client::ToggleBuyerMode(bool status)
 			Message(Chat::Red, "You must be in a Barter Stall to start Barter Mode.");
 		}
 
+		m_restored_persisted_buyer_mode = false;
+		m_buyer_explicit_price_update = false;
+		ClearPersistedListingRestoreDeferral();
 		UpdateWho();
 		Message(Chat::Yellow, fmt::format("Barter Mode OFF. Buy lines deactivated.").c_str());
 	}
 
 	entity_list.QueueClients(this, outapp.get(), false);
+}
+
+void Client::BroadcastBuyerOffWithoutDeletingListings()
+{
+	auto outapp = std::make_unique<EQApplicationPacket>(
+		OP_Barter,
+		static_cast<uint32>(sizeof(BuyerSetAppearance_Struct))
+	);
+	auto data   = (BuyerSetAppearance_Struct *) outapp->pBuffer;
+
+	data->action    = Barter_BuyerAppearance;
+	data->entity_id = GetID();
+	data->status    = BuyerBarter::Off;
+
+	SendBuyerToBarterWindow(this, Barter_RemoveFromBarterWindow);
+	SendBuyerMode(false);
+	SetCustomerID(0);
+	SetBuyerID(0);
+	UpdateWho();
+	entity_list.QueueClients(this, outapp.get(), false);
+}
+
+void Client::SendPersistedBuyLines()
+{
+	auto buy_lines = BuyerBuyLinesRepository::GetBuyLines(database, CharacterID());
+	for (auto const &buy_line : buy_lines) {
+		SendBuyLineUpdate(buy_line);
+	}
+}
+
+bool Client::RestorePersistedBuyerMode()
+{
+	if (IsOffline() || IsBuyer() || IsTrader()) {
+		return false;
+	}
+
+	if (!IsInBuyerSpace()) {
+		LogTrading(
+			"Skipping buyer mode restore for client [{}] character [{}]; not in a barter stall",
+			GetCleanName(),
+			CharacterID()
+		);
+		return false;
+	}
+
+	auto buyers = BuyerRepository::GetWhere(
+		database,
+		fmt::format(
+			"`char_id` = {} AND `char_zone_id` = {} AND `char_zone_instance_id` = {} LIMIT 1",
+			CharacterID(),
+			GetZoneID(),
+			GetInstanceID()
+		)
+	);
+
+	if (buyers.empty()) {
+		return false;
+	}
+
+	auto buyer = buyers.front();
+	const auto previous_entity_id = buyer.char_entity_id;
+	buyer.char_entity_id        = GetID();
+	buyer.char_zone_id          = GetZoneID();
+	buyer.char_zone_instance_id = GetInstanceID();
+	buyer.char_name             = GetCleanName();
+
+	const int buyer_rows_updated = BuyerRepository::UpdateOne(database, buyer);
+	const bool buyer_row_refreshed = Bazaar::ShouldRestoreBuyerAfterRowUpdate(
+		buyer_rows_updated,
+		BuyerRepository::BuyerRowAlreadyMatches(database, buyer)
+	);
+	LogTrading(
+		"Restoring buyer mode for client [{}] account [{}] character [{}] zone [{}] instance [{}]. previous_entity_id [{}] new_entity_id [{}] refresh_success [{}]",
+		GetCleanName(),
+		AccountID(),
+		CharacterID(),
+		GetZoneID(),
+		GetInstanceID(),
+		previous_entity_id,
+		GetID(),
+		buyer_row_refreshed
+	);
+
+	if (!buyer_row_refreshed) {
+		return false;
+	}
+
+	SetBuyerID(CharacterID());
+	SetCustomerID(0);
+	SendBuyerMode(true);
+	SendBuyerToBarterWindow(this, Barter_AddToBarterWindow);
+	SendPersistedBuyLines();
+	UpdateWho();
+
+	auto outapp = std::make_unique<EQApplicationPacket>(
+		OP_Barter,
+		static_cast<uint32>(sizeof(BuyerSetAppearance_Struct))
+	);
+	auto data   = (BuyerSetAppearance_Struct *) outapp->pBuffer;
+	data->action    = Barter_BuyerAppearance;
+	data->entity_id = GetID();
+	data->status    = BuyerBarter::On;
+	entity_list.QueueClients(this, outapp.get(), false);
+	m_restored_persisted_buyer_mode = true;
+	MarkPersistedListingRestorePosition();
+	return true;
 }
 
 void Client::ModifyBuyLine(const EQApplicationPacket *app)
@@ -2625,13 +2940,22 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		BuildBuyLineMapFromVector(item_map, current_buy_lines);
 
 		auto buy_line = bl.buy_lines.front();
-		auto it       = std::find_if(
-			current_buy_lines.cbegin(),
-			current_buy_lines.cend(),
-			[&](BuyerLineItems_Struct bl) {
-				return bl.slot == buy_line.slot;
-			}
+		std::vector<Bazaar::BuyerLinePrice> current_prices;
+		current_prices.reserve(current_buy_lines.size());
+		for (const auto &line : current_buy_lines) {
+			current_prices.push_back({line.slot, line.item_id, line.item_cost});
+		}
+		const int match_index = Bazaar::FindBuyerLineIndex(
+			current_prices,
+			buy_line.slot,
+			buy_line.item_id
 		);
+		const auto it = match_index >= 0
+			? std::next(current_buy_lines.cbegin(), match_index)
+			: current_buy_lines.cend();
+		if (it != std::end(current_buy_lines)) {
+			buy_line.slot = it->slot;
+		}
 
 		if (buy_line.item_toggle) {
 			const uint64 max_transaction_value =
@@ -2668,7 +2992,7 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 		}
 
 		current_total_cost = ValidateBuyLineCost(item_map);
-		BuyerRepository::UpdateTransactionDate(database, GetBuyerID(), time(nullptr));
+		BuyerRepository::UpdateTransactionDate(database, CharacterID(), time(nullptr));
 
 		if (buy_line.item_toggle) {
 			current_total_cost +=
@@ -2726,21 +3050,36 @@ void Client::ModifyBuyLine(const EQApplicationPacket *app)
 			buy_line.item_toggle = 0;
 		}
 
-		buy_line.item_icon = database.GetItem(buy_line.item_id)->Icon;
+		if (const auto *item = database.GetItem(buy_line.item_id)) {
+			buy_line.item_icon = item->Icon;
+		}
 		if ((buy_line.item_toggle && it != std::end(current_buy_lines)) || pass) {
-			BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, GetBuyerID());
+			if (it != std::end(current_buy_lines)) {
+				buy_line.item_cost = Bazaar::ResolveBuyerUpdatePrice(it->item_cost, buy_line.item_cost);
+			}
+			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) <= 0) {
+				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
+			}
+			m_buyer_explicit_price_update = true;
 			Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
 		}
 		else if (buy_line.item_toggle && it == std::end(current_buy_lines)) {
-			BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, GetBuyerID());
-			Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
+			if (BuyerBuyLinesRepository::ModifyBuyLine(database, buy_line, CharacterID()) > 0) {
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} modified.", buy_line.item_name).c_str());
+			}
+			else {
+				BuyerBuyLinesRepository::CreateBuyLine(database, buy_line, CharacterID());
+				m_buyer_explicit_price_update = true;
+				Message(Chat::Yellow, fmt::format("Buy line for {} enabled.", buy_line.item_name).c_str());
+			}
 		}
 		else if (!buy_line.item_toggle) {
-			BuyerBuyLinesRepository::DeleteBuyLine(database, GetBuyerID(), buy_line.slot);
+			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
 			Message(Chat::Yellow, fmt::format("Buy line for {} disabled.", buy_line.item_name).c_str());
 		}
 		else {
-			BuyerBuyLinesRepository::DeleteBuyLine(database, GetBuyerID(), buy_line.slot);
+			BuyerBuyLinesRepository::DeleteBuyLine(database, CharacterID(), buy_line.slot);
 			Message(
 				Chat::Yellow,
 				fmt::format("Unhandled modification.  Buy line for {} disabled.", buy_line.item_name).c_str());
@@ -4095,6 +4434,69 @@ void Client::CreateStartingBuyLines(const EQApplicationPacket *app)
 		ar(bl);
 
 		if (bl.buy_lines.empty()) {
+			return;
+		}
+
+		const auto persisted_buy_lines = BuyerBuyLinesRepository::GetBuyLines(database, CharacterID());
+		if (!Bazaar::ShouldUseClientBuyerStartPayload(
+			persisted_buy_lines.size(),
+			m_restored_persisted_buyer_mode
+		)) {
+			if (Bazaar::ShouldOverlayBuyerStartPrices(
+				persisted_buy_lines.size(),
+				m_buyer_explicit_price_update,
+				m_restored_persisted_buyer_mode
+			)) {
+				std::vector<Bazaar::BuyerLinePrice> persisted_prices;
+				persisted_prices.reserve(persisted_buy_lines.size());
+				for (const auto &line : persisted_buy_lines) {
+					persisted_prices.push_back({line.slot, line.item_id, line.item_cost});
+				}
+
+				LogTrading(
+					"Overlaying client start-mode prices onto persisted buy lines for client [{}] character [{}]. buy_lines [{}] client_lines [{}]",
+					GetCleanName(),
+					CharacterID(),
+					persisted_buy_lines.size(),
+					bl.buy_lines.size()
+				);
+
+				for (const auto &client_line : bl.buy_lines) {
+					const int index = Bazaar::FindBuyerLineIndex(
+						persisted_prices,
+						client_line.slot,
+						client_line.item_id
+					);
+					if (index < 0) {
+						continue;
+					}
+
+					const uint32 price = Bazaar::ResolveBuyerStartPrice(
+						persisted_prices[index].price,
+						client_line.item_cost,
+						m_buyer_explicit_price_update
+					);
+					BuyerBuyLinesRepository::ModifyBuyLinePrice(
+						database,
+						CharacterID(),
+						persisted_prices[index].slot,
+						persisted_prices[index].item_id,
+						price
+					);
+				}
+			}
+			else {
+				LogTrading(
+					"Keeping persisted buyer listings for client [{}] account [{}] character [{}] instead of applying a client start-mode payload. buy_lines [{}] restored [{}] explicit_update [{}]",
+					GetCleanName(),
+					AccountID(),
+					CharacterID(),
+					persisted_buy_lines.size(),
+					m_restored_persisted_buyer_mode,
+					m_buyer_explicit_price_update
+				);
+			}
+			SendPersistedBuyLines();
 			return;
 		}
 

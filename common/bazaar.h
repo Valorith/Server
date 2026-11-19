@@ -3,7 +3,9 @@
 #include "common/item_instance.h"
 #include "common/shareddb.h"
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 class Bazaar {
@@ -51,6 +53,105 @@ public:
 	);
 
 	static bool ValidatePurchasePrice(uint32 requested_price, uint32 listed_price);
+
+	// Same character + same zone + same instance reclaim keeps listings.
+	// Alt login, dest change, and invalid IDs still wipe.
+	static bool ShouldPreserveOfflineListings(
+		uint32 offline_character_id,
+		uint32 offline_zone_id,
+		int32 offline_instance_id,
+		uint32 selected_character_id,
+		uint32 selected_zone_id,
+		int32 selected_instance_id
+	);
+
+	struct BuyerLinePrice {
+		uint32 slot;
+		uint32 item_id;
+		uint32 price;
+	};
+
+	// Full replace from the RoF2 start payload only on a fresh Barter On
+	// (no persisted lines). ToggleBuyerMode(true) upserts the buyer row
+	// before Barter_BuyerItemStart, so row existence is not a restore
+	// signal. reject_stale_empty_restore is set only by
+	// RestorePersistedBuyerMode for a fulfilled (empty) order.
+	static bool ShouldUseClientBuyerStartPayload(
+		size_t persisted_buy_line_count,
+		bool reject_stale_empty_restore
+	);
+
+	// Mid-session Start Barter overlays window prices onto existing lines.
+	// After persist restore, the next Start is the stale RoF2 INI and must
+	// not overwrite. After an explicit Update write, a later Start that
+	// still carries the first-session INI must not overwrite those writes.
+	static bool ShouldOverlayBuyerStartPrices(
+		size_t persisted_buy_line_count,
+		bool has_explicit_price_update,
+		bool restored_persisted_buyer_mode
+	);
+
+	static int FindBuyerLineIndex(
+		const std::vector<BuyerLinePrice> &lines,
+		uint32 slot,
+		uint32 item_id
+	);
+
+	// Update / Modify always persists the window offering.
+	static uint32 ResolveBuyerUpdatePrice(uint32 persisted_price, uint32 client_price);
+
+	// Start Barter uses the window price unless Update already wrote.
+	static uint32 ResolveBuyerStartPrice(
+		uint32 persisted_price,
+		uint32 client_price,
+		bool has_explicit_price_update
+	);
+
+	// Seller-cache timestamp writes are best-effort. A no-op UPDATE
+	// must not discard a successful item_price persist.
+	static bool ShouldKeepBuyerPriceWriteAfterTimestampNoOp();
+
+	// Restore still sends persisted lines when the buyer UPDATE is a
+	// no-op because the row already matches.
+	static bool ShouldRestoreBuyerAfterRowUpdate(
+		int rows_affected,
+		bool row_already_matches
+	);
+
+	// Player-visible prices after Update and/or Start, and therefore after
+	// the next offline reconnect restore. Does not add INI-only lines.
+	static std::vector<BuyerLinePrice> ApplyBuyerClientLinePrices(
+		const std::vector<BuyerLinePrice> &persisted,
+		const std::vector<BuyerLinePrice> &client,
+		bool client_is_update,
+		bool has_explicit_price_update,
+		bool restored_persisted_buyer_mode = false
+	);
+
+	// Start-mode satchel add/remove is applied when unique IDs differ.
+	// Matching IDs keep the persisted price instead of a stale INI price.
+	static bool TraderListingSetsMatch(
+		const std::vector<std::string> &persisted_unique_ids,
+		const std::vector<std::string> &client_unique_ids
+	);
+
+	static uint32 ResolveTraderStartPrice(
+		bool has_persisted_price,
+		uint32 persisted_price,
+		uint32 client_price
+	);
+
+	// After persist restore, zone-in spawn PPUs are not a real walk-away.
+	// Any later movement past the settle distance still ends trader/buyer.
+	static constexpr float PersistRestoreSettleDistance = 5.0f;
+
+	static bool ShouldTeardownListingsOnMovement(
+		bool defer_after_persist_restore,
+		float restore_x,
+		float restore_y,
+		float current_x,
+		float current_y
+	);
 
 	static void RecordAuditTrail(
 		Database &db,
